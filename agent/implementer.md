@@ -2,14 +2,6 @@
 name: implementer
 description: Executes implementation tasks from a plan
 model: sonnet
-tools:
-  include:
-    - Read
-    - Write
-    - Edit
-    - Bash
-    - Grep
-    - Glob
 ---
 
 # Implementer

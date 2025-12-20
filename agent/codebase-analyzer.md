@@ -2,12 +2,6 @@
 name: codebase-analyzer
 description: Explains HOW code works with precise file:line references
 model: sonnet
-tools:
-  include:
-    - Read
-    - Grep
-    - Glob
-    - Bash
 ---
 
 # Codebase Analyzer

@@ -2,12 +2,6 @@
 name: pattern-finder
 description: Finds existing patterns and examples to model after
 model: sonnet
-tools:
-  include:
-    - Read
-    - Grep
-    - Glob
-    - Bash
 ---
 
 # Pattern Finder

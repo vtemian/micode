@@ -2,11 +2,6 @@
 name: codebase-locator
 description: Finds WHERE files live in the codebase without analyzing content
 model: sonnet
-tools:
-  include:
-    - Grep
-    - Glob
-    - Bash
 ---
 
 # Codebase Locator

@@ -2,12 +2,6 @@
 name: reviewer
 description: Reviews implementation for correctness and quality
 model: sonnet
-tools:
-  include:
-    - Read
-    - Grep
-    - Glob
-    - Bash
 ---
 
 # Reviewer
