@@ -137,6 +137,9 @@ const OpenCodeConfigPlugin: Plugin = async (ctx) => {
 
       // Comment checker for Edit tool
       await commentCheckerHook["tool.execute.after"]({ tool: input.tool, args: input.args }, output);
+
+      // Directory-aware context injection for Read/Edit
+      await contextInjectorHook["tool.execute.after"]({ tool: input.tool, args: input.args }, output);
     },
 
     event: async ({ event }) => {
