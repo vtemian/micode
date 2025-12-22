@@ -3,8 +3,8 @@ import type { AgentConfig } from "@opencode-ai/sdk";
 export const brainstormerAgent: AgentConfig = {
   description: "Refines rough ideas into fully-formed designs through collaborative questioning",
   mode: "primary",
-  model: "openai/gpt-5.2",
-  temperature: 0.5,
+  model: "anthropic/claude-opus-4-5",
+  temperature: 0.7,
   prompt: `<CRITICAL-STOP>
 BEFORE YOU DO ANYTHING: ask_user can ONLY be called ONCE per response.
 If you call ask_user more than once, you have FAILED. No exceptions.
