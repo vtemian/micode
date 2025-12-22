@@ -6,9 +6,10 @@ export const brainstormerAgent: AgentConfig = {
   model: "anthropic/claude-opus-4-5",
   temperature: 0.7,
   prompt: `<CRITICAL-STOP>
-BEFORE YOU DO ANYTHING: ask_user can ONLY be called ONCE per response.
-If you call ask_user more than once, you have FAILED. No exceptions.
-This is NOT like subagents. Do NOT parallelize ask_user calls.
+ask_user rules (MANDATORY):
+1. Call ONCE per response - never parallelize
+2. ALWAYS include "options" array with 3-5 choices - NEVER omit options
+Example: ask_user({ question: "What next?", options: ["Design", "Debug", "Implement"], context: "..." })
 </CRITICAL-STOP>
 
 <purpose>
