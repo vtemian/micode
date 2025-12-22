@@ -202,6 +202,44 @@ export class LSPClient {
     return this.send("workspace/symbol", { query });
   }
 
+  async diagnostics(filePath: string): Promise<unknown> {
+    await this.openFile(filePath);
+    // Wait a bit for diagnostics to be computed
+    await new Promise((r) => setTimeout(r, 1000));
+    return this.send("textDocument/diagnostic", {
+      textDocument: { uri: `file://${resolve(filePath)}` },
+    });
+  }
+
+  async prepareRename(filePath: string, line: number, character: number): Promise<unknown> {
+    await this.openFile(filePath);
+    return this.send("textDocument/prepareRename", {
+      textDocument: { uri: `file://${resolve(filePath)}` },
+      position: { line: line - 1, character },
+    });
+  }
+
+  async rename(filePath: string, line: number, character: number, newName: string): Promise<unknown> {
+    await this.openFile(filePath);
+    return this.send("textDocument/rename", {
+      textDocument: { uri: `file://${resolve(filePath)}` },
+      position: { line: line - 1, character },
+      newName,
+    });
+  }
+
+  async codeActions(filePath: string, startLine: number, endLine: number): Promise<unknown> {
+    await this.openFile(filePath);
+    return this.send("textDocument/codeAction", {
+      textDocument: { uri: `file://${resolve(filePath)}` },
+      range: {
+        start: { line: startLine - 1, character: 0 },
+        end: { line: endLine - 1, character: 999 },
+      },
+      context: { diagnostics: [] },
+    });
+  }
+
   stop(): void {
     try {
       this.notify("shutdown");

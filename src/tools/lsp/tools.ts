@@ -181,3 +181,131 @@ export const lsp_workspace_symbols = tool({
     }
   },
 });
+
+interface Diagnostic {
+  range: { start: { line: number; character: number }; end: { line: number; character: number } };
+  severity?: number;
+  message: string;
+  source?: string;
+}
+
+const SEVERITY_NAMES: Record<number, string> = {
+  1: "Error",
+  2: "Warning",
+  3: "Info",
+  4: "Hint",
+};
+
+export const lsp_diagnostics = tool({
+  description: "Get errors and warnings for a file before building",
+  args: {
+    filePath: tool.schema.string(),
+  },
+  execute: async (args, ctx) => {
+    try {
+      const result = await withLspClient(args.filePath, process.cwd(), async (client) => {
+        return (await client.diagnostics(args.filePath)) as { items?: Diagnostic[] } | null;
+      });
+
+      const items = result?.items || [];
+      if (items.length === 0) return "No diagnostics (file is clean)";
+
+      const lines = items.map((d) => {
+        const severity = SEVERITY_NAMES[d.severity || 1] || "Unknown";
+        const line = d.range.start.line + 1;
+        const source = d.source ? ` [${d.source}]` : "";
+        return `${severity} (line ${line})${source}: ${d.message}`;
+      });
+
+      return lines.join("\n");
+    } catch (e) {
+      return `Error: ${e instanceof Error ? e.message : String(e)}`;
+    }
+  },
+});
+
+export const lsp_rename = tool({
+  description: "Rename a symbol across the entire workspace",
+  args: {
+    filePath: tool.schema.string(),
+    line: tool.schema.number().min(1).describe("1-based line number"),
+    character: tool.schema.number().min(0).describe("0-based column"),
+    newName: tool.schema.string().describe("New name for the symbol"),
+  },
+  execute: async (args, ctx) => {
+    try {
+      // First validate the rename is possible
+      const prepareResult = await withLspClient(args.filePath, process.cwd(), async (client) => {
+        return (await client.prepareRename(args.filePath, args.line, args.character)) as {
+          range?: { start: { line: number } };
+          placeholder?: string;
+        } | null;
+      });
+
+      if (!prepareResult) {
+        return "Cannot rename symbol at this position";
+      }
+
+      // Perform the rename
+      const result = await withLspClient(args.filePath, process.cwd(), async (client) => {
+        return (await client.rename(args.filePath, args.line, args.character, args.newName)) as {
+          changes?: Record<string, Array<{ range: Location["range"]; newText: string }>>;
+          documentChanges?: Array<{ textDocument: { uri: string }; edits: Array<{ range: Location["range"]; newText: string }> }>;
+        } | null;
+      });
+
+      if (!result) return "Rename failed - no changes returned";
+
+      // Count affected files and locations
+      let fileCount = 0;
+      let editCount = 0;
+
+      if (result.changes) {
+        fileCount = Object.keys(result.changes).length;
+        editCount = Object.values(result.changes).reduce((sum, edits) => sum + edits.length, 0);
+      } else if (result.documentChanges) {
+        fileCount = result.documentChanges.length;
+        editCount = result.documentChanges.reduce((sum, doc) => sum + doc.edits.length, 0);
+      }
+
+      return `Renamed to "${args.newName}" in ${editCount} location(s) across ${fileCount} file(s).\n\nNote: Changes have been computed but NOT applied. Use the Edit tool to apply changes.`;
+    } catch (e) {
+      return `Error: ${e instanceof Error ? e.message : String(e)}`;
+    }
+  },
+});
+
+interface CodeAction {
+  title: string;
+  kind?: string;
+  diagnostics?: Diagnostic[];
+  isPreferred?: boolean;
+}
+
+export const lsp_code_actions = tool({
+  description: "Get available quick fixes and refactorings for a code range",
+  args: {
+    filePath: tool.schema.string(),
+    startLine: tool.schema.number().min(1).describe("1-based start line"),
+    endLine: tool.schema.number().min(1).describe("1-based end line"),
+  },
+  execute: async (args, ctx) => {
+    try {
+      const result = await withLspClient(args.filePath, process.cwd(), async (client) => {
+        return (await client.codeActions(args.filePath, args.startLine, args.endLine)) as CodeAction[] | null;
+      });
+
+      if (!result || result.length === 0) return "No code actions available for this range";
+
+      const lines = result.map((action) => {
+        const kind = action.kind ? ` [${action.kind}]` : "";
+        const preferred = action.isPreferred ? " ⭐" : "";
+        return `- ${action.title}${kind}${preferred}`;
+      });
+
+      return `Available code actions:\n${lines.join("\n")}`;
+    } catch (e) {
+      return `Error: ${e instanceof Error ? e.message : String(e)}`;
+    }
+  },
+});

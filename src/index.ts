@@ -11,8 +11,12 @@ import {
   lsp_find_references,
   lsp_document_symbols,
   lsp_workspace_symbols,
+  lsp_diagnostics,
+  lsp_rename,
+  lsp_code_actions,
 } from "./tools/lsp";
 import { ast_grep_search, ast_grep_replace } from "./tools/ast-grep";
+import { look_at } from "./tools/look-at";
 
 // Hooks
 import { createAutoCompactHook } from "./hooks/auto-compact";
@@ -20,6 +24,8 @@ import { createContextInjectorHook } from "./hooks/context-injector";
 import { createPreemptiveCompactionHook } from "./hooks/preemptive-compaction";
 import { createSessionRecoveryHook } from "./hooks/session-recovery";
 import { createTokenAwareTruncationHook } from "./hooks/token-aware-truncation";
+import { createContextWindowMonitorHook } from "./hooks/context-window-monitor";
+import { createCommentCheckerHook } from "./hooks/comment-checker";
 
 // Background Task System
 import { BackgroundTaskManager, createBackgroundTaskTools } from "./tools/background-task";
@@ -56,6 +62,8 @@ const OpenCodeConfigPlugin: Plugin = async (ctx) => {
   const preemptiveCompactionHook = createPreemptiveCompactionHook(ctx);
   const sessionRecoveryHook = createSessionRecoveryHook(ctx);
   const tokenAwareTruncationHook = createTokenAwareTruncationHook(ctx);
+  const contextWindowMonitorHook = createContextWindowMonitorHook(ctx);
+  const commentCheckerHook = createCommentCheckerHook(ctx);
 
   // Background Task System
   const backgroundTaskManager = new BackgroundTaskManager(ctx);
@@ -69,8 +77,12 @@ const OpenCodeConfigPlugin: Plugin = async (ctx) => {
       lsp_find_references,
       lsp_document_symbols,
       lsp_workspace_symbols,
+      lsp_diagnostics,
+      lsp_rename,
+      lsp_code_actions,
       ast_grep_search,
       ast_grep_replace,
+      look_at,
       ...backgroundTaskTools,
     },
 
@@ -103,6 +115,9 @@ const OpenCodeConfigPlugin: Plugin = async (ctx) => {
       // Inject project context files
       await contextInjectorHook["chat.params"](input, output);
 
+      // Inject context window status
+      await contextWindowMonitorHook["chat.params"](input, output);
+
       // If think mode was requested, increase thinking budget
       if (thinkModeState.get(input.sessionID)) {
         output.options = {
@@ -115,9 +130,13 @@ const OpenCodeConfigPlugin: Plugin = async (ctx) => {
       }
     },
 
-    // Tool output truncation
-    "tool.execute.after": async (input: { tool: string; sessionID: string; callID: string }, output: { output?: string }) => {
+    // Tool output processing
+    "tool.execute.after": async (input: { tool: string; sessionID: string; callID: string; args?: Record<string, unknown> }, output: { output?: string }) => {
+      // Token-aware truncation
       await tokenAwareTruncationHook["tool.execute.after"]({ name: input.tool, sessionID: input.sessionID }, output);
+
+      // Comment checker for Edit tool
+      await commentCheckerHook["tool.execute.after"]({ tool: input.tool, args: input.args }, output);
     },
 
     event: async ({ event }) => {
@@ -134,6 +153,7 @@ const OpenCodeConfigPlugin: Plugin = async (ctx) => {
       await preemptiveCompactionHook.event({ event });
       await sessionRecoveryHook.event({ event });
       await tokenAwareTruncationHook.event({ event });
+      await contextWindowMonitorHook.event({ event });
 
       // Background task manager event handling
       backgroundTaskManager.handleEvent(event);
