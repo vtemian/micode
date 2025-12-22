@@ -83,6 +83,16 @@ const OpenCodeConfigPlugin: Plugin = async (ctx) => {
         ...config.mcp,
         ...MCP_SERVERS,
       };
+
+      // Add commands
+      config.command = {
+        ...config.command,
+        init: {
+          description: "Initialize project with ARCHITECTURE.md and CODE_STYLE.md",
+          agent: "project-initializer",
+          template: `Initialize this project. $ARGUMENTS`,
+        },
+      };
     },
 
     "chat.message": async (input, output) => {
