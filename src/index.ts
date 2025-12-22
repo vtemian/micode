@@ -17,6 +17,12 @@ import { ast_grep_search, ast_grep_replace } from "./tools/ast-grep";
 // Hooks
 import { createAutoCompactHook } from "./hooks/auto-compact";
 import { createContextInjectorHook } from "./hooks/context-injector";
+import { createPreemptiveCompactionHook } from "./hooks/preemptive-compaction";
+import { createSessionRecoveryHook } from "./hooks/session-recovery";
+import { createTokenAwareTruncationHook } from "./hooks/token-aware-truncation";
+
+// Background Task System
+import { BackgroundTaskManager, createBackgroundTaskTools } from "./tools/background-task";
 
 // Think mode: detect keywords and enable extended thinking
 const THINK_KEYWORDS = [
@@ -47,6 +53,13 @@ const OpenCodeConfigPlugin: Plugin = async (ctx) => {
   // Hooks
   const autoCompactHook = createAutoCompactHook(ctx);
   const contextInjectorHook = createContextInjectorHook(ctx);
+  const preemptiveCompactionHook = createPreemptiveCompactionHook(ctx);
+  const sessionRecoveryHook = createSessionRecoveryHook(ctx);
+  const tokenAwareTruncationHook = createTokenAwareTruncationHook(ctx);
+
+  // Background Task System
+  const backgroundTaskManager = new BackgroundTaskManager(ctx);
+  const backgroundTaskTools = createBackgroundTaskTools(backgroundTaskManager);
 
   return {
     // Tools
@@ -58,6 +71,7 @@ const OpenCodeConfigPlugin: Plugin = async (ctx) => {
       lsp_workspace_symbols,
       ast_grep_search,
       ast_grep_replace,
+      ...backgroundTaskTools,
     },
 
     config: async (config) => {
@@ -101,6 +115,11 @@ const OpenCodeConfigPlugin: Plugin = async (ctx) => {
       }
     },
 
+    // Tool output truncation
+    "tool.execute.after": async (input: { tool: string; sessionID: string; callID: string }, output: { output?: string }) => {
+      await tokenAwareTruncationHook["tool.execute.after"]({ name: input.tool, sessionID: input.sessionID }, output);
+    },
+
     event: async ({ event }) => {
       // Think mode cleanup
       if (event.type === "session.deleted") {
@@ -110,8 +129,14 @@ const OpenCodeConfigPlugin: Plugin = async (ctx) => {
         }
       }
 
-      // Auto-compact hook
+      // Run all event hooks
       await autoCompactHook.event({ event });
+      await preemptiveCompactionHook.event({ event });
+      await sessionRecoveryHook.event({ event });
+      await tokenAwareTruncationHook.event({ event });
+
+      // Background task manager event handling
+      backgroundTaskManager.handleEvent(event);
     },
   };
 };
