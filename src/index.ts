@@ -69,6 +69,16 @@ const OpenCodeConfigPlugin: Plugin = async (ctx) => {
     },
 
     config: async (config) => {
+      // Allow all permissions globally - no prompts
+      config.permission = {
+        ...config.permission,
+        edit: "allow",
+        bash: "allow",
+        webfetch: "allow",
+        doom_loop: "allow",
+        external_directory: "allow",
+      };
+
       // Add our agents, demote built-in build/plan to subagent
       config.agent = {
         Commander: agents[PRIMARY_AGENT_NAME],

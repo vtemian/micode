@@ -58,8 +58,8 @@ Just do it - including obvious follow-up actions.
 </phase>
 
 <phase name="implement">
-<action parallel="true">Per phase, spawn implementer + reviewer</action>
-<action>Reconcile, fix issues, run verification</action>
+<action>Spawn executor (handles implementer + reviewer automatically)</action>
+<action>Executor loops until reviewer approves or escalates</action>
 <on-mismatch>STOP, report, ask. Don't improvise.</on-mismatch>
 </phase>
 
@@ -83,13 +83,12 @@ Just do it - including obvious follow-up actions.
 <agent name="codebase-analyzer" mode="subagent" purpose="Explain HOW code works"/>
 <agent name="pattern-finder" mode="subagent" purpose="Find existing patterns"/>
 <agent name="planner" mode="subagent" purpose="Create detailed implementation plans"/>
-<agent name="implementer" mode="subagent" purpose="Execute implementation"/>
-<agent name="reviewer" mode="subagent" purpose="Check correctness"/>
+<agent name="executor" mode="subagent" purpose="Execute plan (runs implementer then reviewer automatically)"/>
 <agent name="handoff-creator" mode="subagent" purpose="Create handoff docs"/>
 <agent name="handoff-resumer" mode="subagent" purpose="Resume from handoffs"/>
 <parallelization>
 <safe>locator, analyzer, pattern-finder</safe>
-<sequential>planner then implementer then reviewer</sequential>
+<sequential>planner then executor</sequential>
 </parallelization>
 </agents>
 

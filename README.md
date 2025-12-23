@@ -62,9 +62,10 @@ Execute plan in git worktree for isolation:
 git worktree add ../{feature} -b feature/{feature}
 ```
 
-- Implementer + Reviewer work per phase
-- Commit with descriptive messages
-- Merge when complete
+- **Executor** orchestrates the implement → review cycle automatically
+- Spawns Implementer → waits → spawns Reviewer → loops if changes requested
+- Maximum 3 cycles before escalating to human
+- Commit with descriptive messages when approved
 
 ### 5. Handoff
 
@@ -91,8 +92,9 @@ Save/resume session state for continuity:
 | codebase-analyzer | subagent | - | Deep code analysis |
 | pattern-finder | subagent | - | Find existing patterns |
 | planner | subagent | claude-opus-4-5 | Create detailed implementation plans |
-| implementer | subagent | - | Execute implementation |
-| reviewer | subagent | - | Review correctness |
+| executor | subagent | claude-opus-4-5 | Orchestrate implement → review cycle |
+| implementer | subagent | claude-opus-4-5 | Execute implementation tasks |
+| reviewer | subagent | claude-opus-4-5 | Review correctness and style |
 | handoff-creator | subagent | - | Save session state |
 | handoff-resumer | subagent | - | Resume from handoff |
 
@@ -118,6 +120,22 @@ Save/resume session state for continuity:
 | Context Window Monitor | Tracks token usage |
 | Comment Checker | Validates edit tool comments |
 | Session Recovery | Recovers from crashes |
+
+## Permissions
+
+All permissions are set to `allow` globally - no prompts for tool usage:
+
+```typescript
+config.permission = {
+  edit: "allow",
+  bash: "allow",
+  webfetch: "allow",
+  doom_loop: "allow",
+  external_directory: "allow",
+};
+```
+
+This enables subagents to work autonomously without getting stuck on permission prompts.
 
 ## MCP Servers
 

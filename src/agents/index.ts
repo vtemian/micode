@@ -6,6 +6,7 @@ import { patternFinderAgent } from "./pattern-finder";
 import { plannerAgent } from "./planner";
 import { implementerAgent } from "./implementer";
 import { reviewerAgent } from "./reviewer";
+import { executorAgent } from "./executor";
 import { handoffCreatorAgent } from "./handoff-creator";
 import { handoffResumerAgent } from "./handoff-resumer";
 import { primaryAgent, PRIMARY_AGENT_NAME } from "./commander";
@@ -20,6 +21,7 @@ export const agents: Record<string, AgentConfig> = {
   planner: plannerAgent,
   implementer: implementerAgent,
   reviewer: reviewerAgent,
+  executor: executorAgent,
   "handoff-creator": handoffCreatorAgent,
   "handoff-resumer": handoffResumerAgent,
   "project-initializer": projectInitializerAgent,
@@ -35,6 +37,7 @@ export {
   plannerAgent,
   implementerAgent,
   reviewerAgent,
+  executorAgent,
   handoffCreatorAgent,
   handoffResumerAgent,
   projectInitializerAgent,
