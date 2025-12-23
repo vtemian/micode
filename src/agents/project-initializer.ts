@@ -198,6 +198,7 @@ const PROMPT = `
 `;
 
 export const projectInitializerAgent: AgentConfig = {
+  mode: "subagent",
   model: "anthropic/claude-opus-4-5",
   temperature: 0.3,
   maxTokens: 32000,
