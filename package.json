@@ -1,6 +1,6 @@
 {
   "name": "micode",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "OpenCode plugin with Brainstorm-Research-Plan-Implement workflow",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -44,7 +44,7 @@
     "url": "https://github.com/vtemian/micode/issues"
   },
   "dependencies": {
-    "@opencode-ai/plugin": "1.0.191"
+    "@opencode-ai/plugin": "1.0.207"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.3.10",
