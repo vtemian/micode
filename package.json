@@ -19,7 +19,9 @@
     "build": "bun build src/index.ts --outdir dist --target bun --format esm && tsc --emitDeclarationOnly",
     "clean": "rm -rf dist",
     "typecheck": "tsc --noEmit",
-    "prepublishOnly": "bun run clean && bun run build"
+    "prepublishOnly": "bun run clean && bun run build",
+    "test": "bun test",
+    "test:watch": "bun test --watch"
   },
   "keywords": [
     "opencode",
