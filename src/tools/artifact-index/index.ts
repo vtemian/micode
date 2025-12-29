@@ -119,11 +119,20 @@ export class ArtifactIndex {
   async indexHandoff(record: HandoffRecord): Promise<void> {
     if (!this.db) throw new Error("Database not initialized");
 
+    // Check for existing record by file_path to clean up old FTS entry
+    const existing = this.db.query<{ id: string }, [string]>(
+      `SELECT id FROM handoffs WHERE file_path = ?`
+    ).get(record.filePath);
+    if (existing) {
+      this.db.run(`DELETE FROM handoffs_fts WHERE id = ?`, [existing.id]);
+    }
+
     // Upsert handoff
     this.db.run(`
       INSERT INTO handoffs (id, session_name, file_path, task_summary, what_worked, what_failed, learnings, outcome, indexed_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
       ON CONFLICT(file_path) DO UPDATE SET
+        id = excluded.id,
         session_name = excluded.session_name,
         task_summary = excluded.task_summary,
         what_worked = excluded.what_worked,
@@ -133,8 +142,7 @@ export class ArtifactIndex {
         indexed_at = CURRENT_TIMESTAMP
     `, [record.id, record.sessionName ?? null, record.filePath, record.taskSummary ?? null, record.whatWorked ?? null, record.whatFailed ?? null, record.learnings ?? null, record.outcome ?? null]);
 
-    // Update FTS
-    this.db.run(`DELETE FROM handoffs_fts WHERE id = ?`, [record.id]);
+    // Insert new FTS entry
     this.db.run(`
       INSERT INTO handoffs_fts (id, session_name, task_summary, what_worked, what_failed, learnings)
       VALUES (?, ?, ?, ?, ?, ?)
@@ -144,17 +152,25 @@ export class ArtifactIndex {
   async indexPlan(record: PlanRecord): Promise<void> {
     if (!this.db) throw new Error("Database not initialized");
 
+    // Check for existing record by file_path to clean up old FTS entry
+    const existing = this.db.query<{ id: string }, [string]>(
+      `SELECT id FROM plans WHERE file_path = ?`
+    ).get(record.filePath);
+    if (existing) {
+      this.db.run(`DELETE FROM plans_fts WHERE id = ?`, [existing.id]);
+    }
+
     this.db.run(`
       INSERT INTO plans (id, title, file_path, overview, approach, indexed_at)
       VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
       ON CONFLICT(file_path) DO UPDATE SET
+        id = excluded.id,
         title = excluded.title,
         overview = excluded.overview,
         approach = excluded.approach,
         indexed_at = CURRENT_TIMESTAMP
     `, [record.id, record.title ?? null, record.filePath, record.overview ?? null, record.approach ?? null]);
 
-    this.db.run(`DELETE FROM plans_fts WHERE id = ?`, [record.id]);
     this.db.run(`
       INSERT INTO plans_fts (id, title, overview, approach)
       VALUES (?, ?, ?, ?)
@@ -164,10 +180,19 @@ export class ArtifactIndex {
   async indexLedger(record: LedgerRecord): Promise<void> {
     if (!this.db) throw new Error("Database not initialized");
 
+    // Check for existing record by file_path to clean up old FTS entry
+    const existing = this.db.query<{ id: string }, [string]>(
+      `SELECT id FROM ledgers WHERE file_path = ?`
+    ).get(record.filePath);
+    if (existing) {
+      this.db.run(`DELETE FROM ledgers_fts WHERE id = ?`, [existing.id]);
+    }
+
     this.db.run(`
       INSERT INTO ledgers (id, session_name, file_path, goal, state_now, key_decisions, indexed_at)
       VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
       ON CONFLICT(file_path) DO UPDATE SET
+        id = excluded.id,
         session_name = excluded.session_name,
         goal = excluded.goal,
         state_now = excluded.state_now,
@@ -175,7 +200,6 @@ export class ArtifactIndex {
         indexed_at = CURRENT_TIMESTAMP
     `, [record.id, record.sessionName ?? null, record.filePath, record.goal ?? null, record.stateNow ?? null, record.keyDecisions ?? null]);
 
-    this.db.run(`DELETE FROM ledgers_fts WHERE id = ?`, [record.id]);
     this.db.run(`
       INSERT INTO ledgers_fts (id, session_name, goal, state_now, key_decisions)
       VALUES (?, ?, ?, ?, ?)
