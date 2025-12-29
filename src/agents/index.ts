@@ -11,6 +11,7 @@ import { handoffCreatorAgent } from "./handoff-creator";
 import { handoffResumerAgent } from "./handoff-resumer";
 import { primaryAgent, PRIMARY_AGENT_NAME } from "./commander";
 import { projectInitializerAgent } from "./project-initializer";
+import { ledgerCreatorAgent } from "./ledger-creator";
 
 export const agents: Record<string, AgentConfig> = {
   [PRIMARY_AGENT_NAME]: primaryAgent,
@@ -25,6 +26,7 @@ export const agents: Record<string, AgentConfig> = {
   "handoff-creator": handoffCreatorAgent,
   "handoff-resumer": handoffResumerAgent,
   "project-initializer": projectInitializerAgent,
+  "ledger-creator": ledgerCreatorAgent,
 };
 
 export {
@@ -41,4 +43,5 @@ export {
   handoffCreatorAgent,
   handoffResumerAgent,
   projectInitializerAgent,
+  ledgerCreatorAgent,
 };
