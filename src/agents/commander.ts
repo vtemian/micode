@@ -76,9 +76,9 @@ Just do it - including obvious follow-up actions.
 <rule>Reference plan file in commit body</rule>
 </phase>
 
-<phase name="handoff">
-<agent name="handoff-creator">Save session state</agent>
-<agent name="handoff-resumer">Resume from handoff</agent>
+<phase name="ledger" trigger="context getting full or session ending">
+<action>System auto-updates ledger at 80% context usage</action>
+<output>thoughts/ledgers/CONTINUITY_{session-name}.md</output>
 </phase>
 </workflow>
 
@@ -89,8 +89,7 @@ Just do it - including obvious follow-up actions.
 <agent name="pattern-finder" mode="subagent" purpose="Find existing patterns"/>
 <agent name="planner" mode="subagent" purpose="Create detailed implementation plans"/>
 <agent name="executor" mode="subagent" purpose="Execute plan (runs implementer then reviewer automatically)"/>
-<agent name="handoff-creator" mode="subagent" purpose="Create handoff docs"/>
-<agent name="handoff-resumer" mode="subagent" purpose="Resume from handoffs"/>
+<agent name="ledger-creator" mode="subagent" purpose="Create/update continuity ledgers"/>
 <parallelization>
 <safe>locator, analyzer, pattern-finder</safe>
 <sequential>planner then executor</sequential>
