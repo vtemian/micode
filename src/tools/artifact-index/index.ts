@@ -8,17 +8,6 @@ import { homedir } from "node:os";
 const DEFAULT_DB_DIR = join(homedir(), ".config", "opencode", "artifact-index");
 const DB_NAME = "context.db";
 
-export interface HandoffRecord {
-  id: string;
-  sessionName?: string;
-  filePath: string;
-  taskSummary?: string;
-  whatWorked?: string;
-  whatFailed?: string;
-  learnings?: string;
-  outcome?: "SUCCEEDED" | "PARTIAL_PLUS" | "PARTIAL_MINUS" | "FAILED" | "UNKNOWN";
-}
-
 export interface PlanRecord {
   id: string;
   title?: string;
@@ -34,10 +23,12 @@ export interface LedgerRecord {
   goal?: string;
   stateNow?: string;
   keyDecisions?: string;
+  filesRead?: string;
+  filesModified?: string;
 }
 
 export interface SearchResult {
-  type: "handoff" | "plan" | "ledger";
+  type: "plan" | "ledger";
   id: string;
   filePath: string;
   title?: string;
@@ -79,18 +70,6 @@ export class ArtifactIndex {
 
   private getInlineSchema(): string {
     return `
-      CREATE TABLE IF NOT EXISTS handoffs (
-        id TEXT PRIMARY KEY,
-        session_name TEXT,
-        file_path TEXT UNIQUE NOT NULL,
-        task_summary TEXT,
-        what_worked TEXT,
-        what_failed TEXT,
-        learnings TEXT,
-        outcome TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        indexed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      );
       CREATE TABLE IF NOT EXISTS plans (
         id TEXT PRIMARY KEY,
         title TEXT,
@@ -107,68 +86,14 @@ export class ArtifactIndex {
         goal TEXT,
         state_now TEXT,
         key_decisions TEXT,
+        files_read TEXT,
+        files_modified TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         indexed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
-      CREATE VIRTUAL TABLE IF NOT EXISTS handoffs_fts USING fts5(id, session_name, task_summary, what_worked, what_failed, learnings);
       CREATE VIRTUAL TABLE IF NOT EXISTS plans_fts USING fts5(id, title, overview, approach);
       CREATE VIRTUAL TABLE IF NOT EXISTS ledgers_fts USING fts5(id, session_name, goal, state_now, key_decisions);
     `;
-  }
-
-  async indexHandoff(record: HandoffRecord): Promise<void> {
-    if (!this.db) throw new Error("Database not initialized");
-
-    // Check for existing record by file_path to clean up old FTS entry
-    const existing = this.db
-      .query<{ id: string }, [string]>(`SELECT id FROM handoffs WHERE file_path = ?`)
-      .get(record.filePath);
-    if (existing) {
-      this.db.run(`DELETE FROM handoffs_fts WHERE id = ?`, [existing.id]);
-    }
-
-    // Upsert handoff
-    this.db.run(
-      `
-      INSERT INTO handoffs (id, session_name, file_path, task_summary, what_worked, what_failed, learnings, outcome, indexed_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-      ON CONFLICT(file_path) DO UPDATE SET
-        id = excluded.id,
-        session_name = excluded.session_name,
-        task_summary = excluded.task_summary,
-        what_worked = excluded.what_worked,
-        what_failed = excluded.what_failed,
-        learnings = excluded.learnings,
-        outcome = excluded.outcome,
-        indexed_at = CURRENT_TIMESTAMP
-    `,
-      [
-        record.id,
-        record.sessionName ?? null,
-        record.filePath,
-        record.taskSummary ?? null,
-        record.whatWorked ?? null,
-        record.whatFailed ?? null,
-        record.learnings ?? null,
-        record.outcome ?? null,
-      ],
-    );
-
-    // Insert new FTS entry
-    this.db.run(
-      `
-      INSERT INTO handoffs_fts (id, session_name, task_summary, what_worked, what_failed, learnings)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `,
-      [
-        record.id,
-        record.sessionName ?? null,
-        record.taskSummary ?? null,
-        record.whatWorked ?? null,
-        record.whatFailed ?? null,
-        record.learnings ?? null,
-      ],
-    );
   }
 
   async indexPlan(record: PlanRecord): Promise<void> {
@@ -218,14 +143,16 @@ export class ArtifactIndex {
 
     this.db.run(
       `
-      INSERT INTO ledgers (id, session_name, file_path, goal, state_now, key_decisions, indexed_at)
-      VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+      INSERT INTO ledgers (id, session_name, file_path, goal, state_now, key_decisions, files_read, files_modified, indexed_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
       ON CONFLICT(file_path) DO UPDATE SET
         id = excluded.id,
         session_name = excluded.session_name,
         goal = excluded.goal,
         state_now = excluded.state_now,
         key_decisions = excluded.key_decisions,
+        files_read = excluded.files_read,
+        files_modified = excluded.files_modified,
         indexed_at = CURRENT_TIMESTAMP
     `,
       [
@@ -235,6 +162,8 @@ export class ArtifactIndex {
         record.goal ?? null,
         record.stateNow ?? null,
         record.keyDecisions ?? null,
+        record.filesRead ?? null,
+        record.filesModified ?? null,
       ],
     );
 
@@ -258,28 +187,6 @@ export class ArtifactIndex {
 
     const results: SearchResult[] = [];
     const escapedQuery = this.escapeFtsQuery(query);
-
-    // Search handoffs
-    const handoffs = this.db
-      .query<{ id: string; file_path: string; task_summary: string; rank: number }, [string, number]>(`
-      SELECT h.id, h.file_path, h.task_summary, rank
-      FROM handoffs_fts
-      JOIN handoffs h ON handoffs_fts.id = h.id
-      WHERE handoffs_fts MATCH ?
-      ORDER BY rank
-      LIMIT ?
-    `)
-      .all(escapedQuery, limit);
-
-    for (const row of handoffs) {
-      results.push({
-        type: "handoff",
-        id: row.id,
-        filePath: row.file_path,
-        summary: row.task_summary,
-        score: -row.rank, // FTS5 rank is negative, lower is better
-      });
-    }
 
     // Search plans
     const plans = this.db
