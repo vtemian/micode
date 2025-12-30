@@ -16,4 +16,12 @@ describe("auto-clear-ledger", () => {
     const { CLEAR_COOLDOWN_MS } = await import("../../src/hooks/auto-clear-ledger");
     expect(CLEAR_COOLDOWN_MS).toBe(60_000);
   });
+
+  it("should not reference handoff-creator in source", async () => {
+    const fs = await import("node:fs/promises");
+    const source = await fs.readFile("src/hooks/auto-clear-ledger.ts", "utf-8");
+    expect(source).not.toContain("handoff-creator");
+    expect(source).not.toContain("handoffSessionID");
+    expect(source).not.toContain("handoff");
+  });
 });

@@ -137,44 +137,7 @@ export function createAutoClearLedgerHook(ctx: PluginInput) {
         }
       }
 
-      // Step 2: Spawn handoff-creator agent
-      const handoffSessionResp = await ctx.client.session.create({
-        body: {},
-        query: { directory: ctx.directory },
-      });
-      const handoffSessionID = (handoffSessionResp as { data?: { id?: string } }).data?.id;
-
-      if (handoffSessionID) {
-        await ctx.client.session.prompt({
-          path: { id: handoffSessionID },
-          body: {
-            parts: [
-              {
-                type: "text",
-                text: "Create a handoff document. Read the current ledger at thoughts/ledgers/ for context.",
-              },
-            ],
-            agent: "handoff-creator",
-          },
-          query: { directory: ctx.directory },
-        });
-
-        // Wait for handoff completion
-        let attempts = 0;
-        while (attempts < 30) {
-          await new Promise((resolve) => setTimeout(resolve, 2000));
-          const statusResp = await ctx.client.session.get({
-            path: { id: handoffSessionID },
-            query: { directory: ctx.directory },
-          });
-          if ((statusResp as { data?: { status?: string } }).data?.status === "idle") {
-            break;
-          }
-          attempts++;
-        }
-      }
-
-      // Step 3: Get first message ID for revert
+      // Step 2: Get first message ID for revert
       const firstMessage = messages[0] as Record<string, unknown> | undefined;
       const firstMessageID = (firstMessage?.info as Record<string, unknown> | undefined)?.id as string | undefined;
 
@@ -182,14 +145,14 @@ export function createAutoClearLedgerHook(ctx: PluginInput) {
         throw new Error("Could not find first message ID for revert");
       }
 
-      // Step 4: Revert session to first message
+      // Step 3: Revert session to first message
       await ctx.client.session.revert({
         path: { id: sessionID },
         body: { messageID: firstMessageID },
         query: { directory: ctx.directory },
       });
 
-      // Step 5: Inject ledger context
+      // Step 4: Inject ledger context
       const ledger = await findCurrentLedger(ctx.directory);
       if (ledger) {
         const injection = formatLedgerInjection(ledger);
@@ -207,7 +170,7 @@ export function createAutoClearLedgerHook(ctx: PluginInput) {
         .showToast({
           body: {
             title: "Context Cleared",
-            message: "Ledger + handoff saved. Session ready to continue.",
+            message: "Ledger saved. Session ready to continue.",
             variant: "success",
             duration: 5000,
           },
