@@ -2,20 +2,6 @@
 -- Artifact Index Schema for SQLite + FTS5
 -- NOTE: FTS tables are standalone (not content-linked) and manually synced by code
 
--- Handoffs table
-CREATE TABLE IF NOT EXISTS handoffs (
-    id TEXT PRIMARY KEY,
-    session_name TEXT,
-    file_path TEXT UNIQUE NOT NULL,
-    task_summary TEXT,
-    what_worked TEXT,
-    what_failed TEXT,
-    learnings TEXT,
-    outcome TEXT CHECK(outcome IN ('SUCCEEDED', 'PARTIAL_PLUS', 'PARTIAL_MINUS', 'FAILED', 'UNKNOWN')),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    indexed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
 -- Plans table
 CREATE TABLE IF NOT EXISTS plans (
     id TEXT PRIMARY KEY,
@@ -27,7 +13,7 @@ CREATE TABLE IF NOT EXISTS plans (
     indexed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Ledgers table
+-- Ledgers table - with file operation tracking
 CREATE TABLE IF NOT EXISTS ledgers (
     id TEXT PRIMARY KEY,
     session_name TEXT,
@@ -35,20 +21,13 @@ CREATE TABLE IF NOT EXISTS ledgers (
     goal TEXT,
     state_now TEXT,
     key_decisions TEXT,
+    files_read TEXT,
+    files_modified TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     indexed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 -- FTS5 virtual tables for full-text search (standalone, manually synced)
-CREATE VIRTUAL TABLE IF NOT EXISTS handoffs_fts USING fts5(
-    id,
-    session_name,
-    task_summary,
-    what_worked,
-    what_failed,
-    learnings
-);
-
 CREATE VIRTUAL TABLE IF NOT EXISTS plans_fts USING fts5(
     id,
     title,
