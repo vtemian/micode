@@ -141,6 +141,7 @@ export function createAutoClearLedgerHook(ctx: PluginInput) {
 
         // Wait for ledger completion (poll for idle)
         let attempts = 0;
+        let ledgerCompleted = false;
         while (attempts < 30) {
           await new Promise((resolve) => setTimeout(resolve, 2000));
           const statusResp = await ctx.client.session.get({
@@ -148,13 +149,16 @@ export function createAutoClearLedgerHook(ctx: PluginInput) {
             query: { directory: ctx.directory },
           });
           if ((statusResp as { data?: { status?: string } }).data?.status === "idle") {
+            ledgerCompleted = true;
             break;
           }
           attempts++;
         }
 
-        // Only clear file ops after ledger-creator successfully processed them
-        clearFileOps(sessionID);
+        // Only clear file ops after ledger-creator successfully completed
+        if (ledgerCompleted) {
+          clearFileOps(sessionID);
+        }
       }
 
       // Step 3: Get first message ID for revert
