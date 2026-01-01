@@ -1,32 +1,9 @@
 import type { PluginInput } from "@opencode-ai/plugin";
+import { getContextLimit } from "../utils/model-limits";
 
 // Thresholds for context window warnings
 const WARNING_THRESHOLD = 0.7; // 70% - remind there's still room
 const CRITICAL_THRESHOLD = 0.85; // 85% - getting tight
-
-const DEFAULT_CONTEXT_LIMIT = 200_000;
-
-// Model context limits
-const MODEL_CONTEXT_LIMITS: Record<string, number> = {
-  "claude-opus": 200_000,
-  "claude-sonnet": 200_000,
-  "claude-haiku": 200_000,
-  "gpt-4": 128_000,
-  "gpt-5": 200_000,
-  o1: 200_000,
-  o3: 200_000,
-  gemini: 1_000_000,
-};
-
-function getContextLimit(modelID: string): number {
-  const modelLower = modelID.toLowerCase();
-  for (const [pattern, limit] of Object.entries(MODEL_CONTEXT_LIMITS)) {
-    if (modelLower.includes(pattern)) {
-      return limit;
-    }
-  }
-  return DEFAULT_CONTEXT_LIMIT;
-}
 
 interface MonitorState {
   lastWarningTime: Map<string, number>;

@@ -2,37 +2,11 @@
 import type { PluginInput } from "@opencode-ai/plugin";
 import { findCurrentLedger, formatLedgerInjection } from "./ledger-loader";
 import { getFileOps, clearFileOps, formatFileOpsForPrompt } from "./file-ops-tracker";
+import { getContextLimit } from "../utils/model-limits";
 
-// Model context limits (tokens)
-const MODEL_CONTEXT_LIMITS: Record<string, number> = {
-  "claude-opus": 200_000,
-  "claude-sonnet": 200_000,
-  "claude-haiku": 200_000,
-  "claude-3": 200_000,
-  "claude-4": 200_000,
-  "gpt-4o": 128_000,
-  "gpt-4-turbo": 128_000,
-  "gpt-4": 128_000,
-  "gpt-5": 200_000,
-  o1: 200_000,
-  o3: 200_000,
-  gemini: 1_000_000,
-};
-
-const DEFAULT_CONTEXT_LIMIT = 200_000;
 export const DEFAULT_THRESHOLD = 0.8;
 const MIN_TOKENS_FOR_CLEAR = 50_000;
 export const CLEAR_COOLDOWN_MS = 60_000;
-
-function getContextLimit(modelID: string): number {
-  const modelLower = modelID.toLowerCase();
-  for (const [pattern, limit] of Object.entries(MODEL_CONTEXT_LIMITS)) {
-    if (modelLower.includes(pattern)) {
-      return limit;
-    }
-  }
-  return DEFAULT_CONTEXT_LIMIT;
-}
 
 interface ClearState {
   lastClearTime: Map<string, number>;
