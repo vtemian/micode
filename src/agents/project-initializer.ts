@@ -29,14 +29,14 @@ const PROMPT = `
       Parameters: description, prompt, agent (subagent type)
       Example: background_task(description="Find entry points", prompt="Find all entry points", agent="codebase-locator")
     </tool>
-    <tool name="background_output">
-      Get results from a background task. Use block=true to wait for completion.
-      Parameters: task_id, block (boolean), timeout (optional)
-      Example: background_output(task_id="abc123", block=true)
-    </tool>
     <tool name="background_list">
-      List all background tasks and their status.
+      List all background tasks and their status. Use to poll for completion.
       No parameters required.
+    </tool>
+    <tool name="background_output">
+      Get results from a completed task. Only call after background_list shows task is done.
+      Parameters: task_id
+      Example: background_output(task_id="abc123")
     </tool>
   </background-tools>
 
@@ -58,9 +58,10 @@ const PROMPT = `
       </parallel-tools>
     </phase>
 
-    <phase name="2-collect" description="Collect all results">
-      <description>Use background_output(block=true) to collect each result</description>
-      <action>Collect results from all fired agents</action>
+    <phase name="2-collect" description="Poll and collect all results">
+      <description>Poll background_list until all tasks complete, then collect with background_output</description>
+      <action>Poll background_list until all tasks show "completed"</action>
+      <action>Call background_output for each completed task</action>
       <action>Process tool results from phase 1</action>
     </phase>
 
@@ -118,8 +119,9 @@ const PROMPT = `
 
   <critical-instruction>
     Use background_task to fire subagents for TRUE parallelism.
-    Fire ALL background_task calls in a SINGLE message, then collect with background_output(block=true).
-    This is the fire-and-collect pattern - fire everything, then collect everything.
+    Fire ALL background_task calls in a SINGLE message.
+    Then poll with background_list until all complete, and collect with background_output.
+    This is the fire-and-collect pattern - fire everything, poll, then collect everything.
   </critical-instruction>
 
   <language-detection>
@@ -225,13 +227,15 @@ const PROMPT = `
       - Glob: README*, ARCHITECTURE*, docs/*
     </step>
 
-    <step description="COLLECT: Gather all results">
-      In a SINGLE message, collect ALL results:
-      - background_output(task_id=task_id_1, block=true)
-      - background_output(task_id=task_id_2, block=true)
-      - background_output(task_id=task_id_3, block=true)
-      - background_output(task_id=task_id_4, block=true)
-      - background_output(task_id=task_id_5, block=true)
+    <step description="COLLECT: Poll and gather all results">
+      First poll until all tasks complete:
+      - background_list()  // repeat until all show "completed"
+      Then collect ALL results:
+      - background_output(task_id=task_id_1)
+      - background_output(task_id=task_id_2)
+      - background_output(task_id=task_id_3)
+      - background_output(task_id=task_id_4)
+      - background_output(task_id=task_id_5)
     </step>
 
     <step description="FIRE: Deep analysis based on discovery">

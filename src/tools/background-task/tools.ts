@@ -38,48 +38,24 @@ Use \`background_output\` with task_id="${task.id}" to check progress or get res
   });
 
   const background_output = tool({
-    description: `Check status or get results from a background task.
-By default returns immediately with current status.
-Set block=true to wait for completion (with timeout).`,
+    description: `Get status or results from a background task.
+Returns immediately with current status. Use background_list to poll for completion.`,
     args: {
       task_id: tool.schema.string().describe("ID of the task to check (e.g., 'bg_abc12345')"),
-      block: tool.schema.boolean().optional().describe("Wait for task completion (default: false)"),
-      timeout: tool.schema.number().optional().describe("Max seconds to wait if blocking (default: 60, max: 600)"),
     },
     execute: async (args) => {
-      const { task_id, block = false, timeout = 60 } = args;
+      const { task_id } = args;
 
       const task = manager.getTask(task_id);
       if (!task) {
         return `Task not found: ${task_id}`;
       }
 
-      // If blocking, wait for completion
-      if (block && task.status === "running") {
-        const maxWait = Math.min(timeout || 60, 600) * 1000;
-        const startTime = Date.now();
-
-        while (Date.now() - startTime < maxWait) {
-          // Re-fetch task to get updated status
-          const currentTask = manager.getTask(task_id);
-          if (!currentTask || currentTask.status !== "running") {
-            break;
-          }
-          await new Promise((resolve) => setTimeout(resolve, 1000));
-        }
-      }
-
-      // Re-fetch task for final status
-      const finalTask = manager.getTask(task_id);
-      if (!finalTask) {
-        return `Task not found: ${task_id}`;
-      }
-
       // Format status
-      let output = manager.formatTaskStatus(finalTask);
+      let output = manager.formatTaskStatus(task);
 
       // Include result if completed
-      if (finalTask.status === "completed") {
+      if (task.status === "completed") {
         const result = await manager.getTaskResult(task_id);
         if (result) {
           output += `\n### Result\n${result}\n`;

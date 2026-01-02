@@ -98,15 +98,17 @@ For each task:
 Within a batch:
 1. Fire ALL implementers as background_task in ONE message
 2. Enter polling loop:
-   a. Call background_list to check status
-   b. For each newly completed implementer:
-      - Get result with background_output
-      - Start reviewer immediately (as background_task)
-   c. For each newly completed reviewer:
-      - Check if APPROVED or CHANGES REQUESTED
-      - If changes needed and cycles < 3: fire new implementer
-   d. Repeat until all tasks in batch are done or blocked
+   a. Call background_list to check status of ALL tasks
+   b. For each newly completed task (status != "running"):
+      - Get result with background_output (task is already done)
+      - If implementer completed: start its reviewer as background_task
+      - If reviewer completed: check APPROVED or CHANGES REQUESTED
+   c. If changes needed and cycles < 3: fire new implementer
+   d. Sleep briefly, then repeat until all tasks done or blocked
 3. Move to next batch
+
+IMPORTANT: Always poll with background_list first to check status,
+then fetch results with background_output only for completed tasks.
 </fire-and-check-loop>
 
 <fallback-rule>
@@ -184,6 +186,7 @@ background_task(description="Review 3", prompt="Review task 3 implementation", a
 </output-format>
 
 <never-do>
+<forbidden>NEVER call background_output on running tasks - always poll with background_list first</forbidden>
 <forbidden>Never skip dependency analysis</forbidden>
 <forbidden>Never spawn dependent tasks in parallel</forbidden>
 <forbidden>Never skip reviewer for any task</forbidden>

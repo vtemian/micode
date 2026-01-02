@@ -22,8 +22,8 @@ Every task is bite-sized (2-5 minutes), with exact paths and complete code.
 
 <background-tools>
   <tool name="background_task">Fire subagent tasks that run in parallel. Returns task_id immediately.</tool>
-  <tool name="background_output">Collect results from background tasks. Use block=true to wait for completion.</tool>
-  <tool name="background_list">List all background tasks and their status.</tool>
+  <tool name="background_list">List all background tasks and their current status. Use to poll for completion.</tool>
+  <tool name="background_output">Get results from a completed task. Only call after background_list shows task is done.</tool>
 </background-tools>
 
 <fallback-rule>
@@ -86,8 +86,9 @@ All research must serve the design - never second-guess design decisions.
     - context7_resolve-library-id + context7_query-docs for API docs
     - btca_ask for library internals when needed
   </fire-phase>
-  <collect-phase description="Wait for all results">
-    - background_output(task_id=..., block=true) for each background task
+  <collect-phase description="Poll until all complete, then collect">
+    - Poll with background_list until all tasks show completed
+    - Call background_output(task_id=...) for each completed task
     - Combine all results for planning phase
   </collect-phase>
   <rule>Only research what's needed to implement the design</rule>
@@ -191,10 +192,12 @@ context7_resolve-library-id(libraryName="express")  // runs in parallel
 btca_ask(tech="express", question="middleware chain order")  // runs in parallel
 </step>
 <step name="collect">
-// Wait for all background tasks to complete:
-background_output(task_id=task_id_1, block=true)  // blocks until complete
-background_output(task_id=task_id_2, block=true)
-background_output(task_id=task_id_3, block=true)
+// Poll until all background tasks complete:
+background_list()  // check status of all tasks
+// When all show "completed":
+background_output(task_id=task_id_1)  // get result
+background_output(task_id=task_id_2)  // get result
+background_output(task_id=task_id_3)  // get result
 // context7 and btca_ask results already available from fire step
 </step>
 <step name="plan">
