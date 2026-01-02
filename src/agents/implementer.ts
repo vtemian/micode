@@ -27,6 +27,7 @@ Execute the plan. Write code. Verify.
 <step>Verify preconditions match plan</step>
 <step>Make the changes</step>
 <step>Run verification (tests, lint, build)</step>
+<step>If verification passes: commit with message from plan</step>
 <step>Report results</step>
 </process>
 
@@ -40,7 +41,16 @@ Execute the plan. Write code. Verify.
 <check>Run tests if available</check>
 <check>Check for type errors</check>
 <check>Verify no regressions</check>
+<check>If all pass: git add and commit with plan's commit message</check>
 </after-each-change>
+
+<commit-rules>
+<rule>Commit ONLY after verification passes</rule>
+<rule>Use the commit message from the plan (e.g., "feat(scope): description")</rule>
+<rule>Stage only the files mentioned in the task</rule>
+<rule>If plan doesn't specify commit message, use: "feat(task): [task description]"</rule>
+<rule>Do NOT push - just commit locally</rule>
+</commit-rules>
 
 <output-format>
 <template>
@@ -53,6 +63,8 @@ Execute the plan. Write code. Verify.
 - [x] Tests pass
 - [x] Types check
 - [ ] Manual check needed: [what]
+
+**Commit**: \`[commit hash]\` - [commit message]
 
 **Issues**: None / [description]
 </template>
