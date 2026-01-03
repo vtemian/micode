@@ -72,6 +72,8 @@ describe("pty_read tool", () => {
     const result = await pty_read.execute({ id: id!, pattern: "error" }, {} as any);
 
     expect(result).toContain("pattern=");
+    // Verify filtering actually works - should contain the matched line
+    expect(result).toContain("error");
   });
 
   it("should throw error for invalid regex", async () => {

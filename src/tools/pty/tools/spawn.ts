@@ -48,6 +48,7 @@ export function createPtySpawnTool(manager: PTYManager) {
       title: tool.schema.string().optional().describe("Human-readable title for the session"),
       description: tool.schema
         .string()
+        .optional()
         .describe("Clear, concise description of what this PTY session is for in 5-10 words"),
     },
     execute: async (args, ctx) => {

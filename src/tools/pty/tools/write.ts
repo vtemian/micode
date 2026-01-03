@@ -91,7 +91,7 @@ export function createPtyWriteTool(manager: PTYManager) {
         .replace(/\x04/g, "^D")
         .replace(/\n/g, "\\n")
         .replace(/\r/g, "\\r");
-      return `Sent ${args.data.length} bytes to ${args.id}: "${displayPreview}"`;
+      return `Sent ${parsedData.length} bytes to ${args.id}: "${displayPreview}"`;
     },
   });
 }
