@@ -230,18 +230,11 @@ const OpenCodeConfigPlugin: Plugin = async (ctx) => {
     },
 
     event: async ({ event }) => {
-      // Think mode cleanup
+      // Session cleanup (think mode + PTY)
       if (event.type === "session.deleted") {
         const props = event.properties as { info?: { id?: string } } | undefined;
         if (props?.info?.id) {
           thinkModeState.delete(props.info.id);
-        }
-      }
-
-      // PTY cleanup on session delete
-      if (event.type === "session.deleted") {
-        const props = event.properties as { info?: { id?: string } } | undefined;
-        if (props?.info?.id) {
           ptyManager.cleanupBySession(props.info.id);
         }
       }
