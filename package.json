@@ -44,7 +44,7 @@
     "url": "https://github.com/vtemian/micode/issues"
   },
   "dependencies": {
-    "@opencode-ai/plugin": "^1.0.219"
+    "@opencode-ai/plugin": "^1.0.224"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.3.10",

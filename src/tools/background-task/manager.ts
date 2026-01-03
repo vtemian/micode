@@ -1,7 +1,14 @@
 import type { PluginInput } from "@opencode-ai/plugin";
-import type { BackgroundTask, BackgroundTaskInput } from "./types";
+import type {
+  BackgroundTask,
+  BackgroundTaskInput,
+  SessionCreateResponse,
+  SessionGetResponse,
+  SessionMessagesResponse,
+} from "./types";
 
 const POLL_INTERVAL_MS = 2000;
+const TASK_TTL_MS = 60 * 60 * 1000; // 1 hour
 
 function generateTaskId(): string {
   const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
@@ -42,7 +49,7 @@ export class BackgroundTaskManager {
       query: { directory: this.ctx.directory },
     });
 
-    const sessionData = sessionResp as { data?: { id?: string } };
+    const sessionData = sessionResp as SessionCreateResponse;
     const sessionID = sessionData.data?.id;
 
     if (!sessionID) {
@@ -78,6 +85,7 @@ export class BackgroundTaskManager {
         query: { directory: this.ctx.directory },
       })
       .catch((error) => {
+        console.error(`[background-task] Failed to prompt session ${sessionID}:`, error);
         task.status = "error";
         task.error = error instanceof Error ? error.message : String(error);
         task.completedAt = new Date();
@@ -103,7 +111,9 @@ export class BackgroundTaskManager {
           path: { id: task.sessionID },
           query: { directory: this.ctx.directory },
         })
-        .catch(() => {});
+        .catch((error) => {
+          console.error(`[background-task] Failed to abort session ${task.sessionID}:`, error);
+        });
 
       task.status = "cancelled";
       task.completedAt = new Date();
@@ -155,21 +165,17 @@ export class BackgroundTaskManager {
         query: { directory: this.ctx.directory },
       });
 
-      const messages = (resp as { data?: unknown[] }).data || [];
-      const lastAssistant = [...messages].reverse().find((m) => {
-        const msg = m as Record<string, unknown>;
-        const info = msg.info as Record<string, unknown> | undefined;
-        return info?.role === "assistant";
-      }) as Record<string, unknown> | undefined;
+      const messagesResp = resp as SessionMessagesResponse;
+      const messages = messagesResp.data || [];
+      const lastAssistant = [...messages].reverse().find((m) => m.info?.role === "assistant");
 
       if (lastAssistant) {
-        const parts = lastAssistant.parts as Array<{ type: string; text?: string }> | undefined;
-        const textParts = parts?.filter((p) => p.type === "text") || [];
+        const textParts = lastAssistant.parts?.filter((p) => p.type === "text") || [];
         task.result = textParts.map((p) => p.text || "").join("\n");
         return task.result;
       }
-    } catch {
-      // Ignore errors fetching result
+    } catch (error) {
+      console.error(`[background-task] Failed to fetch result for task ${taskId}:`, error);
     }
 
     return undefined;
@@ -197,14 +203,6 @@ export class BackgroundTaskManager {
       output += `\n### Error\n${task.error}\n`;
     }
 
-    if (task.progress?.lastMessage) {
-      const preview =
-        task.progress.lastMessage.length > 200
-          ? `${task.progress.lastMessage.slice(0, 200)}...`
-          : task.progress.lastMessage;
-      output += `\n### Last Message Preview\n${preview}\n`;
-    }
-
     return output;
   }
 
@@ -223,7 +221,23 @@ export class BackgroundTaskManager {
     }
   }
 
+  private cleanupOldTasks(): void {
+    const now = Date.now();
+    for (const [taskId, task] of this.tasks) {
+      // Only cleanup completed/cancelled/error tasks
+      if (task.status === "running") continue;
+
+      const completedAt = task.completedAt?.getTime() || 0;
+      if (now - completedAt > TASK_TTL_MS) {
+        this.tasks.delete(taskId);
+      }
+    }
+  }
+
   private async pollRunningTasks(): Promise<void> {
+    // Cleanup old completed tasks to prevent memory leak
+    this.cleanupOldTasks();
+
     const runningTasks = this.getRunningTasks();
 
     if (runningTasks.length === 0) {
@@ -239,7 +253,7 @@ export class BackgroundTaskManager {
           query: { directory: this.ctx.directory },
         });
 
-        const sessionData = resp as { data?: { status?: string } };
+        const sessionData = resp as SessionGetResponse;
         const status = sessionData.data?.status;
 
         if (status === "idle") {
@@ -258,10 +272,12 @@ export class BackgroundTaskManager {
                 duration: 5000,
               },
             })
-            .catch(() => {});
+            .catch((error) => {
+              console.error(`[background-task] Failed to show toast for task ${task.id}:`, error);
+            });
         }
-      } catch {
-        // Session may not exist anymore
+      } catch (error) {
+        console.error(`[background-task] Failed to poll task ${task.id}:`, error);
         if (task.status === "running") {
           task.status = "error";
           task.error = "Session lost";

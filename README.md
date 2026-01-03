@@ -45,13 +45,14 @@ Research subagents (codebase-locator, codebase-analyzer, pattern-finder) are spa
 
 Refine rough ideas into fully-formed designs through collaborative questioning.
 
-- One question at a time
+- One question at a time (critical rule!)
 - 2-3 approaches with trade-offs
 - Section-by-section validation
-- Spawns research subagents to understand codebase
+- Fires research subagents in parallel via `background_task`
+- Auto-hands off to planner when user approves
 - Output: `thoughts/shared/designs/YYYY-MM-DD-{topic}-design.md`
 
-**Research subagents** (spawned in parallel):
+**Research subagents** (fired in parallel via background_task):
 
 | Subagent | Purpose |
 |----------|---------|
@@ -59,16 +60,26 @@ Refine rough ideas into fully-formed designs through collaborative questioning.
 | `codebase-analyzer` | Explain HOW code works (with file:line refs) |
 | `pattern-finder` | Find existing patterns to follow |
 
+**Auto-handoff:** When user approves the design, brainstormer automatically spawns the planner - no extra confirmation needed.
+
 ### 2. Plan
 
 Transform validated designs into comprehensive implementation plans.
 
-- Spawns research subagents for exact paths, signatures, patterns
+- Fires research subagents in parallel via `background_task`
+- Uses `context7` and `btca_ask` for external library documentation
 - Bite-sized tasks (2-5 minutes each)
 - Exact file paths, complete code examples
 - TDD workflow: failing test → verify fail → implement → verify pass → commit
 - Get human approval before implementing
 - Output: `thoughts/shared/plans/YYYY-MM-DD-{topic}.md`
+
+**Library research tools:**
+
+| Tool | Purpose |
+|------|---------|
+| `context7` | Documentation lookup for external libraries |
+| `btca_ask` | Source code search for library internals |
 
 ### 3. Implement
 
@@ -104,34 +115,47 @@ Dependent tasks (must be sequential):
 - Task B's test relies on Task A's implementation
 ```
 
-#### Parallel Execution
+#### Parallel Execution (Fire-and-Check Pattern)
 
-Within a batch, all tasks run concurrently by spawning multiple subagents in a single message:
+The executor uses a **fire-and-check** pattern for maximum parallelism:
+
+1. **Fire** - Launch all implementers as `background_task` in ONE message
+2. **Poll** - Check `background_list` for completions
+3. **React** - Start reviewer immediately when each implementer finishes
+4. **Repeat** - Continue polling until batch complete
 
 ```
 Plan with 6 tasks:
 ├── Batch 1 (parallel): Tasks 1, 2, 3 → independent, different files
-│   ├── implementer: task 1 ─┐
-│   ├── implementer: task 2 ─┼─ spawn in ONE message
-│   └── implementer: task 3 ─┘
-│   [wait for all]
-│   ├── reviewer: task 1 ─┐
-│   ├── reviewer: task 2 ─┼─ spawn in ONE message
-│   └── reviewer: task 3 ─┘
-│   [wait for all]
+│   │
+│   │ FIRE: background_task(agent="implementer") x3
+│   │
+│   │ POLL: background_list() → task 2 completed!
+│   │ → background_output(task_2)
+│   │ → background_task(agent="reviewer", "Review task 2")
+│   │
+│   │ POLL: background_list() → tasks 1, 3 completed!
+│   │ → start reviewers for 1 and 3
+│   │
+│   │ [continue until all reviewed]
 │
 └── Batch 2 (parallel): Tasks 4, 5, 6 → depend on batch 1
     └── [same pattern]
 ```
 
+Key: Reviewers start **immediately** when their implementer finishes - no waiting for the whole batch.
+
 #### Per-Task Cycle
 
 Each task gets its own implement→review loop:
 
-1. Spawn implementer with task details
-2. Spawn reviewer to check implementation
-3. If changes requested → re-spawn implementer (max 3 cycles)
-4. Mark as DONE or BLOCKED
+1. Fire implementer via `background_task`
+2. Implementer: make changes → run tests → **commit** if passing
+3. Fire reviewer to check implementation
+4. If changes requested → fire new implementer (max 3 cycles)
+5. Mark as DONE or BLOCKED
+
+**Note:** Implementer commits after verification passes, using the commit message from the plan.
 
 ### 4. Session Continuity
 
@@ -233,10 +257,28 @@ Searches across:
 | `ast_grep_replace` | AST-aware code pattern replacement |
 | `look_at` | Extract file structure for large files |
 | `artifact_search` | Search past plans and ledgers |
-| `background_task` | Run long-running tasks in background |
-| `background_output` | Check background task status/output |
-| `background_cancel` | Cancel background tasks |
-| `background_list` | List all background tasks |
+| `btca_ask` | Query library source code (requires btca CLI) |
+| `background_task` | Fire subagent to run in background, returns task_id |
+| `background_list` | List all tasks and status (use to poll for completion) |
+| `background_output` | Get results from completed task |
+| `background_cancel` | Cancel running task(s) |
+
+### Background Task Pattern
+
+All agents use the **fire-poll-collect** pattern for parallel work:
+
+```
+# FIRE: Launch all in ONE message
+task_1 = background_task(agent="locator", prompt="...")
+task_2 = background_task(agent="analyzer", prompt="...")
+
+# POLL: Check until complete
+background_list()  # repeat until all show "completed"
+
+# COLLECT: Get results
+background_output(task_id=task_1)
+background_output(task_id=task_2)
+```
 
 ## Hooks
 
