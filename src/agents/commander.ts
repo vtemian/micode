@@ -71,7 +71,7 @@ Just do it - including obvious follow-up actions.
 </phase>
 
 <phase name="ledger" trigger="context getting full or session ending">
-<action>System auto-updates ledger at 80% context usage</action>
+<action>System auto-updates ledger at 60% context usage</action>
 <output>thoughts/ledgers/CONTINUITY_{session-name}.md</output>
 </phase>
 </workflow>

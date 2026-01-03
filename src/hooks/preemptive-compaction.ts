@@ -20,7 +20,7 @@ const MODEL_CONTEXT_LIMITS: Record<string, number> = {
 };
 
 const DEFAULT_CONTEXT_LIMIT = 200_000;
-const DEFAULT_THRESHOLD = 0.8; // 80% of context window
+const DEFAULT_THRESHOLD = 0.6; // 60% of context window
 const MIN_TOKENS_FOR_COMPACTION = 50_000;
 const COMPACTION_COOLDOWN_MS = 60_000; // 60 seconds
 
