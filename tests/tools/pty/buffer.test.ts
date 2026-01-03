@@ -46,6 +46,14 @@ describe("RingBuffer", () => {
       expect(lines).toEqual(["a", "b"]);
     });
 
+    it("should return empty array when offset exceeds length", () => {
+      const buffer = new RingBuffer(100);
+      buffer.append("a\nb\nc");
+
+      const lines = buffer.read(100, 10);
+      expect(lines).toEqual([]);
+    });
+
     it("should handle empty string input", () => {
       const buffer = new RingBuffer(100);
       buffer.append("");
