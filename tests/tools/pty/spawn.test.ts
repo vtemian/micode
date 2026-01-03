@@ -33,11 +33,12 @@ describe("pty_spawn tool", () => {
   });
 
   it("should spawn a PTY and return formatted output", async () => {
+    // Use sleep to ensure process is still running when we check status
     const result = await pty_spawn.execute(
       {
-        command: "echo",
-        args: ["hello"],
-        description: "Test echo command",
+        command: "sleep",
+        args: ["10"],
+        description: "Test sleep command",
       },
       { sessionID: "test-session", messageID: "msg-1" } as any,
     );
@@ -45,7 +46,7 @@ describe("pty_spawn tool", () => {
     expect(result).toContain("<pty_spawned>");
     expect(result).toContain("</pty_spawned>");
     expect(result).toContain("ID: pty_");
-    expect(result).toContain("Command: echo hello");
+    expect(result).toContain("Command: sleep 10");
     expect(result).toContain("Status: running");
   });
 });

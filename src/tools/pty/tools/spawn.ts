@@ -16,7 +16,7 @@ Usage:
 - Use \`workdir\` to set the working directory (defaults to project root)
 - Use \`env\` to set additional environment variables
 - Use \`title\` to give the session a human-readable name
-- The \`description\` parameter is required: a clear, concise 5-10 word description
+- Use \`description\` for a clear, concise 5-10 word description (optional)
 
 Returns the session info including:
 - \`id\`: Unique identifier (pty_XXXXXXXX) for use with other pty_* tools

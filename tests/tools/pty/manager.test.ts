@@ -143,7 +143,7 @@ describe("PTYManager", () => {
 
       const result = manager.search(info.id, /error/);
       expect(result).not.toBeNull();
-      expect(result!.matches.length).toBeGreaterThanOrEqual(0);
+      expect(result!.matches.length).toBeGreaterThan(0);
     });
   });
 
