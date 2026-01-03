@@ -31,6 +31,13 @@ Execute the plan. Write code. Verify.
 <step>Report results</step>
 </process>
 
+<terminal-tools>
+<bash>Use for synchronous commands that complete (npm install, git, builds)</bash>
+<pty>Use for background processes (dev servers, watch modes, REPLs)</pty>
+<rule>If plan says "start dev server" or "run in background", use pty_spawn</rule>
+<rule>If plan says "run command" or "install", use bash</rule>
+</terminal-tools>
+
 <before-each-change>
 <check>Verify file exists where expected</check>
 <check>Verify code structure matches plan assumptions</check>

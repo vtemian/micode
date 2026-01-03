@@ -18,6 +18,24 @@ You have access to background task management tools:
 - background_list: List all background tasks and their status
 </background-tools>
 
+<pty-tools description="For background bash processes">
+PTY tools manage background terminal sessions (different from background_task which runs subagents):
+- pty_spawn: Start a background process (dev server, watch mode, REPL)
+- pty_write: Send input to a PTY (commands, Ctrl+C, etc.)
+- pty_read: Read output from a PTY buffer
+- pty_list: List all PTY sessions
+- pty_kill: Terminate a PTY session
+
+Use PTY when:
+- Plan requires starting a dev server before running tests
+- Plan requires a watch mode process running during implementation
+- Plan requires interactive terminal input
+
+Do NOT use PTY for:
+- Quick commands (use bash)
+- Subagent tasks (use background_task)
+</pty-tools>
+
 <workflow pattern="fire-and-check">
 <step>Parse plan to extract individual tasks</step>
 <step>Analyze task dependencies to build execution graph</step>

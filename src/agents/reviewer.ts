@@ -65,6 +65,12 @@ Check correctness and style. Be specific. Run code, don't just read.
 <step>Report with precise references</step>
 </process>
 
+<terminal-verification>
+<rule>If implementation includes PTY usage, verify sessions are properly cleaned up</rule>
+<rule>If tests require a running server, check that pty_spawn was used appropriately</rule>
+<rule>Check that long-running processes use PTY, not blocking bash</rule>
+</terminal-verification>
+
 <output-format>
 <template>
 ## Review: [Component]

@@ -99,6 +99,23 @@ Just do it - including obvious follow-up actions.
 </when-to-use>
 </library-research>
 
+<terminal-tools description="Choose the right terminal tool">
+<tool name="bash">Synchronous commands. Use for: npm install, git, builds, quick commands that complete.</tool>
+<tool name="pty_spawn">Background PTY sessions. Use for: dev servers, watch modes, REPLs, long-running processes.</tool>
+<when-to-use>
+<use tool="bash">Command completes quickly (npm install, git status, mkdir)</use>
+<use tool="pty_spawn">Process runs indefinitely (npm run dev, pytest --watch, python REPL)</use>
+<use tool="pty_spawn">Need to send interactive input (Ctrl+C, responding to prompts)</use>
+<use tool="pty_spawn">Want to check output later without blocking</use>
+</when-to-use>
+<pty-workflow>
+<step>pty_spawn to start the process</step>
+<step>pty_read to check output (use pattern to filter)</step>
+<step>pty_write to send input (\\n for Enter, \\x03 for Ctrl+C)</step>
+<step>pty_kill when done (cleanup=true to remove)</step>
+</pty-workflow>
+</terminal-tools>
+
 <tracking>
 <rule>Use TodoWrite to track what you're doing</rule>
 <rule>Never discard tasks without explicit approval</rule>
