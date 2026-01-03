@@ -1,7 +1,8 @@
 // src/tools/pty/buffer.ts
 import type { SearchMatch } from "./types";
 
-const DEFAULT_MAX_LINES = parseInt(process.env.PTY_MAX_BUFFER_LINES || "50000", 10);
+const parsed = parseInt(process.env.PTY_MAX_BUFFER_LINES || "50000", 10);
+const DEFAULT_MAX_LINES = isNaN(parsed) ? 50000 : parsed;
 
 export class RingBuffer {
   private lines: string[] = [];
