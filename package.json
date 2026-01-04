@@ -1,6 +1,6 @@
 {
   "name": "micode",
-  "version": "0.7.5",
+  "version": "0.8.0",
   "description": "OpenCode plugin with Brainstorm-Research-Plan-Implement workflow",
   "module": "src/index.ts",
   "main": "src/index.ts",
