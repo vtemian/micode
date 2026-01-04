@@ -165,13 +165,21 @@ export class BackgroundTaskManager {
         const sessionStatus = statusMap[task.sessionID];
         const statusType = sessionStatus?.type;
 
-        if (statusType === "idle") {
-          task.status = "completed";
-          task.completedAt = new Date();
-          await this.getTaskResult(task.id);
-        }
         // Store last known session status for debugging
         (task as BackgroundTask & { _sessionStatus?: string })._sessionStatus = statusType;
+
+        if (statusType === "idle" || statusType === undefined) {
+          // Session is idle OR not in status map (likely finished and cleaned up)
+          // Try to get result - if successful, mark as completed
+          const result = await this.fetchTaskResult(task);
+          if (result !== undefined || statusType === "idle") {
+            task.status = "completed";
+            task.completedAt = new Date();
+            task.result = result;
+          }
+          // If result is undefined and statusType is undefined, keep waiting
+          // (might be a timing issue with status propagation)
+        }
       }
     } catch (error) {
       console.error("[background-task] Failed to refresh task status:", error);
@@ -193,7 +201,18 @@ export class BackgroundTaskManager {
       return task.result;
     }
 
-    // Fetch result from session messages
+    const result = await this.fetchTaskResult(task);
+    if (result !== undefined) {
+      task.result = result;
+    }
+    return result;
+  }
+
+  /**
+   * Fetch result from session messages without checking task status.
+   * Used during polling to check if a session has completed.
+   */
+  private async fetchTaskResult(task: BackgroundTask): Promise<string | undefined> {
     try {
       const resp = await this.ctx.client.session.messages({
         path: { id: task.sessionID },
@@ -206,11 +225,10 @@ export class BackgroundTaskManager {
 
       if (lastAssistant) {
         const textParts = lastAssistant.parts?.filter((p) => p.type === "text") || [];
-        task.result = textParts.map((p) => p.text || "").join("\n");
-        return task.result;
+        return textParts.map((p) => p.text || "").join("\n");
       }
     } catch (error) {
-      console.error(`[background-task] Failed to fetch result for task ${taskId}:`, error);
+      console.error(`[background-task] Failed to fetch result for task ${task.id}:`, error);
     }
 
     return undefined;
@@ -295,25 +313,30 @@ export class BackgroundTaskManager {
 
         console.log(`[background-task] Poll ${task.id}: session=${task.sessionID} status=${statusType}`);
 
-        if (statusType === "idle") {
-          // Task completed
-          task.status = "completed";
-          task.completedAt = new Date();
-          await this.getTaskResult(task.id); // Cache the result
-          this.markForNotification(task);
+        if (statusType === "idle" || statusType === undefined) {
+          // Session is idle OR not in status map (likely finished and cleaned up)
+          // Try to get result - if successful, mark as completed
+          const result = await this.fetchTaskResult(task);
+          if (result !== undefined || statusType === "idle") {
+            task.status = "completed";
+            task.completedAt = new Date();
+            task.result = result;
+            this.markForNotification(task);
 
-          await this.ctx.client.tui
-            .showToast({
-              body: {
-                title: "Background Task Complete",
-                message: task.description,
-                variant: "success",
-                duration: 5000,
-              },
-            })
-            .catch((error) => {
-              console.error(`[background-task] Failed to show toast for task ${task.id}:`, error);
-            });
+            await this.ctx.client.tui
+              .showToast({
+                body: {
+                  title: "Background Task Complete",
+                  message: task.description,
+                  variant: "success",
+                  duration: 5000,
+                },
+              })
+              .catch((error) => {
+                console.error(`[background-task] Failed to show toast for task ${task.id}:`, error);
+              });
+          }
+          // If result is undefined and statusType is undefined, keep waiting
         }
       }
     } catch (error) {
