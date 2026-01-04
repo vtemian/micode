@@ -159,7 +159,6 @@ Never run this automatically without consent.
 | `ast_grep_search` | AST-aware code search |
 | `ast_grep_replace` | AST-aware code replace |
 | `look_at` | Screenshot analysis |
-| `background_task` | Run tasks in background |
 
 ### Model Override
 

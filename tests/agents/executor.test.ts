@@ -16,15 +16,6 @@ describe("executor agent", () => {
     expect(source).toContain("parallel");
   });
 
-  it("should enforce synchronous Task tool usage", async () => {
-    const fs = await import("node:fs/promises");
-    const source = await fs.readFile("src/agents/executor.ts", "utf-8");
-
-    expect(source).not.toContain("background_task");
-    expect(source).not.toContain("background_list");
-    expect(source).not.toContain("background_output");
-  });
-
   it("should describe reviewer after implementer", async () => {
     const fs = await import("node:fs/promises");
     const source = await fs.readFile("src/agents/executor.ts", "utf-8");

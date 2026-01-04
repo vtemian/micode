@@ -21,7 +21,6 @@ describe("planner agent", () => {
     const source = await fs.readFile("src/agents/planner.ts", "utf-8");
 
     expect(source).toContain("synchronously");
-    expect(source).not.toContain("background_task");
   });
 
   it("should mention running library research in parallel with agents", async () => {

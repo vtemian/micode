@@ -71,22 +71,11 @@ Maintain context across sessions with structured compaction. Run `/ledger` to cr
 | `look_at` | Extract file structure |
 | `artifact_search` | Search past plans/ledgers |
 | `btca_ask` | Query library source code |
-| `background_task` | Fire subagent in background |
-| `background_list` | List tasks and status |
-| `background_output` | Get task results |
-| `background_cancel` | Cancel task(s) |
 | `pty_spawn` | Start background terminal session |
 | `pty_write` | Send input to PTY |
 | `pty_read` | Read PTY output |
 | `pty_list` | List PTY sessions |
 | `pty_kill` | Terminate PTY |
-
-### Background Tasks vs PTY
-
-| System | Purpose | Use Case |
-|--------|---------|----------|
-| `background_task` | Async AI subagents | Research, implementation, reviews |
-| `pty_spawn` | Async bash processes | Dev servers, watch modes, REPLs |
 
 ## Hooks
 

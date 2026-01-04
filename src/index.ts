@@ -22,9 +22,6 @@ import { createLedgerLoaderHook } from "./hooks/ledger-loader";
 import { createArtifactAutoIndexHook } from "./hooks/artifact-auto-index";
 import { createFileOpsTrackerHook } from "./hooks/file-ops-tracker";
 
-// Background Task System
-import { BackgroundTaskManager, createBackgroundTaskTools } from "./tools/background-task";
-
 // PTY System
 import { PTYManager, createPtyTools } from "./tools/pty";
 
@@ -96,10 +93,6 @@ const OpenCodeConfigPlugin: Plugin = async (ctx) => {
   const artifactAutoIndexHook = createArtifactAutoIndexHook(ctx);
   const fileOpsTrackerHook = createFileOpsTrackerHook(ctx);
 
-  // Background Task System
-  const backgroundTaskManager = new BackgroundTaskManager(ctx);
-  const backgroundTaskTools = createBackgroundTaskTools(backgroundTaskManager);
-
   // PTY System
   const ptyManager = new PTYManager();
   const ptyTools = createPtyTools(ptyManager);
@@ -112,7 +105,6 @@ const OpenCodeConfigPlugin: Plugin = async (ctx) => {
       btca_ask,
       look_at,
       artifact_search,
-      ...backgroundTaskTools,
       ...ptyTools,
     },
 
@@ -242,9 +234,6 @@ const OpenCodeConfigPlugin: Plugin = async (ctx) => {
       await sessionRecoveryHook.event({ event });
       await tokenAwareTruncationHook.event({ event });
       await contextWindowMonitorHook.event({ event });
-
-      // Background task manager event handling
-      backgroundTaskManager.handleEvent(event);
 
       // File ops tracker cleanup
       await fileOpsTrackerHook.event({ event });
