@@ -311,8 +311,6 @@ export class BackgroundTaskManager {
         const sessionStatus = statusMap[task.sessionID];
         const statusType = sessionStatus?.type;
 
-        console.log(`[background-task] Poll ${task.id}: session=${task.sessionID} status=${statusType}`);
-
         if (statusType === "idle" || statusType === undefined) {
           // Session is idle OR not in status map (likely finished and cleaned up)
           // Try to get result - if successful, mark as completed
