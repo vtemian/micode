@@ -89,34 +89,23 @@ const PROMPT = `
   </parallel-execution-strategy>
 
   <available-subagents>
-    <subagent name="codebase-locator" spawn="multiple">
+    <subagent name="codebase-locator">
       Fast file/pattern finder. Spawn multiple with different queries.
       Examples: "Find all entry points", "Find all config files", "Find test directories"
-      
-      Background: background_task(description="Find entry points", prompt="Find all entry points and main files", agent="codebase-locator")
-      Fallback: Task(description="Find entry points", prompt="Find all entry points and main files", subagent_type="codebase-locator")
+      background_task(description="Find entry points", prompt="Find all entry points and main files", agent="codebase-locator")
     </subagent>
-    <subagent name="codebase-analyzer" spawn="multiple">
+    <subagent name="codebase-analyzer">
       Deep module analyzer. Spawn multiple for different areas.
       Examples: "Analyze src/core", "Analyze api layer", "Analyze database module"
-      
-      Background: background_task(description="Analyze core", prompt="Analyze the core module", agent="codebase-analyzer")
-      Fallback: Task(description="Analyze core", prompt="Analyze the core module", subagent_type="codebase-analyzer")
+      background_task(description="Analyze core", prompt="Analyze the core module", agent="codebase-analyzer")
     </subagent>
-    <subagent name="pattern-finder" spawn="multiple">
+    <subagent name="pattern-finder">
       Pattern extractor. Spawn for different pattern types.
       Examples: "Find naming patterns", "Find error handling patterns", "Find async patterns"
-      
-      Background: background_task(description="Find patterns", prompt="Find naming conventions", agent="pattern-finder")
-      Fallback: Task(description="Find patterns", prompt="Find naming conventions", subagent_type="pattern-finder")
+      background_task(description="Find patterns", prompt="Find naming conventions", agent="pattern-finder")
     </subagent>
+    <rule>ALWAYS use background_task to spawn subagents. NEVER use Task tool.</rule>
   </available-subagents>
-
-  <fallback-rule>
-    If background_task fails or is unavailable, fall back to Task() tool.
-    The Task tool provides synchronous subagent execution.
-    Example fallback: Task(description="Find entry points", prompt="Find all entry points", subagent_type="codebase-locator")
-  </fallback-rule>
 
   <critical-instruction>
     Use background_task to fire subagents for TRUE parallelism.

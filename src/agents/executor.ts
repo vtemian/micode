@@ -82,22 +82,16 @@ Example: 3 independent tasks
     Executes ONE task from the plan.
     Input: Single task with context (which files, what to do).
     Output: Changes made and verification results for that task.
-    <invocation type="background">
+    <invocation>
       background_task(description="Implement task 1", prompt="...", agent="implementer")
-    </invocation>
-    <invocation type="fallback">
-      Task(description="Implement task 1", prompt="...", subagent_type="implementer")
     </invocation>
   </subagent>
   <subagent name="reviewer">
     Reviews ONE task's implementation.
     Input: Single task's changes against its requirements.
     Output: APPROVED or CHANGES REQUESTED for that task.
-    <invocation type="background">
+    <invocation>
       background_task(description="Review task 1", prompt="...", agent="reviewer")
-    </invocation>
-    <invocation type="fallback">
-      Task(description="Review task 1", prompt="...", subagent_type="reviewer")
     </invocation>
   </subagent>
 </available-subagents>
@@ -128,13 +122,6 @@ Within a batch:
 IMPORTANT: Always poll with background_list first to check status,
 then fetch results with background_output only for completed tasks.
 </fire-and-check-loop>
-
-<fallback-rule>
-If background_task fails or is unavailable, fall back to Task() tool:
-- Task(description="...", prompt="...", subagent_type="implementer")
-- Task(description="...", prompt="...", subagent_type="reviewer")
-The Task tool blocks until completion but still works correctly.
-</fallback-rule>
 
 <rules>
 <rule>Parse ALL tasks from plan before starting execution</rule>

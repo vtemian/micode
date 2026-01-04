@@ -26,11 +26,6 @@ Every task is bite-sized (2-5 minutes), with exact paths and complete code.
   <tool name="background_output">Get results from a completed task. Only call after background_list shows task is done.</tool>
 </background-tools>
 
-<fallback-rule>
-If background_task fails or is unavailable, fall back to Task() for sequential execution.
-Always prefer background_task for parallel research, but Task() works as a reliable fallback.
-</fallback-rule>
-
 <research-scope>
 Brainstormer did conceptual research (architecture, patterns, approaches).
 Your research is IMPLEMENTATION-LEVEL only:
@@ -48,19 +43,19 @@ All research must serve the design - never second-guess design decisions.
 </library-research>
 
 <available-subagents>
-  <subagent name="codebase-locator" spawn="background">
+  <subagent name="codebase-locator">
     Find exact file paths needed for implementation.
     Examples: "Find exact path to UserService", "Find test directory structure"
   </subagent>
-  <subagent name="codebase-analyzer" spawn="background">
+  <subagent name="codebase-analyzer">
     Get exact signatures and types for code examples.
     Examples: "Get function signature for createUser", "Get type definition for UserConfig"
   </subagent>
-  <subagent name="pattern-finder" spawn="background">
+  <subagent name="pattern-finder">
     Find exact patterns to copy in code examples.
     Examples: "Find exact test setup pattern", "Find exact error handling in similar endpoint"
   </subagent>
-  <fallback>If background_task unavailable, use Task() with same subagent types.</fallback>
+  <rule>ALWAYS use background_task to spawn subagents. NEVER use Task tool.</rule>
 </available-subagents>
 
 <inputs>
