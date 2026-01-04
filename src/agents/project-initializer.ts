@@ -10,7 +10,7 @@ const PROMPT = `
 
   <critical-rule>
     MAXIMIZE PARALLELISM. Speed is critical.
-    - Fire ALL background tasks simultaneously
+    - Call multiple Task tools in ONE message for parallel execution
     - Run multiple tool calls in single message
     - Never wait for one thing when you can do many
   </critical-rule>
@@ -23,56 +23,38 @@ const PROMPT = `
     </outputs>
   </task>
 
-  <background-tools>
-    <tool name="background_task">
-      Fire a subagent to run in background. Returns task_id immediately.
-      Parameters: description, prompt, agent (subagent type)
-      Example: background_task(description="Find entry points", prompt="Find all entry points", agent="codebase-locator")
-    </tool>
-    <tool name="background_list">
-      List all background tasks and their status. Use to poll for completion.
-      No parameters required.
-    </tool>
-    <tool name="background_output">
-      Get results from a completed task. Only call after background_list shows task is done.
-      Parameters: task_id
-      Example: background_output(task_id="abc123")
-    </tool>
-  </background-tools>
+  <subagent-tools>
+    Use Task tool to spawn subagents synchronously. They complete before you continue.
+    Call multiple Task tools in ONE message for parallel execution.
+    Example: Task(subagent_type="codebase-locator", prompt="Find all entry points", description="Find entry points")
+  </subagent-tools>
 
-  <parallel-execution-strategy pattern="fire-and-collect">
-    <phase name="1-fire" description="Fire ALL tasks simultaneously">
-      <description>Launch ALL discovery agents + run tools in a SINGLE message</description>
-      <fire-agents>
+  <parallel-execution-strategy>
+    <phase name="1-discovery" description="Launch ALL discovery in ONE message">
+      <description>Call multiple Task tools + other tools in a SINGLE message</description>
+      <subagents>
         <agent name="codebase-locator">Find entry points, configs, main modules</agent>
         <agent name="codebase-locator">Find test files and test patterns</agent>
         <agent name="codebase-locator">Find linter, formatter, CI configs</agent>
         <agent name="codebase-analyzer">Analyze directory structure</agent>
         <agent name="pattern-finder">Find naming conventions across files</agent>
-      </fire-agents>
+      </subagents>
       <parallel-tools>
         <tool>Glob for package.json, pyproject.toml, go.mod, Cargo.toml, etc.</tool>
         <tool>Glob for *.config.*, .eslintrc*, .prettierrc*, ruff.toml, etc.</tool>
         <tool>Glob for README*, CONTRIBUTING*, docs/*</tool>
         <tool>Read root directory listing</tool>
       </parallel-tools>
+      <note>All Task calls and tools run in parallel, results available when message completes</note>
     </phase>
 
-    <phase name="2-collect" description="Poll and collect all results">
-      <description>Poll background_list until "ALL COMPLETE" appears, then collect</description>
-      <action>Call background_list() - look for "ALL COMPLETE" in output</action>
-      <action>If still running: wait, poll again (max 5 times)</action>
-      <action>Call background_output for each completed task (skip errored)</action>
-      <action>Process tool results from phase 1</action>
-    </phase>
-
-    <phase name="3-deep-analysis" description="Fire deep analysis tasks">
-      <description>Based on discovery, fire more background tasks</description>
-      <fire-agents>
+    <phase name="2-deep-analysis" description="Fire deep analysis tasks">
+      <description>Based on discovery, call more Task tools in ONE message</description>
+      <subagents>
         <agent name="codebase-analyzer">Analyze core/domain logic</agent>
         <agent name="codebase-analyzer">Analyze API/entry points</agent>
         <agent name="codebase-analyzer">Analyze data layer</agent>
-      </fire-agents>
+      </subagents>
       <parallel-tools>
         <tool>Read 5 core source files simultaneously</tool>
         <tool>Read 3 test files simultaneously</tool>
@@ -80,9 +62,7 @@ const PROMPT = `
       </parallel-tools>
     </phase>
 
-    <phase name="4-collect-and-write" description="Collect and write output">
-      <description>Collect deep analysis results, then write both files</description>
-      <action>Collect all deep analysis results</action>
+    <phase name="3-write" description="Write output files">
       <action>Write ARCHITECTURE.md</action>
       <action>Write CODE_STYLE.md</action>
     </phase>
@@ -92,26 +72,24 @@ const PROMPT = `
     <subagent name="codebase-locator">
       Fast file/pattern finder. Spawn multiple with different queries.
       Examples: "Find all entry points", "Find all config files", "Find test directories"
-      background_task(description="Find entry points", prompt="Find all entry points and main files", agent="codebase-locator")
+      Task(subagent_type="codebase-locator", prompt="Find all entry points and main files", description="Find entry points")
     </subagent>
     <subagent name="codebase-analyzer">
       Deep module analyzer. Spawn multiple for different areas.
       Examples: "Analyze src/core", "Analyze api layer", "Analyze database module"
-      background_task(description="Analyze core", prompt="Analyze the core module", agent="codebase-analyzer")
+      Task(subagent_type="codebase-analyzer", prompt="Analyze the core module", description="Analyze core")
     </subagent>
     <subagent name="pattern-finder">
       Pattern extractor. Spawn for different pattern types.
       Examples: "Find naming patterns", "Find error handling patterns", "Find async patterns"
-      background_task(description="Find patterns", prompt="Find naming conventions", agent="pattern-finder")
+      Task(subagent_type="pattern-finder", prompt="Find naming conventions", description="Find patterns")
     </subagent>
-    <rule>ALWAYS use background_task to spawn subagents. NEVER use Task tool.</rule>
+    <rule>Use Task tool to spawn subagents synchronously.</rule>
   </available-subagents>
 
   <critical-instruction>
-    Use background_task to fire subagents for TRUE parallelism.
-    Fire ALL background_task calls in a SINGLE message.
-    Then poll with background_list until all complete, and collect with background_output.
-    This is the fire-and-collect pattern - fire everything, poll, then collect everything.
+    Call multiple Task tools in ONE message for TRUE parallelism.
+    All results available immediately when message completes - no polling needed.
   </critical-instruction>
 
   <language-detection>
@@ -177,10 +155,9 @@ const PROMPT = `
 
   <rules>
     <category name="Speed">
-      <rule>ALWAYS fire multiple background_task calls in a SINGLE message</rule>
+      <rule>ALWAYS call multiple Task tools in a SINGLE message for parallelism</rule>
       <rule>ALWAYS run multiple tool calls in a SINGLE message</rule>
       <rule>NEVER wait for one task when you can start others</rule>
-      <rule>Use fire-and-collect: fire all, then collect all</rule>
     </category>
 
     <category name="Analysis">
@@ -205,38 +182,27 @@ const PROMPT = `
     </category>
   </rules>
 
-  <execution-example pattern="fire-and-collect">
-    <step description="FIRE: Launch all discovery tasks simultaneously">
-      In a SINGLE message, fire ALL background_task calls AND run other tools:
-      - background_task(description="Find entry points", prompt="Find all entry points and main files", agent="codebase-locator") -> task_id_1
-      - background_task(description="Find configs", prompt="Find all config files (linters, formatters, build)", agent="codebase-locator") -> task_id_2
-      - background_task(description="Find tests", prompt="Find test directories and test files", agent="codebase-locator") -> task_id_3
-      - background_task(description="Analyze structure", prompt="Analyze the directory structure and organization", agent="codebase-analyzer") -> task_id_4
-      - background_task(description="Find patterns", prompt="Find naming conventions used across the codebase", agent="pattern-finder") -> task_id_5
+  <execution-example>
+    <step description="Discovery: Launch all tasks in ONE message">
+      In a SINGLE message, call ALL Task tools AND run other tools:
+      - Task(subagent_type="codebase-locator", prompt="Find all entry points and main files", description="Find entry points")
+      - Task(subagent_type="codebase-locator", prompt="Find all config files (linters, formatters, build)", description="Find configs")
+      - Task(subagent_type="codebase-locator", prompt="Find test directories and test files", description="Find tests")
+      - Task(subagent_type="codebase-analyzer", prompt="Analyze the directory structure and organization", description="Analyze structure")
+      - Task(subagent_type="pattern-finder", prompt="Find naming conventions used across the codebase", description="Find patterns")
       - Glob: package.json, pyproject.toml, go.mod, Cargo.toml, etc.
       - Glob: README*, ARCHITECTURE*, docs/*
+      // All results available when message completes - no polling needed
     </step>
 
-    <step description="COLLECT: Poll and gather all results">
-      First poll until all tasks complete:
-      - background_list()  // repeat until all show "completed" or "error"
-      Then collect results (skip errored tasks):
-      - background_output(task_id=task_id_1)
-      - background_output(task_id=task_id_2)
-      - background_output(task_id=task_id_3)
-      - background_output(task_id=task_id_4)
-      - background_output(task_id=task_id_5)
-    </step>
-
-    <step description="FIRE: Deep analysis based on discovery">
-      Based on discovery, in a SINGLE message fire more tasks:
-      - background_task for each major module: agent="codebase-analyzer"
+    <step description="Deep analysis: Fire more tasks in ONE message">
+      Based on discovery, in a SINGLE message call more Task tools:
+      - Task for each major module: subagent_type="codebase-analyzer"
       - Read multiple source files simultaneously
       - Read multiple test files simultaneously
     </step>
 
-    <step description="COLLECT and WRITE">
-      Collect deep analysis results, then write:
+    <step description="Write output files">
       - Write ARCHITECTURE.md
       - Write CODE_STYLE.md
     </step>

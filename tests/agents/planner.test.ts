@@ -1,35 +1,27 @@
 import { describe, it, expect } from "bun:test";
 
 describe("planner agent", () => {
-  it("should use background_task instead of Task for research", async () => {
+  it("should use Task tool for subagent research", async () => {
     const fs = await import("node:fs/promises");
     const source = await fs.readFile("src/agents/planner.ts", "utf-8");
 
-    expect(source).toContain("background_task");
-    expect(source).toContain("background_output");
+    expect(source).toContain("Task tool");
+    expect(source).toContain("subagent_type=");
   });
 
-  it("should have fire-and-collect pattern documentation", async () => {
+  it("should have parallel research documentation", async () => {
     const fs = await import("node:fs/promises");
     const source = await fs.readFile("src/agents/planner.ts", "utf-8");
 
-    expect(source).toContain("fire-and-collect");
+    expect(source).toContain("parallel");
   });
 
-  it("should enforce background_task only (no Task fallback)", async () => {
+  it("should enforce synchronous Task tool usage", async () => {
     const fs = await import("node:fs/promises");
     const source = await fs.readFile("src/agents/planner.ts", "utf-8");
 
-    // Should NOT have Task fallback - always use background_task
-    expect(source).not.toContain("<fallback-rule>");
-    expect(source).toContain("NEVER use Task");
-  });
-
-  it("should have background-tools section", async () => {
-    const fs = await import("node:fs/promises");
-    const source = await fs.readFile("src/agents/planner.ts", "utf-8");
-
-    expect(source).toContain("<background-tools>");
+    expect(source).toContain("synchronously");
+    expect(source).not.toContain("background_task");
   });
 
   it("should mention running library research in parallel with agents", async () => {

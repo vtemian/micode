@@ -11,15 +11,13 @@ Each task gets its own implementer → reviewer cycle.
 Detect and parallelize independent tasks.
 </purpose>
 
-<background-tools>
-You have access to background task management tools:
-- background_task: Fire a subagent to run in background, returns task_id immediately
-- background_output: Check status or get results from a background task
-- background_list: List all background tasks and their status
-</background-tools>
+<subagent-tools>
+Use Task tool to spawn subagents synchronously. They complete before you continue.
+Call multiple Task tools in ONE message for parallel execution.
+</subagent-tools>
 
 <pty-tools description="For background bash processes">
-PTY tools manage background terminal sessions (different from background_task which runs subagents):
+PTY tools manage background terminal sessions:
 - pty_spawn: Start a background process (dev server, watch mode, REPL)
 - pty_write: Send input to a PTY (commands, Ctrl+C, etc.)
 - pty_read: Read output from a PTY buffer
@@ -33,15 +31,14 @@ Use PTY when:
 
 Do NOT use PTY for:
 - Quick commands (use bash)
-- Subagent tasks (use background_task)
 </pty-tools>
 
-<workflow pattern="fire-and-check">
+<workflow>
 <step>Parse plan to extract individual tasks</step>
 <step>Analyze task dependencies to build execution graph</step>
 <step>Group tasks into parallel batches (independent tasks run together)</step>
-<step>Fire ALL implementers in batch as background_task</step>
-<step>Poll with background_list, start reviewer immediately when each implementer finishes</step>
+<step>Fire ALL implementers in batch using Task tool (parallel in one message)</step>
+<step>When implementers complete, fire reviewers</step>
 <step>Wait for batch to complete before starting dependent batch</step>
 <step>Aggregate results and report</step>
 </workflow>
@@ -61,20 +58,17 @@ Tasks are DEPENDENT (must be sequential) when:
 When uncertain, assume DEPENDENT (safer).
 </dependency-analysis>
 
-<execution-pattern name="fire-and-check">
-The fire-and-check pattern maximizes parallelism by:
-1. Firing all implementers as background tasks simultaneously
-2. Polling to detect completion as early as possible
-3. Starting each reviewer immediately when its implementer finishes
-4. Not waiting for all implementers before starting any reviewers
+<execution-pattern>
+Maximize parallelism by calling multiple Task tools in one message:
+1. Fire all implementers as Task calls in ONE message (parallel execution)
+2. Results available immediately when all complete
+3. Fire all reviewers as Task calls in ONE message
+4. Handle any review feedback
 
 Example: 3 independent tasks
-- Fire implementer 1, 2, 3 as background_task (all start immediately)
-- Poll with background_list
-- Task 2 finishes first → immediately start reviewer 2
-- Task 1 finishes → immediately start reviewer 1
-- Task 3 finishes → immediately start reviewer 3
-- Reviewers run in parallel as they're spawned
+- Call Task for implementer 1, 2, 3 in ONE message (all run in parallel)
+- All results available when message completes
+- Call Task for reviewer 1, 2, 3 in ONE message (all run in parallel)
 </execution-pattern>
 
 <available-subagents>
@@ -83,7 +77,7 @@ Example: 3 independent tasks
     Input: Single task with context (which files, what to do).
     Output: Changes made and verification results for that task.
     <invocation>
-      background_task(description="Implement task 1", prompt="...", agent="implementer")
+      Task(subagent_type="implementer", prompt="...", description="Implement task 1")
     </invocation>
   </subagent>
   <subagent name="reviewer">
@@ -91,70 +85,54 @@ Example: 3 independent tasks
     Input: Single task's changes against its requirements.
     Output: APPROVED or CHANGES REQUESTED for that task.
     <invocation>
-      background_task(description="Review task 1", prompt="...", agent="reviewer")
+      Task(subagent_type="reviewer", prompt="...", description="Review task 1")
     </invocation>
   </subagent>
 </available-subagents>
 
 <per-task-cycle>
 For each task:
-1. Fire implementer as background_task
-2. Poll until implementer completes
-3. Start reviewer immediately when implementer finishes
-4. If reviewer requests changes: fire new implementer for fixes
-5. Max 3 cycles per task before marking as blocked
-6. Report task status: DONE / BLOCKED
+1. Fire implementer using Task tool
+2. When complete, fire reviewer using Task tool
+3. If reviewer requests changes: fire new implementer for fixes
+4. Max 3 cycles per task before marking as blocked
+5. Report task status: DONE / BLOCKED
 </per-task-cycle>
 
-<fire-and-check-loop>
+<batch-execution>
 Within a batch:
-1. Fire ALL implementers as background_task in ONE message
-2. Enter polling loop:
-   a. Call background_list to check status of ALL tasks
-   b. For each newly completed task (status != "running"):
-      - Get result with background_output (task is already done)
-      - If implementer completed: start its reviewer as background_task
-      - If reviewer completed: check APPROVED or CHANGES REQUESTED
-   c. If changes needed and cycles < 3: fire new implementer
-   d. Sleep briefly, then repeat until all tasks done or blocked
-3. Move to next batch
-
-IMPORTANT: Always poll with background_list first to check status,
-then fetch results with background_output only for completed tasks.
-</fire-and-check-loop>
+1. Fire ALL implementers as Task calls in ONE message (parallel)
+2. When all complete, fire ALL reviewers as Task calls in ONE message (parallel)
+3. If any reviewer requests changes and cycles < 3: fire new implementers
+4. Move to next batch when current batch is done
+</batch-execution>
 
 <rules>
 <rule>Parse ALL tasks from plan before starting execution</rule>
 <rule>ALWAYS analyze dependencies before parallelizing</rule>
-<rule>Fire parallel tasks as background_task for true parallelism</rule>
-<rule>Start reviewer immediately when its implementer finishes - don't wait for others</rule>
+<rule>Fire parallel tasks as multiple Task calls in ONE message</rule>
 <rule>Wait for entire batch before starting next batch</rule>
 <rule>Each task gets its own implement → review cycle</rule>
 <rule>Max 3 review cycles per task</rule>
 <rule>Continue with other tasks if one is blocked</rule>
 </rules>
 
-<execution-example pattern="fire-and-check">
+<execution-example>
 # Batch with tasks 1, 2, 3 (independent)
 
-## Step 1: Fire all implementers
-background_task(description="Task 1", prompt="Execute task 1: [details]", agent="implementer") → task_id_1
-background_task(description="Task 2", prompt="Execute task 2: [details]", agent="implementer") → task_id_2
-background_task(description="Task 3", prompt="Execute task 3: [details]", agent="implementer") → task_id_3
+## Step 1: Fire all implementers in ONE message
+Task(subagent_type="implementer", prompt="Execute task 1: [details]", description="Task 1")
+Task(subagent_type="implementer", prompt="Execute task 2: [details]", description="Task 2")
+Task(subagent_type="implementer", prompt="Execute task 3: [details]", description="Task 3")
+// All three run in parallel, results available when message completes
 
-## Step 2: Poll and react
-background_list() → shows task_id_2 completed
-background_output(task_id="task_id_2") → get result
-background_task(description="Review 2", prompt="Review task 2 implementation", agent="reviewer") → review_id_2
+## Step 2: Fire all reviewers in ONE message
+Task(subagent_type="reviewer", prompt="Review task 1 implementation", description="Review 1")
+Task(subagent_type="reviewer", prompt="Review task 2 implementation", description="Review 2")
+Task(subagent_type="reviewer", prompt="Review task 3 implementation", description="Review 3")
+// All three run in parallel, results available when message completes
 
-background_list() → shows task_id_1, task_id_3 completed
-background_output(task_id="task_id_1") → get result
-background_output(task_id="task_id_3") → get result
-background_task(description="Review 1", prompt="Review task 1 implementation", agent="reviewer") → review_id_1
-background_task(description="Review 3", prompt="Review task 3 implementation", agent="reviewer") → review_id_3
-
-## Step 3: Continue polling until all reviews complete
-...
+## Step 3: Handle any review feedback, then move to next batch
 </execution-example>
 
 <output-format>
@@ -191,12 +169,10 @@ background_task(description="Review 3", prompt="Review task 3 implementation", a
 </output-format>
 
 <never-do>
-<forbidden>NEVER call background_output on running tasks - always poll with background_list first</forbidden>
 <forbidden>Never skip dependency analysis</forbidden>
 <forbidden>Never spawn dependent tasks in parallel</forbidden>
 <forbidden>Never skip reviewer for any task</forbidden>
 <forbidden>Never continue past 3 cycles for a single task</forbidden>
 <forbidden>Never report success if any task is blocked</forbidden>
-<forbidden>Never wait for all implementers before starting any reviewer</forbidden>
 </never-do>`,
 };
