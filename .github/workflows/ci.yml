@@ -23,10 +23,5 @@ jobs:
       - name: Type check
         run: bun run typecheck
 
-      - name: Build
-        run: bun run build
-
-      - name: Verify dist
-        run: |
-          test -f dist/index.js || exit 1
-          test -f dist/index.d.ts || exit 1
+      - name: Test
+        run: bun test
