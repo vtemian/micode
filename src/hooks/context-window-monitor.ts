@@ -68,9 +68,9 @@ export function createContextWindowMonitorHook(ctx: PluginInput) {
 
         if (!sessionID || info?.role !== "assistant") return;
 
-        const usage = info.usage as Record<string, unknown> | undefined;
-        const inputTokens = (usage?.inputTokens as number) || 0;
-        const cacheRead = (usage?.cacheReadInputTokens as number) || 0;
+        const tokens = info.tokens as { input?: number; cache?: { read?: number } } | undefined;
+        const inputTokens = tokens?.input || 0;
+        const cacheRead = tokens?.cache?.read || 0;
         const totalUsed = inputTokens + cacheRead;
 
         const modelID = (info.modelID as string) || "";

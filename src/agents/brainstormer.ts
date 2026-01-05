@@ -77,6 +77,14 @@ This is DESIGN ONLY. The planner agent handles detailed implementation plans.
     )
   </spawn>
   <rule>Do NOT ask again - if user approved, spawn planner immediately</rule>
+  <after-handoff>
+    <action>Report ONLY: "Implementation plan created at thoughts/shared/plans/YYYY-MM-DD-{topic}.md"</action>
+    <action>Tell user: "Ready to execute? Ask the commander to run the plan."</action>
+    <rule priority="CRITICAL">YOUR JOB IS DONE. STOP HERE.</rule>
+    <rule>Do NOT process, summarize, or act on the planner's output</rule>
+    <rule>Do NOT write any code - the plan contains code but that's for the executor</rule>
+    <rule>Do NOT continue the conversation - wait for user's next request</rule>
+  </after-handoff>
 </phase>
 </process>
 

@@ -2,11 +2,11 @@ import type { PluginInput } from "@opencode-ai/plugin";
 import { readFile } from "node:fs/promises";
 import { join, dirname, resolve } from "node:path";
 
-// Files to inject at project root level
-const ROOT_CONTEXT_FILES = ["ARCHITECTURE.md", "CODE_STYLE.md", "AGENTS.md", "CLAUDE.md", "README.md"] as const;
+// Files to inject at project root level (AGENTS.md and CLAUDE.md handled by OpenCode natively)
+const ROOT_CONTEXT_FILES = ["ARCHITECTURE.md", "CODE_STYLE.md", "README.md"] as const;
 
-// Files to collect when walking up directories
-const DIRECTORY_CONTEXT_FILES = ["AGENTS.md", "README.md"] as const;
+// Files to collect when walking up directories (AGENTS.md handled by OpenCode natively)
+const DIRECTORY_CONTEXT_FILES = ["README.md"] as const;
 
 // Tools that trigger directory-aware context injection
 const FILE_ACCESS_TOOLS = ["Read", "read", "Edit", "edit"];

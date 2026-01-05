@@ -9,6 +9,7 @@ import { ast_grep_search, ast_grep_replace, checkAstGrepAvailable } from "./tool
 import { btca_ask, checkBtcaAvailable } from "./tools/btca";
 import { look_at } from "./tools/look-at";
 import { artifact_search } from "./tools/artifact-search";
+import { createSpawnAgentTool } from "./tools/spawn-agent";
 
 // Hooks
 import { createAutoCompactHook } from "./hooks/auto-compact";
@@ -17,10 +18,9 @@ import { createSessionRecoveryHook } from "./hooks/session-recovery";
 import { createTokenAwareTruncationHook } from "./hooks/token-aware-truncation";
 import { createContextWindowMonitorHook } from "./hooks/context-window-monitor";
 import { createCommentCheckerHook } from "./hooks/comment-checker";
-import { createAutoClearLedgerHook } from "./hooks/auto-clear-ledger";
 import { createLedgerLoaderHook } from "./hooks/ledger-loader";
 import { createArtifactAutoIndexHook } from "./hooks/artifact-auto-index";
-import { createFileOpsTrackerHook } from "./hooks/file-ops-tracker";
+import { createFileOpsTrackerHook, getFileOps } from "./hooks/file-ops-tracker";
 
 // PTY System
 import { PTYManager, createPtyTools } from "./tools/pty";
@@ -84,7 +84,6 @@ const OpenCodeConfigPlugin: Plugin = async (ctx) => {
   // Hooks
   const autoCompactHook = createAutoCompactHook(ctx);
   const contextInjectorHook = createContextInjectorHook(ctx);
-  const autoClearLedgerHook = createAutoClearLedgerHook(ctx);
   const ledgerLoaderHook = createLedgerLoaderHook(ctx);
   const sessionRecoveryHook = createSessionRecoveryHook(ctx);
   const tokenAwareTruncationHook = createTokenAwareTruncationHook(ctx);
@@ -97,6 +96,9 @@ const OpenCodeConfigPlugin: Plugin = async (ctx) => {
   const ptyManager = new PTYManager();
   const ptyTools = createPtyTools(ptyManager);
 
+  // Spawn agent tool (for subagents to spawn other subagents)
+  const spawn_agent = createSpawnAgentTool(ctx);
+
   return {
     // Tools
     tool: {
@@ -105,6 +107,7 @@ const OpenCodeConfigPlugin: Plugin = async (ctx) => {
       btca_ask,
       look_at,
       artifact_search,
+      spawn_agent,
       ...ptyTools,
     },
 
@@ -194,6 +197,62 @@ const OpenCodeConfigPlugin: Plugin = async (ctx) => {
       }
     },
 
+    // Structured compaction prompt (Factory.ai / pi-mono best practices)
+    "experimental.session.compacting": async (
+      input: { sessionID: string },
+      output: { context: string[]; prompt?: string },
+    ) => {
+      // Get file operations for this session
+      const fileOps = getFileOps(input.sessionID);
+      const readPaths = Array.from(fileOps.read).sort();
+      const modifiedPaths = Array.from(fileOps.modified).sort();
+
+      const fileOpsSection = `
+## File Operations
+### Read
+${readPaths.length > 0 ? readPaths.map((p) => `- \`${p}\``).join("\n") : "- (none)"}
+
+### Modified
+${modifiedPaths.length > 0 ? modifiedPaths.map((p) => `- \`${p}\``).join("\n") : "- (none)"}`;
+
+      output.prompt = `Create a structured summary for continuing this conversation. Use this EXACT format:
+
+# Session Summary
+
+## Goal
+{The core objective being pursued - one sentence describing success criteria}
+
+## Constraints & Preferences
+{Technical requirements, patterns to follow, things to avoid - or "(none)"}
+
+## Progress
+### Done
+- [x] {Completed items with specific details}
+
+### In Progress
+- [ ] {Current work - what's actively being worked on}
+
+### Blocked
+- {Issues preventing progress, if any - or "(none)"}
+
+## Key Decisions
+- **{Decision}**: {Rationale - why this choice was made}
+
+## Next Steps
+1. {Ordered list of what to do next - be specific}
+
+## Critical Context
+- {Data, examples, references, or findings needed to continue work}
+- {Important discoveries or insights from this session}
+${fileOpsSection}
+
+IMPORTANT:
+- Preserve EXACT file paths and function names
+- Focus on information needed to continue seamlessly
+- Be specific about what was done, not vague summaries
+- Include any error messages or issues encountered`;
+    },
+
     // Tool output processing
     "tool.execute.after": async (
       input: { tool: string; sessionID: string; callID: string; args?: Record<string, unknown> },
@@ -218,6 +277,20 @@ const OpenCodeConfigPlugin: Plugin = async (ctx) => {
       );
     },
 
+    // Filter out CLAUDE.md/AGENTS.md from system prompt for our agents
+    "experimental.chat.system.transform": async (_input, output) => {
+      output.system = output.system.filter((s) => {
+        // Keep entries that don't come from CLAUDE.md or AGENTS.md
+        if (s.startsWith("Instructions from:")) {
+          const path = s.split("\n")[0];
+          if (path.includes("CLAUDE.md") || path.includes("AGENTS.md")) {
+            return false;
+          }
+        }
+        return true;
+      });
+    },
+
     event: async ({ event }) => {
       // Session cleanup (think mode + PTY)
       if (event.type === "session.deleted") {
@@ -230,7 +303,6 @@ const OpenCodeConfigPlugin: Plugin = async (ctx) => {
 
       // Run all event hooks
       await autoCompactHook.event({ event });
-      await autoClearLedgerHook.event({ event });
       await sessionRecoveryHook.event({ event });
       await tokenAwareTruncationHook.event({ event });
       await contextWindowMonitorHook.event({ event });

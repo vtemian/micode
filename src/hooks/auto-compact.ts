@@ -1,241 +1,195 @@
 import type { PluginInput } from "@opencode-ai/plugin";
+import { getContextLimit } from "../utils/model-limits";
+import { mkdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 
-interface TokenLimitError {
-  currentTokens?: number;
-  maxTokens?: number;
-  providerID?: string;
-  modelID?: string;
-}
+// Compact when this percentage of context is used
+const COMPACT_THRESHOLD = 0.50;
 
-// Parse Anthropic token limit errors
-function parseTokenLimitError(error: unknown): TokenLimitError | null {
-  if (!error) return null;
-
-  const errorStr = typeof error === "string" ? error : JSON.stringify(error);
-
-  // Check for Anthropic-specific token limit messages
-  const patterns = [
-    /prompt is too long.*?(\d+)\s*tokens.*?maximum.*?(\d+)/i,
-    /context.*?(\d+).*?exceeds.*?(\d+)/i,
-    /token limit.*?(\d+).*?max.*?(\d+)/i,
-  ];
-
-  for (const pattern of patterns) {
-    const match = errorStr.match(pattern);
-    if (match) {
-      return {
-        currentTokens: parseInt(match[1], 10),
-        maxTokens: parseInt(match[2], 10),
-      };
-    }
-  }
-
-  // Check for generic rate limit / context errors
-  if (
-    errorStr.includes("context_length_exceeded") ||
-    errorStr.includes("token") ||
-    errorStr.includes("prompt is too long")
-  ) {
-    return {};
-  }
-
-  return null;
-}
+const LEDGER_DIR = "thoughts/ledgers";
 
 interface AutoCompactState {
-  pendingCompact: Set<string>;
-  errorData: Map<string, TokenLimitError>;
-  retryCount: Map<string, number>;
   inProgress: Set<string>;
+  lastCompactTime: Map<string, number>;
 }
+
+// Cooldown between compaction attempts (prevent rapid re-triggering)
+const COMPACT_COOLDOWN_MS = 30_000; // 30 seconds
 
 export function createAutoCompactHook(ctx: PluginInput) {
   const state: AutoCompactState = {
-    pendingCompact: new Set(),
-    errorData: new Map(),
-    retryCount: new Map(),
     inProgress: new Set(),
+    lastCompactTime: new Map(),
   };
 
-  const MAX_RETRIES = 3;
+  async function writeSummaryToLedger(sessionID: string): Promise<void> {
+    try {
+      // Fetch session messages to find the summary
+      const resp = await ctx.client.session.messages({
+        path: { id: sessionID },
+        query: { directory: ctx.directory },
+      });
 
-  async function attemptRecovery(sessionID: string, providerID?: string, modelID?: string): Promise<void> {
-    if (state.inProgress.has(sessionID)) return;
-    state.inProgress.add(sessionID);
+      const messages = (resp as { data?: unknown[] }).data;
+      if (!Array.isArray(messages)) return;
 
-    const retries = state.retryCount.get(sessionID) || 0;
+      // Find the summary message (has summary: true)
+      const summaryMsg = [...messages].reverse().find((m) => {
+        const msg = m as Record<string, unknown>;
+        const info = msg.info as Record<string, unknown> | undefined;
+        return info?.role === "assistant" && info?.summary === true;
+      }) as Record<string, unknown> | undefined;
 
-    if (retries >= MAX_RETRIES) {
-      await ctx.client.tui
-        .showToast({
-          body: {
-            title: "Auto Compact Failed",
-            message: "Max retries reached. Please start a new session or manually compact.",
-            variant: "error",
-            duration: 5000,
-          },
-        })
-        .catch(() => {});
-      state.inProgress.delete(sessionID);
-      state.pendingCompact.delete(sessionID);
+      if (!summaryMsg) return;
+
+      // Extract text parts from the summary
+      const parts = summaryMsg.parts as Array<{ type: string; text?: string }> | undefined;
+      if (!parts) return;
+
+      const summaryText = parts
+        .filter((p) => p.type === "text" && p.text)
+        .map((p) => p.text)
+        .join("\n\n");
+
+      if (!summaryText.trim()) return;
+
+      // Create ledger directory if needed
+      const ledgerDir = join(ctx.directory, LEDGER_DIR);
+      await mkdir(ledgerDir, { recursive: true });
+
+      // Write ledger file - summary is already structured (Factory.ai/pi-mono format)
+      const timestamp = new Date().toISOString();
+      const sessionName = sessionID.slice(0, 8); // Use first 8 chars of session ID
+      const ledgerPath = join(ledgerDir, `CONTINUITY_${sessionName}.md`);
+
+      // Add metadata header, then the structured summary as-is
+      const ledgerContent = `---
+session: ${sessionName}
+updated: ${timestamp}
+---
+
+${summaryText}
+`;
+
+      await writeFile(ledgerPath, ledgerContent, "utf-8");
+    } catch (e) {
+      // Don't fail the compaction flow if ledger write fails
+      console.error("[auto-compact] Failed to write ledger:", e);
+    }
+  }
+
+  async function triggerCompaction(
+    sessionID: string,
+    providerID: string,
+    modelID: string,
+    usageRatio: number,
+  ): Promise<void> {
+    if (state.inProgress.has(sessionID)) {
       return;
     }
 
+    // Check cooldown
+    const lastCompact = state.lastCompactTime.get(sessionID) || 0;
+    if (Date.now() - lastCompact < COMPACT_COOLDOWN_MS) {
+      return;
+    }
+
+    state.inProgress.add(sessionID);
+
     try {
+      const usedPercent = Math.round(usageRatio * 100);
+      const thresholdPercent = Math.round(COMPACT_THRESHOLD * 100);
+
       await ctx.client.tui
         .showToast({
           body: {
-            title: "Context Limit Hit",
-            message: `Attempting to summarize session (attempt ${retries + 1}/${MAX_RETRIES})...`,
+            title: "Auto Compacting",
+            message: `Context at ${usedPercent}% (threshold: ${thresholdPercent}%). Summarizing...`,
             variant: "warning",
             duration: 3000,
           },
         })
         .catch(() => {});
 
-      // Try to summarize the session
-      if (providerID && modelID) {
-        await ctx.client.session.summarize({
-          path: { id: sessionID },
-          body: { providerID, modelID },
-          query: { directory: ctx.directory },
-        });
+      await ctx.client.session.summarize({
+        path: { id: sessionID },
+        body: { providerID, modelID },
+        query: { directory: ctx.directory },
+      });
 
-        await ctx.client.tui
-          .showToast({
-            body: {
-              title: "Session Compacted",
-              message: "Context has been summarized. Continuing...",
-              variant: "success",
-              duration: 3000,
-            },
-          })
-          .catch(() => {});
+      state.lastCompactTime.set(sessionID, Date.now());
 
-        // Clear state on success
-        state.pendingCompact.delete(sessionID);
-        state.errorData.delete(sessionID);
-        state.retryCount.delete(sessionID);
+      // Write summary to ledger file
+      await writeSummaryToLedger(sessionID);
 
-        // Send continue prompt
-        setTimeout(async () => {
-          try {
-            await ctx.client.session.prompt({
-              path: { id: sessionID },
-              body: { parts: [{ type: "text", text: "Continue" }] },
-              query: { directory: ctx.directory },
-            });
-          } catch {}
-        }, 500);
-      } else {
-        await ctx.client.tui
-          .showToast({
-            body: {
-              title: "Cannot Auto-Compact",
-              message: "Missing model info. Please compact manually with /compact.",
-              variant: "error",
-              duration: 5000,
-            },
-          })
-          .catch(() => {});
-      }
-    } catch (_e) {
-      state.retryCount.set(sessionID, retries + 1);
-
-      // Exponential backoff
-      const delay = Math.min(1000 * 2 ** retries, 10000);
-      setTimeout(() => {
-        state.inProgress.delete(sessionID);
-        attemptRecovery(sessionID, providerID, modelID);
-      }, delay);
-      return;
+      await ctx.client.tui
+        .showToast({
+          body: {
+            title: "Compaction Complete",
+            message: "Session summarized and ledger updated.",
+            variant: "success",
+            duration: 3000,
+          },
+        })
+        .catch(() => {});
+    } catch (e) {
+      const errorMsg = e instanceof Error ? e.message : String(e);
+      await ctx.client.tui
+        .showToast({
+          body: {
+            title: "Compaction Failed",
+            message: errorMsg.slice(0, 100),
+            variant: "error",
+            duration: 5000,
+          },
+        })
+        .catch(() => {});
+    } finally {
+      state.inProgress.delete(sessionID);
     }
-
-    state.inProgress.delete(sessionID);
   }
 
   return {
     event: async ({ event }: { event: { type: string; properties?: unknown } }) => {
       const props = event.properties as Record<string, unknown> | undefined;
 
-      // Clean up on session delete
+      // Cleanup on session delete
       if (event.type === "session.deleted") {
         const sessionInfo = props?.info as { id?: string } | undefined;
         if (sessionInfo?.id) {
-          state.pendingCompact.delete(sessionInfo.id);
-          state.errorData.delete(sessionInfo.id);
-          state.retryCount.delete(sessionInfo.id);
           state.inProgress.delete(sessionInfo.id);
+          state.lastCompactTime.delete(sessionInfo.id);
         }
         return;
       }
 
-      // Detect token limit errors
-      if (event.type === "session.error") {
-        const sessionID = props?.sessionID as string | undefined;
-        const error = props?.error;
-
-        if (!sessionID) return;
-
-        const parsed = parseTokenLimitError(error);
-        if (parsed) {
-          state.pendingCompact.add(sessionID);
-          state.errorData.set(sessionID, parsed);
-
-          // Get last assistant message for provider/model info
-          const lastAssistant = await getLastAssistantInfo(sessionID);
-          const providerID = parsed.providerID || lastAssistant?.providerID;
-          const modelID = parsed.modelID || lastAssistant?.modelID;
-
-          attemptRecovery(sessionID, providerID, modelID);
-        }
-      }
-
-      // Also check message.updated for errors
+      // Monitor usage on assistant message completion
       if (event.type === "message.updated") {
         const info = props?.info as Record<string, unknown> | undefined;
         const sessionID = info?.sessionID as string | undefined;
 
-        if (sessionID && info?.role === "assistant" && info.error) {
-          const parsed = parseTokenLimitError(info.error);
-          if (parsed) {
-            parsed.providerID = info.providerID as string | undefined;
-            parsed.modelID = info.modelID as string | undefined;
+        if (!sessionID || info?.role !== "assistant") return;
 
-            state.pendingCompact.add(sessionID);
-            state.errorData.set(sessionID, parsed);
+        // Skip if this is already a summary message
+        if (info?.summary === true) return;
 
-            attemptRecovery(sessionID, parsed.providerID, parsed.modelID);
-          }
+        const tokens = info?.tokens as { input?: number; cache?: { read?: number } } | undefined;
+        const inputTokens = tokens?.input || 0;
+        const cacheRead = tokens?.cache?.read || 0;
+        const totalUsed = inputTokens + cacheRead;
+
+        if (totalUsed === 0) return;
+
+        const modelID = (info?.modelID as string) || "";
+        const providerID = (info?.providerID as string) || "";
+        const contextLimit = getContextLimit(modelID);
+        const usageRatio = totalUsed / contextLimit;
+
+        // Trigger compaction if over threshold
+        if (usageRatio >= COMPACT_THRESHOLD) {
+          triggerCompaction(sessionID, providerID, modelID, usageRatio);
         }
       }
     },
   };
-
-  async function getLastAssistantInfo(sessionID: string): Promise<{ providerID?: string; modelID?: string } | null> {
-    try {
-      const resp = await ctx.client.session.messages({
-        path: { id: sessionID },
-        query: { directory: ctx.directory },
-      });
-
-      const data = (resp as { data?: unknown[] }).data;
-      if (!Array.isArray(data)) return null;
-
-      const lastAssistant = [...data].reverse().find((m) => {
-        const msg = m as Record<string, unknown>;
-        const info = msg.info as Record<string, unknown> | undefined;
-        return info?.role === "assistant";
-      });
-
-      if (!lastAssistant) return null;
-      const info = (lastAssistant as { info?: Record<string, unknown> }).info;
-      return {
-        providerID: info?.providerID as string | undefined,
-        modelID: info?.modelID as string | undefined,
-      };
-    } catch {
-      return null;
-    }
-  }
 }
