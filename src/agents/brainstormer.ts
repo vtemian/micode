@@ -32,6 +32,7 @@ This is DESIGN ONLY. The planner agent handles detailed implementation plans.
   <subagent name="codebase-analyzer">Deep analysis of specific modules.</subagent>
   <subagent name="pattern-finder">Find existing patterns in codebase.</subagent>
   <subagent name="planner">Creates detailed implementation plan from validated design.</subagent>
+  <subagent name="executor">Executes implementation plan with implementer/reviewer cycles.</subagent>
 </available-subagents>
 
 <process>
@@ -87,14 +88,27 @@ This is DESIGN ONLY. The planner agent handles detailed implementation plans.
     )
   </spawn>
   <rule>Do NOT ask again - if user approved, spawn planner immediately</rule>
-  <after-handoff>
-    <action>Report ONLY: "Implementation plan created at thoughts/shared/plans/YYYY-MM-DD-{topic}.md"</action>
-    <action>Tell user: "Ready to execute? Ask the commander to run the plan."</action>
+  <after-planner>
+    <action>Report: "Implementation plan created at thoughts/shared/plans/YYYY-MM-DD-{topic}.md"</action>
+    <action>Ask user: "Ready to execute the plan?"</action>
+    <rule>Wait for user response before proceeding</rule>
+  </after-planner>
+</phase>
+
+<phase name="execution" trigger="user approves execution">
+  <action>When user says yes/execute/go, spawn the executor:</action>
+  <spawn>
+    Task(
+      subagent_type="executor",
+      prompt="Execute the implementation plan at thoughts/shared/plans/YYYY-MM-DD-{topic}.md",
+      description="Execute implementation plan"
+    )
+  </spawn>
+  <after-execution>
+    <action>Report executor results to user</action>
     <rule priority="CRITICAL">YOUR JOB IS DONE. STOP HERE.</rule>
-    <rule>Do NOT process, summarize, or act on the planner's output</rule>
-    <rule>Do NOT write any code - the plan contains code but that's for the executor</rule>
-    <rule>Do NOT continue the conversation - wait for user's next request</rule>
-  </after-handoff>
+    <rule>Do NOT write any code yourself</rule>
+  </after-execution>
 </phase>
 </process>
 
