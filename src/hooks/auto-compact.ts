@@ -4,13 +4,23 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 // Compact when this percentage of context is used
-const COMPACT_THRESHOLD = 0.50;
+const COMPACT_THRESHOLD = 0.5;
 
 const LEDGER_DIR = "thoughts/ledgers";
+
+// Timeout for waiting for compaction to complete (2 minutes)
+const COMPACTION_TIMEOUT_MS = 120_000;
+
+interface PendingCompaction {
+  resolve: () => void;
+  reject: (error: Error) => void;
+  timeoutId: ReturnType<typeof setTimeout>;
+}
 
 interface AutoCompactState {
   inProgress: Set<string>;
   lastCompactTime: Map<string, number>;
+  pendingCompactions: Map<string, PendingCompaction>;
 }
 
 // Cooldown between compaction attempts (prevent rapid re-triggering)
@@ -20,6 +30,7 @@ export function createAutoCompactHook(ctx: PluginInput) {
   const state: AutoCompactState = {
     inProgress: new Set(),
     lastCompactTime: new Map(),
+    pendingCompactions: new Map(),
   };
 
   async function writeSummaryToLedger(sessionID: string): Promise<void> {
@@ -78,6 +89,17 @@ ${summaryText}
     }
   }
 
+  function waitForCompaction(sessionID: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const timeoutId = setTimeout(() => {
+        state.pendingCompactions.delete(sessionID);
+        reject(new Error("Compaction timed out"));
+      }, COMPACTION_TIMEOUT_MS);
+
+      state.pendingCompactions.set(sessionID, { resolve, reject, timeoutId });
+    });
+  }
+
   async function triggerCompaction(
     sessionID: string,
     providerID: string,
@@ -111,15 +133,19 @@ ${summaryText}
         })
         .catch(() => {});
 
+      // Start the compaction - this returns immediately while compaction runs async
       await ctx.client.session.summarize({
         path: { id: sessionID },
         body: { providerID, modelID },
         query: { directory: ctx.directory },
       });
 
+      // Wait for the session.compacted event to confirm completion
+      await waitForCompaction(sessionID);
+
       state.lastCompactTime.set(sessionID, Date.now());
 
-      // Write summary to ledger file
+      // Write summary to ledger file (only after compaction is confirmed complete)
       await writeSummaryToLedger(sessionID);
 
       await ctx.client.tui
@@ -153,12 +179,32 @@ ${summaryText}
     event: async ({ event }: { event: { type: string; properties?: unknown } }) => {
       const props = event.properties as Record<string, unknown> | undefined;
 
+      // Handle compaction completion
+      if (event.type === "session.compacted") {
+        const sessionID = props?.sessionID as string | undefined;
+        if (sessionID) {
+          const pending = state.pendingCompactions.get(sessionID);
+          if (pending) {
+            clearTimeout(pending.timeoutId);
+            state.pendingCompactions.delete(sessionID);
+            pending.resolve();
+          }
+        }
+        return;
+      }
+
       // Cleanup on session delete
       if (event.type === "session.deleted") {
         const sessionInfo = props?.info as { id?: string } | undefined;
         if (sessionInfo?.id) {
           state.inProgress.delete(sessionInfo.id);
           state.lastCompactTime.delete(sessionInfo.id);
+          const pending = state.pendingCompactions.get(sessionInfo.id);
+          if (pending) {
+            clearTimeout(pending.timeoutId);
+            state.pendingCompactions.delete(sessionInfo.id);
+            pending.reject(new Error("Session deleted"));
+          }
         }
         return;
       }
