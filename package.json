@@ -11,6 +11,7 @@
     "INSTALL_CLAUDE.md"
   ],
   "scripts": {
+    "prepare": "lefthook install",
     "build": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "bun run typecheck",
@@ -38,12 +39,14 @@
     "url": "https://github.com/vtemian/micode/issues"
   },
   "dependencies": {
-    "@opencode-ai/plugin": "^1.0.224",
-    "bun-pty": "^0.4.5"
+    "@opencode-ai/plugin": "1.1.6",
+    "bun-pty": "^0.4.5",
+    "valibot": "^1.2.0"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.3.10",
     "bun-types": "latest",
+    "lefthook": "^2.0.13",
     "typescript": "^5.7.3"
   }
 }
