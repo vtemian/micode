@@ -141,7 +141,7 @@ Just do it - including obvious follow-up actions.
 export const primaryAgent: AgentConfig = {
   description: "Pragmatic orchestrator. Direct, honest, delegates to specialists.",
   mode: "primary",
-  model: "anthropic/claude-opus-4-5",
+  model: "openai/gpt-5.2-codex",
   temperature: 0.2,
   thinking: {
     type: "enabled",

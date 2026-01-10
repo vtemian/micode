@@ -3,7 +3,7 @@ import type { AgentConfig } from "@opencode-ai/sdk";
 export const codebaseAnalyzerAgent: AgentConfig = {
   description: "Explains HOW code works with precise file:line references",
   mode: "subagent",
-  model: "anthropic/claude-opus-4-5",
+  model: "openai/gpt-5.2-codex",
   temperature: 0.2,
   tools: {
     write: false,

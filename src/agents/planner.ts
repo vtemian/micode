@@ -3,7 +3,7 @@ import type { AgentConfig } from "@opencode-ai/sdk";
 export const plannerAgent: AgentConfig = {
   description: "Creates detailed implementation plans with exact file paths, complete code examples, and TDD steps",
   mode: "subagent",
-  model: "anthropic/claude-opus-4-5",
+  model: "openai/gpt-5.2-codex",
   temperature: 0.3,
   prompt: `<environment>
 You are running as part of the "micode" OpenCode plugin (NOT Claude Code).

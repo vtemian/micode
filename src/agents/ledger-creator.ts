@@ -4,7 +4,7 @@ import type { AgentConfig } from "@opencode-ai/sdk";
 export const ledgerCreatorAgent: AgentConfig = {
   description: "Creates and updates continuity ledgers for session state preservation",
   mode: "subagent",
-  model: "anthropic/claude-sonnet-4-20250514",
+  model: "openai/gpt-5.2-codex",
   temperature: 0.2,
   tools: {
     edit: false,

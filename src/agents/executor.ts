@@ -3,7 +3,7 @@ import type { AgentConfig } from "@opencode-ai/sdk";
 export const executorAgent: AgentConfig = {
   description: "Executes plan task-by-task with parallel execution where possible",
   mode: "subagent",
-  model: "anthropic/claude-opus-4-5",
+  model: "openai/gpt-5.2-codex",
   temperature: 0.2,
   prompt: `<environment>
 You are running as part of the "micode" OpenCode plugin (NOT Claude Code).

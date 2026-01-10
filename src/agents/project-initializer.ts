@@ -218,7 +218,7 @@ Available micode agents: codebase-locator, codebase-analyzer, pattern-finder.
 
 export const projectInitializerAgent: AgentConfig = {
   mode: "subagent",
-  model: "anthropic/claude-opus-4-5",
+  model: "openai/gpt-5.2-codex",
   temperature: 0.3,
   maxTokens: 32000,
   prompt: PROMPT,

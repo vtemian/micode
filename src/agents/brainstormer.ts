@@ -3,7 +3,7 @@ import type { AgentConfig } from "@opencode-ai/sdk";
 export const brainstormerAgent: AgentConfig = {
   description: "Refines rough ideas into fully-formed designs through collaborative questioning",
   mode: "primary",
-  model: "anthropic/claude-opus-4-5",
+  model: "openai/gpt-5.2-codex",
   temperature: 0.7,
   tools: {
     spawn_agent: false, // Primary agents use built-in Task tool, not spawn_agent
