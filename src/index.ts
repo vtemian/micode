@@ -26,7 +26,7 @@ import { createFileOpsTrackerHook, getFileOps } from "./hooks/file-ops-tracker";
 import { PTYManager, createPtyTools } from "./tools/pty";
 
 // Config loader
-import { loadMicodeConfig, mergeAgentConfigs } from "./config-loader";
+import { loadMicodeConfig, mergeAgentConfigs, validateAgentModels } from "./config-loader";
 
 // Think mode: detect keywords and enable extended thinking
 const THINK_KEYWORDS = [
@@ -76,7 +76,19 @@ const OpenCodeConfigPlugin: Plugin = async (ctx) => {
   }
 
   // Load user config for model overrides
-  const userConfig = await loadMicodeConfig();
+  let userConfig = await loadMicodeConfig();
+
+  // Validate configured models against available providers
+  if (userConfig?.agents) {
+    try {
+      const providersResponse = await ctx.client.provider.list();
+      if (providersResponse.data?.all) {
+        userConfig = validateAgentModels(userConfig, providersResponse.data.all);
+      }
+    } catch (e) {
+      console.warn("[micode] Failed to validate model configuration:", e);
+    }
+  }
 
   // Think mode state per session
   const thinkModeState = new Map<string, boolean>();

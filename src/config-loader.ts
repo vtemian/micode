@@ -4,6 +4,12 @@ import { join } from "node:path";
 import { homedir } from "node:os";
 import type { AgentConfig } from "@opencode-ai/sdk";
 
+// Minimal type for provider validation - only what we need
+export interface ProviderInfo {
+  id: string;
+  models: Record<string, unknown>;
+}
+
 // Safe properties that users can override
 const SAFE_AGENT_PROPERTIES = ["model", "temperature", "maxTokens"] as const;
 
@@ -86,4 +92,61 @@ export function mergeAgentConfigs(
   }
 
   return merged;
+}
+
+/**
+ * Validate that configured models exist in available providers
+ * Removes invalid model overrides and logs warnings
+ */
+export function validateAgentModels(userConfig: MicodeConfig, providers: ProviderInfo[]): MicodeConfig {
+  if (!userConfig.agents) {
+    return userConfig;
+  }
+
+  // Build lookup map for providers and their models
+  const providerMap = new Map<string, Set<string>>();
+  for (const provider of providers) {
+    providerMap.set(provider.id, new Set(Object.keys(provider.models)));
+  }
+
+  const validatedAgents: Record<string, AgentOverride> = {};
+
+  for (const [agentName, override] of Object.entries(userConfig.agents)) {
+    // No model specified - keep other properties as-is
+    if (override.model === undefined) {
+      validatedAgents[agentName] = override;
+      continue;
+    }
+
+    // Empty or whitespace-only model - treat as invalid
+    const trimmedModel = override.model.trim();
+    if (!trimmedModel) {
+      const { model: _removed, ...otherProps } = override;
+      console.warn(`[micode] Empty model for agent "${agentName}". Using default model.`);
+      if (Object.keys(otherProps).length > 0) {
+        validatedAgents[agentName] = otherProps;
+      }
+      continue;
+    }
+
+    // Parse "provider/model" format
+    const [providerID, ...rest] = trimmedModel.split("/");
+    const modelID = rest.join("/");
+
+    const providerModels = providerMap.get(providerID);
+    const isValid = providerModels?.has(modelID) ?? false;
+
+    if (isValid) {
+      validatedAgents[agentName] = override;
+    } else {
+      // Remove invalid model but keep other properties
+      const { model: _removed, ...otherProps } = override;
+      console.warn(`[micode] Model "${override.model}" not found for agent "${agentName}". Using default model.`);
+      if (Object.keys(otherProps).length > 0) {
+        validatedAgents[agentName] = otherProps;
+      }
+    }
+  }
+
+  return { agents: validatedAgents };
 }
