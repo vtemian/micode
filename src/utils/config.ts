@@ -100,4 +100,18 @@ export const config = {
     /** Max entries in context cache */
     contextCacheMaxSize: 100,
   },
+
+  /**
+   * Octto (browser-based brainstorming) settings
+   */
+  octto: {
+    /** Answer timeout (ms) - 5 minutes */
+    answerTimeoutMs: 5 * 60 * 1000,
+    /** Review timeout (ms) - 10 minutes */
+    reviewTimeoutMs: 10 * 60 * 1000,
+    /** Max iterations in brainstorm loop */
+    maxIterations: 50,
+    /** State directory for brainstorm sessions */
+    stateDir: "thoughts/brainstorms",
+  },
 } as const;
