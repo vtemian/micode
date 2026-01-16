@@ -3,30 +3,28 @@ import type { McpLocalConfig } from "@opencode-ai/sdk";
 
 // Agents
 import { agents, PRIMARY_AGENT_NAME } from "./agents";
-
-// Tools
-import { ast_grep_search, ast_grep_replace, checkAstGrepAvailable } from "./tools/ast-grep";
-import { btca_ask, checkBtcaAvailable } from "./tools/btca";
-import { look_at } from "./tools/look-at";
-import { artifact_search } from "./tools/artifact-search";
-import { createSpawnAgentTool } from "./tools/spawn-agent";
-
-// Hooks
-import { createAutoCompactHook } from "./hooks/auto-compact";
-import { createContextInjectorHook } from "./hooks/context-injector";
-import { createSessionRecoveryHook } from "./hooks/session-recovery";
-import { createTokenAwareTruncationHook } from "./hooks/token-aware-truncation";
-import { createContextWindowMonitorHook } from "./hooks/context-window-monitor";
-import { createCommentCheckerHook } from "./hooks/comment-checker";
-import { createLedgerLoaderHook } from "./hooks/ledger-loader";
-import { createArtifactAutoIndexHook } from "./hooks/artifact-auto-index";
-import { createFileOpsTrackerHook, getFileOps } from "./hooks/file-ops-tracker";
-
-// PTY System
-import { PTYManager, createPtyTools } from "./tools/pty";
-
 // Config loader
 import { loadMicodeConfig, mergeAgentConfigs, validateAgentModels } from "./config-loader";
+import { createArtifactAutoIndexHook } from "./hooks/artifact-auto-index";
+// Hooks
+import { createAutoCompactHook } from "./hooks/auto-compact";
+import { createCommentCheckerHook } from "./hooks/comment-checker";
+import { createContextInjectorHook } from "./hooks/context-injector";
+import { createContextWindowMonitorHook } from "./hooks/context-window-monitor";
+import { createFileOpsTrackerHook, getFileOps } from "./hooks/file-ops-tracker";
+import { createLedgerLoaderHook } from "./hooks/ledger-loader";
+import { createSessionRecoveryHook } from "./hooks/session-recovery";
+import { createTokenAwareTruncationHook } from "./hooks/token-aware-truncation";
+import { artifact_search } from "./tools/artifact-search";
+// Tools
+import { ast_grep_replace, ast_grep_search, checkAstGrepAvailable } from "./tools/ast-grep";
+import { btca_ask, checkBtcaAvailable } from "./tools/btca";
+import { look_at } from "./tools/look-at";
+import { milestone_artifact_search } from "./tools/milestone-artifact-search";
+import { createOcttoTools, createSessionStore } from "./tools/octto";
+// PTY System
+import { createPtyTools, PTYManager } from "./tools/pty";
+import { createSpawnAgentTool } from "./tools/spawn-agent";
 
 // Think mode: detect keywords and enable extended thinking
 const THINK_KEYWORDS = [
@@ -111,6 +109,13 @@ const OpenCodeConfigPlugin: Plugin = async (ctx) => {
   // Spawn agent tool (for subagents to spawn other subagents)
   const spawn_agent = createSpawnAgentTool(ctx);
 
+  // Octto (browser-based brainstorming) tools
+  const octtoSessionStore = createSessionStore();
+  const octtoTools = createOcttoTools(octtoSessionStore, ctx.client);
+
+  // Track octto sessions per opencode session for cleanup
+  const octtoSessionsMap = new Map<string, Set<string>>();
+
   return {
     // Tools
     tool: {
@@ -119,8 +124,10 @@ const OpenCodeConfigPlugin: Plugin = async (ctx) => {
       btca_ask,
       look_at,
       artifact_search,
+      milestone_artifact_search,
       spawn_agent,
       ...ptyTools,
+      ...octtoTools,
     },
 
     config: async (config) => {
@@ -304,12 +311,22 @@ IMPORTANT:
     },
 
     event: async ({ event }) => {
-      // Session cleanup (think mode + PTY)
+      // Session cleanup (think mode + PTY + octto)
       if (event.type === "session.deleted") {
         const props = event.properties as { info?: { id?: string } } | undefined;
         if (props?.info?.id) {
-          thinkModeState.delete(props.info.id);
-          ptyManager.cleanupBySession(props.info.id);
+          const sessionId = props.info.id;
+          thinkModeState.delete(sessionId);
+          ptyManager.cleanupBySession(sessionId);
+
+          // Cleanup octto sessions
+          const octtoSessions = octtoSessionsMap.get(sessionId);
+          if (octtoSessions) {
+            for (const octtoSessionId of octtoSessions) {
+              await octtoSessionStore.endSession(octtoSessionId).catch(() => {});
+            }
+            octtoSessionsMap.delete(sessionId);
+          }
         }
       }
 
