@@ -2,11 +2,15 @@
 
 import type { Answer } from "../../octto/session";
 import type { BrainstormState, Branch, BranchQuestion } from "../../octto/state";
-
 import { extractAnswerSummary } from "./extractor";
 
 function escapeXml(str: string): string {
-  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
 }
 
 export function formatBranchFinding(branch: Branch): string {

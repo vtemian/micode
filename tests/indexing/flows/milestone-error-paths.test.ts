@@ -26,30 +26,32 @@ describe("milestone artifact ingest error paths", () => {
     const index = new ArtifactIndex(testDir);
     await index.initialize();
 
-    await ingestMilestoneArtifact(
-      {
-        id: "artifact-err",
+    try {
+      await ingestMilestoneArtifact(
+        {
+          id: "artifact-err",
+          milestoneId: "ms-err",
+          sourceSessionId: "session-err",
+          createdAt: "2026-01-16T13:00:00Z",
+          tags: ["error"],
+          payload: "Status update only.",
+        },
+        index,
+        () => {
+          throw new Error("classifier failure");
+        },
+      );
+
+      const results = await index.searchMilestoneArtifacts("status", {
         milestoneId: "ms-err",
-        sourceSessionId: "session-err",
-        createdAt: "2026-01-16T13:00:00Z",
-        tags: ["error"],
-        payload: "Status update only.",
-      },
-      index,
-      () => {
-        throw new Error("classifier failure");
-      },
-    );
+        limit: 10,
+      });
 
-    const results = await index.searchMilestoneArtifacts("status", {
-      milestoneId: "ms-err",
-      limit: 10,
-    });
-
-    expect(results).toHaveLength(1);
-    expect(results[0].artifactType).toBe(MILESTONE_ARTIFACT_TYPES.SESSION);
-    expect(consoleErrorSpy).toHaveBeenCalled();
-
-    await index.close();
+      expect(results).toHaveLength(1);
+      expect(results[0].artifactType).toBe(MILESTONE_ARTIFACT_TYPES.SESSION);
+      expect(consoleErrorSpy).toHaveBeenCalled();
+    } finally {
+      await index.close();
+    }
   });
 });

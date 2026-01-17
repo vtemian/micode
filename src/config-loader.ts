@@ -161,6 +161,11 @@ export function validateAgentModels(userConfig: MicodeConfig, providers: Provide
     return userConfig;
   }
 
+  const hasAnyModels = providers.some((provider) => Object.keys(provider.models).length > 0);
+  if (!hasAnyModels) {
+    return userConfig;
+  }
+
   // Build lookup map for providers and their models
   const providerMap = new Map<string, Set<string>>();
   for (const provider of providers) {

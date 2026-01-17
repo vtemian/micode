@@ -6,10 +6,9 @@ import { QUESTION_TYPES, QUESTIONS, STATUSES } from "../../octto/session";
 import { BRANCH_STATUSES, type BrainstormState, createStateStore, type StateStore } from "../../octto/state";
 import { config } from "../../utils/config";
 import { log } from "../../utils/logger";
-
 import { formatBranchStatus, formatFindings, formatFindingsList, formatQASummary } from "./formatters";
 import { processAnswer } from "./processor";
-import type { OcttoTools, OpencodeClient } from "./types";
+import type { OcttoSessionTracker, OcttoTools, OpencodeClient } from "./types";
 import { generateSessionId } from "./utils";
 
 // --- Extracted helper functions ---
@@ -141,14 +140,14 @@ function formatSkippedReviewResult(state: BrainstormState): string {
   <branch_count>${state.branch_order.length}</branch_count>
   <note>Browser session ended before review</note>
   ${formatFindings(state)}
-  <next_action>Write the design document to docs/plans/</next_action>
+  <next_action>Write the design document to thoughts/shared/designs/</next_action>
 </brainstorm_complete>`;
 }
 
 function formatCompletionResult(state: BrainstormState, approved: boolean, feedback: string): string {
   const feedbackXml = feedback ? `\n  <feedback>${feedback}</feedback>` : "";
   const nextAction = approved
-    ? "Write the design document to docs/plans/"
+    ? "Write the design document to thoughts/shared/designs/"
     : "Review feedback and discuss with user before proceeding";
   return `<brainstorm_complete status="${approved ? "approved" : "changes_requested"}">
   <request>${state.request}</request>
@@ -160,7 +159,11 @@ function formatCompletionResult(state: BrainstormState, approved: boolean, feedb
 
 // --- Tool definitions ---
 
-export function createBrainstormTools(sessions: SessionStore, client: OpencodeClient): OcttoTools {
+export function createBrainstormTools(
+  sessions: SessionStore,
+  client: OpencodeClient,
+  tracker?: OcttoSessionTracker,
+): OcttoTools {
   const store = createStateStore();
 
   const create_brainstorm = tool({
@@ -183,7 +186,7 @@ export function createBrainstormTools(sessions: SessionStore, client: OpencodeCl
         )
         .describe("Branches to explore"),
     },
-    execute: async (args) => {
+    execute: async (args, context) => {
       const sessionId = generateSessionId();
 
       await store.createSession(
@@ -206,6 +209,7 @@ export function createBrainstormTools(sessions: SessionStore, client: OpencodeCl
         questions: initialQuestions,
       });
 
+      tracker?.onCreated?.(context.sessionID, browserSession.session_id);
       await store.setBrowserSessionId(sessionId, browserSession.session_id);
 
       for (const [i, branch] of args.branches.entries()) {
@@ -261,12 +265,15 @@ ${branches}
     args: {
       session_id: tool.schema.string().describe("Brainstorm session ID"),
     },
-    execute: async (args) => {
+    execute: async (args, context) => {
       const state = await store.getSession(args.session_id);
       if (!state) return `<error>Session not found: ${args.session_id}</error>`;
 
       if (state.browser_session_id) {
-        await sessions.endSession(state.browser_session_id);
+        const result = await sessions.endSession(state.browser_session_id);
+        if (result.ok) {
+          tracker?.onEnded?.(context.sessionID, state.browser_session_id);
+        }
       }
 
       const findings = formatFindingsList(state);
@@ -275,7 +282,7 @@ ${branches}
       return `<brainstorm_ended>
   <request>${state.request}</request>
   ${findings}
-  <next_action>Write the design document based on these findings</next_action>
+  <next_action>Write the design document based on these findings to thoughts/shared/designs/</next_action>
 </brainstorm_ended>`;
     },
   });

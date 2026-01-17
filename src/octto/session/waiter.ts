@@ -74,11 +74,18 @@ export function createWaiters<K, T>(): Waiters<K, T> {
       const callbacks = waiters.get(key);
       if (!callbacks) return;
 
-      for (const callback of callbacks) {
-        callback(data);
+      try {
+        for (const callback of callbacks) {
+          try {
+            callback(data);
+          } catch (error) {
+            console.error("Waiter notifyAll failed", error);
+            break;
+          }
+        }
+      } finally {
+        waiters.delete(key);
       }
-
-      waiters.delete(key);
     },
 
     /**

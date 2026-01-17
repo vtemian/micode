@@ -2,7 +2,6 @@
 import type { ServerWebSocket } from "bun";
 
 import { DEFAULT_ANSWER_TIMEOUT_MS } from "../constants";
-import { generateQuestionId, generateSessionId } from "./utils";
 import { openBrowser } from "./browser";
 import { createServer } from "./server";
 import {
@@ -25,6 +24,7 @@ import {
   type WsClientMessage,
   type WsServerMessage,
 } from "./types";
+import { generateQuestionId, generateSessionId } from "./utils";
 import { createWaiters } from "./waiter";
 
 export interface SessionStoreOptions {
@@ -57,7 +57,8 @@ export function createSessionStore(options: SessionStoreOptions = {}): SessionSt
     async startSession(input: StartSessionInput): Promise<StartSessionOutput> {
       const sessionId = generateSessionId();
       const { server, port } = await createServer(sessionId, store);
-      const url = `http://localhost:${port}`;
+      const urlHost = server.hostname ?? "localhost";
+      const url = `http://${urlHost}:${port}`;
 
       const session: Session = {
         id: sessionId,
@@ -205,7 +206,6 @@ export function createSessionStore(options: SessionStoreOptions = {}): SessionSt
 
         timeoutId = setTimeout(() => {
           cleanup();
-          question.status = STATUSES.TIMEOUT;
           resolve({ completed: false, status: STATUSES.TIMEOUT, reason: STATUSES.TIMEOUT });
         }, timeout);
       });

@@ -22,26 +22,28 @@ describe("milestone artifact ingest", () => {
     const index = new ArtifactIndex(testDir);
     await index.initialize();
 
-    await ingestMilestoneArtifact(
-      {
-        id: "artifact-3",
+    try {
+      await ingestMilestoneArtifact(
+        {
+          id: "artifact-3",
+          milestoneId: "ms-3",
+          sourceSessionId: "session-3",
+          createdAt: "2026-01-16T12:00:00Z",
+          tags: ["feature", "milestone"],
+          payload: "Implementation details for the indexing pipeline.",
+        },
+        index,
+      );
+
+      const results = await index.searchMilestoneArtifacts("implementation", {
         milestoneId: "ms-3",
-        sourceSessionId: "session-3",
-        createdAt: "2026-01-16T12:00:00Z",
-        tags: ["feature", "milestone"],
-        payload: "Implementation details for the indexing pipeline.",
-      },
-      index,
-    );
+        limit: 10,
+      });
 
-    const results = await index.searchMilestoneArtifacts("implementation", {
-      milestoneId: "ms-3",
-      limit: 10,
-    });
-
-    expect(results).toHaveLength(1);
-    expect(results[0].artifactType).toBe("feature");
-
-    await index.close();
+      expect(results).toHaveLength(1);
+      expect(results[0].artifactType).toBe("feature");
+    } finally {
+      await index.close();
+    }
   });
 });

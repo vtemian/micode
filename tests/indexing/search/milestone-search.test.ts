@@ -20,39 +20,41 @@ describe("milestone artifact search", () => {
     const index = new ArtifactIndex(testDir);
     await index.initialize();
 
-    await index.indexMilestoneArtifact({
-      id: "artifact-1",
-      milestoneId: "ms-1",
-      artifactType: "feature",
-      sourceSessionId: "session-1",
-      createdAt: "2026-01-16T10:00:00Z",
-      tags: ["feature"],
-      payload: "Implementation details for milestone indexing.",
-    });
+    try {
+      await index.indexMilestoneArtifact({
+        id: "artifact-1",
+        milestoneId: "ms-1",
+        artifactType: "feature",
+        sourceSessionId: "session-1",
+        createdAt: "2026-01-16T10:00:00Z",
+        tags: ["feature"],
+        payload: "Implementation details for milestone indexing.",
+      });
 
-    await index.indexMilestoneArtifact({
-      id: "artifact-2",
-      milestoneId: "ms-2",
-      artifactType: "decision",
-      sourceSessionId: "session-2",
-      createdAt: "2026-01-16T11:00:00Z",
-      tags: ["decision"],
-      payload: "Decision to store artifacts only in SQLite.",
-    });
+      await index.indexMilestoneArtifact({
+        id: "artifact-2",
+        milestoneId: "ms-2",
+        artifactType: "decision",
+        sourceSessionId: "session-2",
+        createdAt: "2026-01-16T11:00:00Z",
+        tags: ["decision"],
+        payload: "Decision to store artifacts only in SQLite.",
+      });
 
-    const results = await index.searchMilestoneArtifacts("SQLite", {
-      milestoneId: "ms-2",
-      artifactType: "decision",
-      limit: 10,
-    });
+      const results = await index.searchMilestoneArtifacts("SQLite", {
+        milestoneId: "ms-2",
+        artifactType: "decision",
+        limit: 10,
+      });
 
-    expect(results).toHaveLength(1);
-    expect(results[0]).toMatchObject({
-      id: "artifact-2",
-      milestoneId: "ms-2",
-      artifactType: "decision",
-    });
-
-    await index.close();
+      expect(results).toHaveLength(1);
+      expect(results[0]).toMatchObject({
+        id: "artifact-2",
+        milestoneId: "ms-2",
+        artifactType: "decision",
+      });
+    } finally {
+      await index.close();
+    }
   });
 });

@@ -8,7 +8,7 @@ import { config } from "../utils/config";
 export const DEFAULT_ANSWER_TIMEOUT_MS = config.octto.answerTimeoutMs;
 
 /** Default maximum number of follow-up questions per branch */
-export const DEFAULT_MAX_QUESTIONS = 15;
+export const DEFAULT_MAX_QUESTIONS = config.octto.maxQuestions;
 
 /** Default timeout for brainstorm review (10 minutes) */
 export const DEFAULT_REVIEW_TIMEOUT_MS = config.octto.reviewTimeoutMs;

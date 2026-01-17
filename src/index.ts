@@ -99,10 +99,25 @@ const OpenCodeConfigPlugin: Plugin = async (ctx) => {
 
   // Octto (browser-based brainstorming) tools
   const octtoSessionStore = createSessionStore();
-  const octtoTools = createOcttoTools(octtoSessionStore, ctx.client);
 
   // Track octto sessions per opencode session for cleanup
   const octtoSessionsMap = new Map<string, Set<string>>();
+
+  const octtoTools = createOcttoTools(octtoSessionStore, ctx.client, {
+    onCreated: (parentSessionId, octtoSessionId) => {
+      const sessions = octtoSessionsMap.get(parentSessionId) ?? new Set<string>();
+      sessions.add(octtoSessionId);
+      octtoSessionsMap.set(parentSessionId, sessions);
+    },
+    onEnded: (parentSessionId, octtoSessionId) => {
+      const sessions = octtoSessionsMap.get(parentSessionId);
+      if (!sessions) return;
+      sessions.delete(octtoSessionId);
+      if (sessions.size === 0) {
+        octtoSessionsMap.delete(parentSessionId);
+      }
+    },
+  });
 
   return {
     // Tools

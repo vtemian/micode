@@ -1,7 +1,7 @@
 // src/octto/state/store.ts
-import type { Answer } from "../session";
 
 import { STATE_DIR } from "../constants";
+import type { Answer } from "../session";
 import { createStatePersistence } from "./persistence";
 import {
   BRANCH_STATUSES,
@@ -153,7 +153,9 @@ export function createStateStore(baseDir = STATE_DIR): StateStore {
     },
 
     async deleteSession(sessionId: string): Promise<void> {
-      await persistence.delete(sessionId);
+      await withSessionLock(sessionId, async () => {
+        await persistence.delete(sessionId);
+      });
     },
   };
 }

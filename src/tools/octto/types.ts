@@ -14,3 +14,8 @@ export interface OcttoTool {
 export type OcttoTools = Record<string, OcttoTool>;
 
 export type OpencodeClient = ReturnType<typeof createOpencodeClient>;
+
+export interface OcttoSessionTracker {
+  onCreated?: (parentSessionId: string, octtoSessionId: string) => void;
+  onEnded?: (parentSessionId: string, octtoSessionId: string) => void;
+}

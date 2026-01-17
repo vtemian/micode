@@ -1,7 +1,9 @@
 // src/config-loader.test.ts
 import { describe, expect, test } from "bun:test";
+
 import type { AgentConfig } from "@opencode-ai/sdk";
-import { validateAgentModels, type MicodeConfig, type ProviderInfo } from "./config-loader";
+
+import { type MicodeConfig, type ProviderInfo, validateAgentModels } from "./config-loader";
 
 // Helper to create a minimal ProviderInfo for testing
 function createProvider(id: string, modelIds: string[]): ProviderInfo {
@@ -157,8 +159,23 @@ describe("validateAgentModels", () => {
 
     const result = validateAgentModels(userConfig, providers);
 
-    // No providers available, model should be removed
-    expect(result.agents?.commander?.model).toBeUndefined();
+    // No providers available, config should remain unchanged
+    expect(result).toEqual(userConfig);
+  });
+
+  test("handles providers with no models", () => {
+    const userConfig: MicodeConfig = {
+      agents: {
+        commander: { model: "openai/gpt-4" },
+      },
+    };
+
+    const providers: ProviderInfo[] = [{ id: "openai", models: {} }];
+
+    const result = validateAgentModels(userConfig, providers);
+
+    // No provider models available, config should remain unchanged
+    expect(result).toEqual(userConfig);
   });
 
   test("validates multiple agents with mixed valid/invalid models", () => {

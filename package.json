@@ -8,6 +8,7 @@
   "type": "module",
   "files": [
     "src",
+    "dist",
     "INSTALL_CLAUDE.md"
   ],
   "scripts": {

@@ -1,8 +1,8 @@
 // src/octto/session/server.ts
 import type { Server, ServerWebSocket } from "bun";
 
+import { config } from "../../utils/config";
 import { getHtmlBundle } from "../ui";
-
 import type { SessionStore } from "./sessions";
 import type { WsClientMessage } from "./types";
 
@@ -18,6 +18,7 @@ export async function createServer(
 
   const server = Bun.serve<WsData>({
     port: 0, // Random available port
+    hostname: config.octto.allowRemoteBind ? config.octto.bindAddress : "127.0.0.1",
     fetch(req, server) {
       const url = new URL(req.url);
 
