@@ -3,7 +3,6 @@
 import { tool } from "@opencode-ai/plugin/tool";
 
 import type { BaseConfig, QuestionType, SessionStore } from "../../octto/session";
-
 import type { OcttoTool, OcttoTools } from "./types";
 
 type ArgsSchema = Parameters<typeof tool>[0]["args"];
@@ -53,12 +52,18 @@ The question will appear in the browser for the user to answer.`,
           "pick_many",
           "confirm",
           "ask_text",
+          "ask_image",
+          "ask_file",
+          "ask_code",
+          "show_diff",
+          "show_plan",
           "show_options",
           "review_section",
           "thumbs",
           "slider",
           "rank",
           "rate",
+          "emoji_react",
         ])
         .describe("Question type"),
       config: tool.schema

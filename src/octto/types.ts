@@ -181,7 +181,7 @@ export interface ShowPlanConfig extends BaseConfig {
   /** Plan title */
   question: string;
   /** Plan sections */
-  sections: PlanSection[];
+  sections?: PlanSection[];
   /** Full markdown (alternative to sections) */
   markdown?: string;
 }

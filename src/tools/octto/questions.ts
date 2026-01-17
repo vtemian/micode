@@ -3,7 +3,6 @@ import { tool } from "@opencode-ai/plugin/tool";
 
 import type { SessionStore } from "../../octto/session";
 import type { ConfirmConfig, PickManyConfig, PickOneConfig, RankConfig, RateConfig } from "../../octto/types";
-
 import { createQuestionToolFactory } from "./factory";
 import type { OcttoTools } from "./types";
 
@@ -120,6 +119,13 @@ Response format: { ratings: Record<string, number> } where key is option id, val
       min: tool.schema.number().optional().describe("Minimum rating value (default: 1)"),
       max: tool.schema.number().optional().describe("Maximum rating value (default: 5)"),
       step: tool.schema.number().optional().describe("Rating step (default: 1)"),
+      labels: tool.schema
+        .object({
+          min: tool.schema.string().optional().describe("Label for minimum value"),
+          max: tool.schema.string().optional().describe("Label for maximum value"),
+        })
+        .optional()
+        .describe("Optional labels for min/max"),
     },
     validate: (args) => {
       if (!args.options || args.options.length === 0) return "options array must not be empty";
@@ -134,6 +140,7 @@ Response format: { ratings: Record<string, number> } where key is option id, val
       min: args.min ?? 1,
       max: args.max ?? 5,
       step: args.step,
+      labels: args.labels,
     }),
   });
 
@@ -196,6 +203,7 @@ Response format: { text: string }`,
     context?: string;
     multiple?: boolean;
     maxImages?: number;
+    accept?: string[];
   }
 
   const ask_image = createTool<ImageConfig>({
@@ -206,12 +214,14 @@ Response format: { text: string }`,
       context: tool.schema.string().optional().describe("Instructions/context"),
       multiple: tool.schema.boolean().optional().describe("Allow multiple images"),
       maxImages: tool.schema.number().optional().describe("Maximum number of images"),
+      accept: tool.schema.array(tool.schema.string()).optional().describe("Allowed image types"),
     },
     toConfig: (args) => ({
       question: args.question,
       context: args.context,
       multiple: args.multiple,
       maxImages: args.maxImages,
+      accept: args.accept,
     }),
   });
 
@@ -332,7 +342,7 @@ Response format: { approved: boolean, annotations?: Record<sectionId, string> }`
     },
     toConfig: (args) => ({
       question: args.question,
-      sections: args.sections || [],
+      sections: args.sections,
       markdown: args.markdown,
     }),
   });
@@ -456,6 +466,7 @@ Response format: { choice: "up" | "down" }`,
     step?: number;
     defaultValue?: number;
     context?: string;
+    labels?: { min?: string; max?: string; mid?: string };
   }
 
   const slider = createTool<SliderConfig>({
@@ -469,6 +480,14 @@ Response format: { value: number }`,
       step: tool.schema.number().optional().describe("Step size (default: 1)"),
       defaultValue: tool.schema.number().optional().describe("Default value"),
       context: tool.schema.string().optional().describe("Instructions/context"),
+      labels: tool.schema
+        .object({
+          min: tool.schema.string().optional().describe("Label for minimum value"),
+          max: tool.schema.string().optional().describe("Label for maximum value"),
+          mid: tool.schema.string().optional().describe("Label for middle value"),
+        })
+        .optional()
+        .describe("Optional labels for the slider"),
     },
     validate: (args) => {
       if (args.min >= args.max) return `min (${args.min}) must be less than max (${args.max})`;
@@ -481,6 +500,7 @@ Response format: { value: number }`,
       step: args.step,
       defaultValue: args.defaultValue,
       context: args.context,
+      labels: args.labels,
     }),
   });
 

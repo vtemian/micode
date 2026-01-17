@@ -2,10 +2,9 @@
 import { tool } from "@opencode-ai/plugin/tool";
 
 import type { SessionStore } from "../../octto/session";
+import type { OcttoSessionTracker, OcttoTools } from "./types";
 
-import type { OcttoTools } from "./types";
-
-export function createSessionTools(sessions: SessionStore): OcttoTools {
+export function createSessionTools(sessions: SessionStore, tracker?: OcttoSessionTracker): OcttoTools {
   const start_session = tool({
     description: `Start an interactive octto session with initial questions.
 Opens a browser window with questions already displayed - no waiting.
@@ -21,12 +20,21 @@ REQUIRED: You MUST provide at least 1 question. Will fail without questions.`,
                 "pick_many",
                 "confirm",
                 "ask_text",
+                "ask_image",
+                "ask_file",
+                "ask_code",
+                "show_diff",
+                "show_plan",
                 "show_options",
                 "review_section",
                 "thumbs",
                 "slider",
+                "rank",
+                "rate",
+                "emoji_react",
               ])
               .describe("Question type"),
+
             config: tool.schema
               .looseObject({
                 question: tool.schema.string().optional(),
@@ -37,7 +45,7 @@ REQUIRED: You MUST provide at least 1 question. Will fail without questions.`,
         )
         .describe("REQUIRED: Initial questions to display when browser opens. Must have at least 1."),
     },
-    execute: async (args) => {
+    execute: async (args, context) => {
       // ENFORCE: questions are required
       if (!args.questions || args.questions.length === 0) {
         return `## ERROR: questions parameter is REQUIRED
@@ -60,6 +68,7 @@ Please call start_session again WITH your prepared questions.`;
 
       try {
         const result = await sessions.startSession({ title: args.title, questions: args.questions });
+        tracker?.onCreated?.(context.sessionID, result.session_id);
 
         let output = `## Session Started
 
@@ -91,9 +100,10 @@ Closes the browser window and cleans up resources.`,
     args: {
       session_id: tool.schema.string().describe("Session ID to end"),
     },
-    execute: async (args) => {
+    execute: async (args, context) => {
       const result = await sessions.endSession(args.session_id);
       if (result.ok) {
+        tracker?.onEnded?.(context.sessionID, args.session_id);
         return `Session ${args.session_id} ended successfully.`;
       }
       return `Failed to end session ${args.session_id}. It may not exist.`;

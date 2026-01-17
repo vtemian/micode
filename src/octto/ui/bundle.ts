@@ -974,15 +974,19 @@ export function getHtmlBundle(): string {
       const max = q.config.max;
       const step = q.config.step || 1;
       const defaultVal = q.config.defaultValue || Math.floor((min + max) / 2);
+      const labels = q.config.labels || {};
+      const minLabel = labels.min || String(min);
+      const maxLabel = labels.max || String(max);
       let html = '<div class="slider-container">';
-      html += '<span class="slider-labels">' + min + '</span>';
+      html += '<span class="slider-labels">' + escapeHtml(minLabel) + '</span>';
       html += '<input type="range" id="slider_' + q.id + '" min="' + min + '" max="' + max + '" step="' + step + '" value="' + defaultVal + '">';
-      html += '<span class="slider-labels">' + max + '</span>';
+      html += '<span class="slider-labels">' + escapeHtml(maxLabel) + '</span>';
       html += '<span id="slider_val_' + q.id + '" class="slider-value">' + defaultVal + '</span>';
       html += '</div>';
       html += '<div class="btn-group"><button onclick="submitSlider(\\'' + q.id + '\\')" class="btn btn-primary">Submit</button></div>';
       return html;
     }
+
 
     function renderReviewSection(q) {
       let html = '';
@@ -1101,6 +1105,7 @@ export function getHtmlBundle(): string {
       const options = q.config.options || [];
       const min = q.config.min || 1;
       const max = q.config.max || 5;
+      const labels = q.config.labels || {};
       let html = '<div class="rate-list">';
       for (const opt of options) {
         html += '<div class="rate-item">';
@@ -1109,7 +1114,14 @@ export function getHtmlBundle(): string {
         for (let i = min; i <= max; i++) {
           html += '<button class="rate-star" data-value="' + i + '" onclick="setRating(\\'' + q.id + '\\', \\'' + opt.id + '\\', ' + i + ')">' + i + '</button>';
         }
-        html += '</div></div>';
+
+        html += '</div>';
+
+
+        if (labels.min || labels.max) {
+          html += '<div class="slider-labels">' + escapeHtml(labels.min || String(min)) + ' / ' + escapeHtml(labels.max || String(max)) + '</div>';
+        }
+        html += '</div>';
       }
       html += '</div>';
       html += '<div class="btn-group"><button onclick="submitRate(\\'' + q.id + '\\')" class="btn btn-primary">Submit Ratings</button></div>';
@@ -1128,13 +1140,15 @@ export function getHtmlBundle(): string {
     function renderAskImage(q) {
       let html = '';
       const multiple = q.config.multiple ? 'multiple' : '';
+      const accept = q.config.accept ? q.config.accept.join(',') : 'image/*';
       html += '<div class="file-upload">';
-      html += '<input type="file" id="image_' + q.id + '" accept="image/*" ' + multiple + ' onchange="previewImages(\\'' + q.id + '\\')">';
+      html += '<input type="file" id="image_' + q.id + '" accept="' + accept + '" ' + multiple + ' onchange="previewImages('' + q.id + '')">';
       html += '<div id="preview_' + q.id + '" class="image-preview"></div>';
       html += '</div>';
-      html += '<div class="btn-group"><button onclick="submitImages(\\'' + q.id + '\\')" class="btn btn-primary">Upload</button></div>';
+      html += '<div class="btn-group"><button onclick="submitImages('' + q.id + '')" class="btn btn-primary">Upload</button></div>';
       return html;
     }
+
 
     function renderAskFile(q) {
       let html = '';
@@ -1299,11 +1313,36 @@ export function getHtmlBundle(): string {
       }
     }
 
+    function isAllowedFileType(file, allowed) {
+      if (!allowed || allowed.length === 0) return true;
+      const fileType = file.type || '';
+      const fileName = file.name || '';
+      return allowed.some(entry => {
+        if (!entry) return false;
+        if (entry.endsWith('/*')) {
+          const prefix = entry.slice(0, -1);
+          return fileType.startsWith(prefix);
+        }
+        if (entry.startsWith('.')) {
+          return fileName.toLowerCase().endsWith(entry.toLowerCase());
+        }
+        return fileType === entry || fileName.toLowerCase().endsWith(entry.toLowerCase());
+      });
+    }
+
     function previewImages(questionId) {
       const input = document.getElementById('image_' + questionId);
       const preview = document.getElementById('preview_' + questionId);
       preview.innerHTML = '';
+      const q = questions.find(q => q.id === questionId);
+      const allowed = q && q.config.accept ? q.config.accept : null;
       for (const file of input.files) {
+        if (allowed && allowed.length > 0 && !isAllowedFileType(file, allowed)) {
+          const warning = document.createElement('div');
+          warning.textContent = 'Warning: ' + file.name + ' does not match allowed types.';
+          warning.style.cssText = 'color: var(--accent-error); font-size: 0.75rem; margin: 0.25rem 0;';
+          preview.appendChild(warning);
+        }
         const img = document.createElement('img');
         img.src = URL.createObjectURL(file);
         img.style.maxWidth = '100px';
@@ -1481,10 +1520,13 @@ export function getHtmlBundle(): string {
     }
 
     function renderAnsweredSlider(q, answer) {
+      const labels = q.config.labels || {};
+      const minLabel = labels.min || String(q.config.min);
+      const maxLabel = labels.max || String(q.config.max);
       let html = '<div class="readonly-answer">';
       html += '<div class="readonly-answer-label">Value</div>';
       html += '<strong style="font-size: 1.25rem;">' + answer.value + '</strong>';
-      html += ' <span style="color: var(--foreground-subtle);">(range: ' + q.config.min + ' - ' + q.config.max + ')</span>';
+      html += ' <span style="color: var(--foreground-subtle);">(range: ' + escapeHtml(minLabel) + ' - ' + escapeHtml(maxLabel) + ')</span>';
       html += '</div>';
       return html;
     }
@@ -1545,6 +1587,9 @@ export function getHtmlBundle(): string {
 
     function renderAnsweredRate(q, answer) {
       const ratings = answer.ratings || {};
+      const labels = q.config.labels || {};
+      const minLabel = labels.min || String(q.config.min || 1);
+      const maxLabel = labels.max || String(q.config.max || 5);
       let html = '<div class="readonly-answer-label">Ratings</div>';
       html += '<div class="options">';
       for (const opt of (q.config.options || [])) {
@@ -1555,6 +1600,12 @@ export function getHtmlBundle(): string {
         html += '</div>';
       }
       html += '</div>';
+      if (labels.min || labels.max) {
+        html += '<div class="readonly-answer" style="margin-top: 0.5rem;">';
+        html += '<div class="readonly-answer-label">Scale</div>';
+        html += '<div>' + escapeHtml(minLabel) + ' → ' + escapeHtml(maxLabel) + '</div>';
+        html += '</div>';
+      }
       return html;
     }
 
