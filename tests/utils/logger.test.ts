@@ -1,5 +1,5 @@
 // tests/utils/logger.test.ts
-import { describe, it, expect, spyOn, beforeEach, afterEach } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 
 describe("logger utility", () => {
   let consoleLogSpy: ReturnType<typeof spyOn>;
@@ -68,9 +68,9 @@ describe("logger utility", () => {
     it("should log when DEBUG is set", async () => {
       process.env.DEBUG = "1";
       // Need fresh import to pick up env change
-      // Clear module cache
-      delete require.cache[require.resolve("../../src/utils/logger")];
-      const { log } = await import("../../src/utils/logger");
+      const moduleUrl = new URL("../../src/utils/logger", import.meta.url);
+      moduleUrl.searchParams.set("t", Date.now().toString());
+      const { log } = await import(moduleUrl.href);
       log.debug("my-module", "Debug info");
       expect(consoleLogSpy).toHaveBeenCalledWith("[my-module] Debug info");
     });
