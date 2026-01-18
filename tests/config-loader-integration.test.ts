@@ -1,7 +1,8 @@
 // tests/config-loader-integration.test.ts
-import { describe, it, expect } from "bun:test";
-import { loadMicodeConfig, mergeAgentConfigs } from "../src/config-loader";
+import { describe, expect, it } from "bun:test";
+
 import { agents } from "../src/agents";
+import { loadMicodeConfig, mergeAgentConfigs } from "../src/config-loader";
 
 describe("config-loader integration", () => {
   it("should have all agents defined in agents/index.ts", () => {
@@ -35,7 +36,9 @@ describe("config-loader integration", () => {
       },
     };
 
-    const merged = mergeAgentConfigs(agents, userConfig);
+    const availableModels = new Set(["openai/gpt-4o", "openai/gpt-5.2-codex"]);
+
+    const merged = mergeAgentConfigs(agents, userConfig, availableModels);
 
     // Check project-initializer was merged correctly
     expect(merged["project-initializer"]).toBeDefined();
@@ -54,7 +57,9 @@ describe("config-loader integration", () => {
       },
     };
 
-    const merged = mergeAgentConfigs(agents, userConfig);
+    const availableModels = new Set(["openai/gpt-4o", "openai/gpt-5.2-codex"]);
+
+    const merged = mergeAgentConfigs(agents, userConfig, availableModels);
 
     const pi = merged["project-initializer"];
     expect(pi.model).toBe("openai/gpt-4o");

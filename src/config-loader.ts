@@ -109,8 +109,8 @@ export function mergeAgentConfigs(
     return pluginAgents;
   }
 
-  const models = availableModels ?? new Set<string>();
-  const shouldValidateModels = availableModels !== undefined && models.size > 0;
+  const models = availableModels ?? loadAvailableModels();
+  const shouldValidateModels = models.size > 0;
 
   const merged: Record<string, AgentConfig> = {};
 

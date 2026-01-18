@@ -1,8 +1,9 @@
 // tests/config-loader.test.ts
-import { describe, it, expect, beforeEach, afterEach } from "bun:test";
-import { mkdirSync, writeFileSync, rmSync } from "node:fs";
-import { join } from "node:path";
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { loadMicodeConfig, mergeAgentConfigs } from "../src/config-loader";
 
 describe("config-loader", () => {
@@ -149,8 +150,9 @@ describe("mergeAgentConfigs", () => {
         commander: { model: "openai/gpt-4o", temperature: 0.5 },
       },
     };
+    const availableModels = new Set(["openai/gpt-4o", "anthropic/claude-opus-4-5"]);
 
-    const merged = mergeAgentConfigs(pluginAgents, userConfig);
+    const merged = mergeAgentConfigs(pluginAgents, userConfig, availableModels);
 
     expect(merged.commander.model).toBe("openai/gpt-4o");
     expect(merged.commander.temperature).toBe(0.5);
@@ -176,8 +178,9 @@ describe("mergeAgentConfigs", () => {
         commander: { model: "openai/gpt-4o" },
       },
     };
+    const availableModels = new Set(["openai/gpt-4o", "anthropic/claude-opus-4-5"]);
 
-    const merged = mergeAgentConfigs(pluginAgents, userConfig);
+    const merged = mergeAgentConfigs(pluginAgents, userConfig, availableModels);
 
     expect(merged.commander.model).toBe("openai/gpt-4o");
     expect(merged.brainstormer.model).toBe("anthropic/claude-opus-4-5");
