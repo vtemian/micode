@@ -2,7 +2,7 @@
 import { describe, expect, it } from "bun:test";
 
 import { agents } from "../src/agents";
-import { loadMicodeConfig, mergeAgentConfigs } from "../src/config-loader";
+import { mergeAgentConfigs } from "../src/config-loader";
 
 describe("config-loader integration", () => {
   it("should have all agents defined in agents/index.ts", () => {
@@ -47,7 +47,7 @@ describe("config-loader integration", () => {
     expect(merged["project-initializer"].prompt).toBeDefined();
 
     // Check other agents still have defaults
-    expect(merged["commander"].model).toBe("openai/gpt-5.2-codex");
+    expect(merged.commander.model).toBe("openai/gpt-5.2-codex");
   });
 
   it("should preserve all agent properties when merging", () => {
