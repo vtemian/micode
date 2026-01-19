@@ -193,6 +193,11 @@ const OpenCodeConfigPlugin: Plugin = async (ctx) => {
           agent: "artifact-searcher",
           template: `Search for: $ARGUMENTS`,
         },
+        mindmodel: {
+          description: "Generate .mindmodel/ with code examples from this project",
+          agent: "mm-orchestrator",
+          template: `Generate mindmodel for this project. $ARGUMENTS`,
+        },
       };
     },
 
