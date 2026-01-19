@@ -23,15 +23,14 @@ interface MessageWithParts {
   parts: MessagePart[];
 }
 
-export function createMindmodelInjectorHook(
-  ctx: PluginInput,
-  classifyFn: ClassifyFn,
-  isInternalSession: (sessionID: string) => boolean,
-) {
+export function createMindmodelInjectorHook(ctx: PluginInput, classifyFn: ClassifyFn) {
   let cachedMindmodel: LoadedMindmodel | null | undefined;
 
-  // Cache pending injection per session (between hooks)
-  const pendingInjection = new Map<string, string>();
+  // Pending injection content (shared across hooks for current request)
+  let pendingInjection: string | null = null;
+
+  // Flag to prevent recursive classification calls
+  let isClassifying = false;
 
   async function getMindmodel(): Promise<LoadedMindmodel | null> {
     if (cachedMindmodel === undefined) {
@@ -55,11 +54,11 @@ export function createMindmodelInjectorHook(
   return {
     // Hook 1: Extract task from messages and prepare injection
     "experimental.chat.messages.transform": async (
-      input: { sessionID: string },
+      _input: Record<string, unknown>,
       output: { messages: MessageWithParts[] },
     ) => {
-      // Skip internal sessions (classifier, reviewer) to prevent infinite recursion
-      if (isInternalSession(input.sessionID)) {
+      // Skip if we're already classifying (prevents infinite recursion)
+      if (isClassifying) {
         return;
       }
 
@@ -76,31 +75,40 @@ export function createMindmodelInjectorHook(
 
         log.info("mindmodel", `Classifying task: "${task.slice(0, 100)}..."`);
 
-        // Classify the task
-        const classifierPrompt = buildClassifierPrompt(task, mindmodel.manifest);
-        const classifierResponse = await classifyFn(classifierPrompt);
-        const categories = parseClassifierResponse(classifierResponse, mindmodel.manifest);
+        // Set flag before classification to prevent recursive calls
+        isClassifying = true;
 
-        if (categories.length === 0) {
-          log.info("mindmodel", "No matching categories found");
-          return;
+        try {
+          // Classify the task
+          const classifierPrompt = buildClassifierPrompt(task, mindmodel.manifest);
+          const classifierResponse = await classifyFn(classifierPrompt);
+          const categories = parseClassifierResponse(classifierResponse, mindmodel.manifest);
+
+          if (categories.length === 0) {
+            log.info("mindmodel", "No matching categories found");
+            return;
+          }
+
+          log.info("mindmodel", `Matched categories: ${categories.join(", ")}`);
+
+          // Load and format examples
+          const examples = await loadExamples(mindmodel, categories);
+          if (examples.length === 0) {
+            log.info("mindmodel", "No examples found for categories");
+            return;
+          }
+
+          const formatted = formatExamplesForInjection(examples);
+
+          // Store for the system transform hook
+          pendingInjection = formatted;
+          log.info("mindmodel", `Prepared ${examples.length} examples for injection`);
+        } finally {
+          // Always reset the flag
+          isClassifying = false;
         }
-
-        log.info("mindmodel", `Matched categories: ${categories.join(", ")}`);
-
-        // Load and format examples
-        const examples = await loadExamples(mindmodel, categories);
-        if (examples.length === 0) {
-          log.info("mindmodel", "No examples found for categories");
-          return;
-        }
-
-        const formatted = formatExamplesForInjection(examples);
-
-        // Cache for the system transform hook
-        pendingInjection.set(input.sessionID, formatted);
-        log.info("mindmodel", `Prepared ${examples.length} examples for injection`);
       } catch (error) {
+        isClassifying = false;
         log.warn(
           "mindmodel",
           `Failed to prepare examples: ${error instanceof Error ? error.message : "unknown error"}`,
@@ -109,17 +117,17 @@ export function createMindmodelInjectorHook(
     },
 
     // Hook 2: Inject into system prompt
-    "experimental.chat.system.transform": async (input: { sessionID: string }, output: { system: string[] }) => {
-      // Skip internal sessions
-      if (isInternalSession(input.sessionID)) {
+    "experimental.chat.system.transform": async (_input: { sessionID: string }, output: { system: string[] }) => {
+      // Skip if we're in the middle of classification
+      if (isClassifying) {
         return;
       }
 
-      const injection = pendingInjection.get(input.sessionID);
-      if (!injection) return;
+      if (!pendingInjection) return;
 
-      // Clear the pending injection
-      pendingInjection.delete(input.sessionID);
+      // Consume the pending injection
+      const injection = pendingInjection;
+      pendingInjection = null;
 
       // Prepend to system prompt
       output.system.unshift(injection);

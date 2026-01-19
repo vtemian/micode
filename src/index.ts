@@ -149,7 +149,7 @@ const OpenCodeConfigPlugin: Plugin = async (ctx) => {
       }
     }
   };
-  const mindmodelInjectorHook = createMindmodelInjectorHook(ctx, mindmodelClassifyFn, isInternalSession);
+  const mindmodelInjectorHook = createMindmodelInjectorHook(ctx, mindmodelClassifyFn);
 
   // Constraint reviewer hook - reviews generated code against .mindmodel/ constraints
   const constraintReviewerHook = createConstraintReviewerHook(ctx, async (reviewPrompt) => {

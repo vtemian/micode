@@ -69,14 +69,11 @@ categories:
     return systemOutput.system;
   }
 
-  // Helper: no sessions are internal in tests
-  const noInternalSessions = () => false;
-
   it("should not inject if no .mindmodel directory exists", async () => {
     const { createMindmodelInjectorHook } = await import("../../src/hooks/mindmodel-injector");
 
     const ctx = createMockCtx(testDir);
-    const hook = createMindmodelInjectorHook(ctx as any, async () => "[]", noInternalSessions);
+    const hook = createMindmodelInjectorHook(ctx as any, async () => "[]");
 
     const system = await runInjectionFlow(hook, "test", [
       { info: { role: "user" }, parts: [{ type: "text", text: "Hello" }] },
@@ -93,7 +90,7 @@ categories:
     const ctx = createMockCtx(testDir);
     // Mock classifier that returns form category
     const mockClassify = async () => '["components/form.md"]';
-    const hook = createMindmodelInjectorHook(ctx as any, mockClassify, noInternalSessions);
+    const hook = createMindmodelInjectorHook(ctx as any, mockClassify);
 
     const system = await runInjectionFlow(hook, "test", [
       { info: { role: "user" }, parts: [{ type: "text", text: "Add a contact form" }] },
@@ -112,7 +109,7 @@ categories:
 
     const ctx = createMockCtx(testDir);
     const mockClassify = async () => "[]";
-    const hook = createMindmodelInjectorHook(ctx as any, mockClassify, noInternalSessions);
+    const hook = createMindmodelInjectorHook(ctx as any, mockClassify);
 
     const system = await runInjectionFlow(hook, "test", [
       { info: { role: "user" }, parts: [{ type: "text", text: "What time is it?" }] },
@@ -128,7 +125,7 @@ categories:
 
     const ctx = createMockCtx(testDir);
     const mockClassify = async () => '["components/button.md"]';
-    const hook = createMindmodelInjectorHook(ctx as any, mockClassify, noInternalSessions);
+    const hook = createMindmodelInjectorHook(ctx as any, mockClassify);
 
     const system = await runInjectionFlow(hook, "test", [
       {
@@ -156,7 +153,7 @@ categories:
       classifyCallCount++;
       return '["components/button.md"]';
     };
-    const hook = createMindmodelInjectorHook(ctx as any, mockClassify, noInternalSessions);
+    const hook = createMindmodelInjectorHook(ctx as any, mockClassify);
 
     // First call
     const system1 = await runInjectionFlow(hook, "test1", [
