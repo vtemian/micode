@@ -13,6 +13,7 @@ import { createContextInjectorHook } from "./hooks/context-injector";
 import { createContextWindowMonitorHook } from "./hooks/context-window-monitor";
 import { createFileOpsTrackerHook, getFileOps } from "./hooks/file-ops-tracker";
 import { createLedgerLoaderHook } from "./hooks/ledger-loader";
+import { createMindmodelInjectorHook } from "./hooks/mindmodel-injector";
 import { createSessionRecoveryHook } from "./hooks/session-recovery";
 import { createTokenAwareTruncationHook } from "./hooks/token-aware-truncation";
 import { artifact_search } from "./tools/artifact-search";
@@ -89,6 +90,15 @@ const OpenCodeConfigPlugin: Plugin = async (ctx) => {
   const commentCheckerHook = createCommentCheckerHook(ctx);
   const artifactAutoIndexHook = createArtifactAutoIndexHook(ctx);
   const fileOpsTrackerHook = createFileOpsTrackerHook(ctx);
+
+  // Mindmodel injector hook
+  // Uses a simple inline classifier for now - can be upgraded to use LLM later
+  const mindmodelClassifyFn = async (_prompt: string): Promise<string> => {
+    // TODO: Integrate with actual LLM call via ctx.client
+    // For now, return empty to disable until LLM integration is ready
+    return "[]";
+  };
+  const mindmodelInjectorHook = createMindmodelInjectorHook(ctx, mindmodelClassifyFn);
 
   // PTY System
   const ptyManager = new PTYManager();
@@ -198,6 +208,9 @@ const OpenCodeConfigPlugin: Plugin = async (ctx) => {
     },
 
     "chat.params": async (input, output) => {
+      // Inject mindmodel examples (before other context)
+      await mindmodelInjectorHook["chat.params"](input, output);
+
       // Inject ledger context first (highest priority)
       await ledgerLoaderHook["chat.params"](input, output);
 
