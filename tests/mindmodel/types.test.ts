@@ -1,7 +1,7 @@
 // tests/mindmodel/types.test.ts
 import { describe, expect, it } from "bun:test";
 
-import { type MindmodelManifest, parseManifest } from "../../src/mindmodel/types";
+import { parseManifest } from "../../src/mindmodel/types";
 
 describe("mindmodel types", () => {
   it("should parse a valid manifest", () => {
@@ -66,5 +66,55 @@ categories:
 `;
     const result = parseManifest(yaml);
     expect(result.categories[0].group).toBeUndefined();
+  });
+});
+
+describe("ConstraintFileSchema", () => {
+  it("should parse constraint file with rules, examples, and anti-patterns", () => {
+    const { parseConstraintFile } = require("../../src/mindmodel/types");
+    const content = `# Error Handling
+
+## Rules
+- Always wrap errors with context
+- Never swallow errors silently
+
+## Examples
+
+### Wrapping errors
+\`\`\`go
+if err != nil {
+    return fmt.Errorf("failed: %w", err)
+}
+\`\`\`
+
+## Anti-patterns
+
+### Swallowing errors
+\`\`\`go
+if err != nil {
+    return nil // BAD
+}
+\`\`\`
+`;
+    const result = parseConstraintFile(content);
+    expect(result.title).toBe("Error Handling");
+    expect(result.rules).toHaveLength(2);
+    expect(result.examples).toHaveLength(1);
+    expect(result.antiPatterns).toHaveLength(1);
+  });
+
+  it("should handle constraint file with only rules", () => {
+    const { parseConstraintFile } = require("../../src/mindmodel/types");
+    const content = `# Naming
+
+## Rules
+- Use camelCase for functions
+- Use PascalCase for types
+`;
+    const result = parseConstraintFile(content);
+    expect(result.title).toBe("Naming");
+    expect(result.rules).toHaveLength(2);
+    expect(result.examples).toHaveLength(0);
+    expect(result.antiPatterns).toHaveLength(0);
   });
 });
