@@ -9,6 +9,12 @@ import { PRIMARY_AGENT_NAME, primaryAgent } from "./commander";
 import { executorAgent } from "./executor";
 import { implementerAgent } from "./implementer";
 import { ledgerCreatorAgent } from "./ledger-creator";
+import {
+  exampleExtractorAgent,
+  mindmodelOrchestratorAgent,
+  mindmodelPatternDiscovererAgent,
+  stackDetectorAgent,
+} from "./mindmodel";
 import { octtoAgent } from "./octto";
 import { patternFinderAgent } from "./pattern-finder";
 import { plannerAgent } from "./planner";
@@ -32,6 +38,11 @@ export const agents: Record<string, AgentConfig> = {
   "artifact-searcher": { ...artifactSearcherAgent, model: "openai/gpt-5.2-codex" },
   octto: { ...octtoAgent, model: "openai/gpt-5.2-codex" },
   probe: { ...probeAgent, model: "openai/gpt-5.2-codex" },
+  // Mindmodel generation agents
+  "mm-stack-detector": { ...stackDetectorAgent, model: "openai/gpt-5.2-codex" },
+  "mm-pattern-discoverer": { ...mindmodelPatternDiscovererAgent, model: "openai/gpt-5.2-codex" },
+  "mm-example-extractor": { ...exampleExtractorAgent, model: "openai/gpt-5.2-codex" },
+  "mm-orchestrator": { ...mindmodelOrchestratorAgent, model: "openai/gpt-5.2-codex" },
 };
 
 export {
