@@ -44,7 +44,10 @@ export function createMindmodelInjectorHook(ctx: PluginInput, classifyFn: Classi
   }
 
   return {
-    "chat.params": async (input: { sessionID: string; messages?: ChatMessage[] }, output: { system?: string }) => {
+    "chat.params": async (
+      input: { sessionID: string; messages?: ChatMessage[] },
+      output: { options?: Record<string, unknown>; system?: string },
+    ) => {
       const mindmodel = await getMindmodel();
       if (!mindmodel) return;
 
