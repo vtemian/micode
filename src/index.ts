@@ -93,9 +93,8 @@ const OpenCodeConfigPlugin: Plugin = async (ctx) => {
   const artifactAutoIndexHook = createArtifactAutoIndexHook(ctx);
   const fileOpsTrackerHook = createFileOpsTrackerHook(ctx);
 
-  // Track internal sessions to prevent hook recursion
+  // Track internal sessions to prevent hook recursion (used by classifier/reviewer)
   const internalSessions = new Set<string>();
-  const isInternalSession = (sessionID: string) => internalSessions.has(sessionID);
 
   // Mindmodel injector hook - classifies tasks to inject relevant code examples
   const mindmodelClassifyFn = async (classifierPrompt: string): Promise<string> => {
