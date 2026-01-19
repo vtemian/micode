@@ -23,12 +23,23 @@ interface MessageWithParts {
   parts: MessagePart[];
 }
 
+// Simple hash function for task strings
+function hashTask(task: string): string {
+  let hash = 0;
+  for (let i = 0; i < task.length; i++) {
+    const char = task.charCodeAt(i);
+    hash = (hash << 5) - hash + char;
+    hash = hash & hash; // Convert to 32-bit integer
+  }
+  return hash.toString(36);
+}
+
 // Simple LRU cache for classified tasks
-class LRUCache<K, V> {
-  private cache = new Map<K, V>();
+class LRUCache<V> {
+  private cache = new Map<string, V>();
   constructor(private maxSize: number) {}
 
-  get(key: K): V | undefined {
+  get(key: string): V | undefined {
     const value = this.cache.get(key);
     if (value !== undefined) {
       // Move to end (most recently used)
@@ -38,7 +49,7 @@ class LRUCache<K, V> {
     return value;
   }
 
-  set(key: K, value: V): void {
+  set(key: string, value: V): void {
     if (this.cache.has(key)) {
       this.cache.delete(key);
     } else if (this.cache.size >= this.maxSize) {
@@ -49,7 +60,7 @@ class LRUCache<K, V> {
     this.cache.set(key, value);
   }
 
-  has(key: K): boolean {
+  has(key: string): boolean {
     return this.cache.has(key);
   }
 }
@@ -63,8 +74,8 @@ export function createMindmodelInjectorHook(ctx: PluginInput, classifyFn: Classi
   // Flag to prevent recursive classification calls
   let isClassifying = false;
 
-  // LRU cache for classified tasks (supports parallel agents)
-  const classifiedTasks = new LRUCache<string, string>(2000);
+  // LRU cache for classified tasks (supports parallel agents, uses hashed keys)
+  const classifiedTasks = new LRUCache<string>(2000);
 
   async function getMindmodel(): Promise<LoadedMindmodel | null> {
     if (cachedMindmodel === undefined) {
@@ -108,7 +119,8 @@ export function createMindmodelInjectorHook(ctx: PluginInput, classifyFn: Classi
         }
 
         // Skip if we've already classified this exact task (use cached result)
-        const cachedInjection = classifiedTasks.get(task);
+        const taskHash = hashTask(task);
+        const cachedInjection = classifiedTasks.get(taskHash);
         if (cachedInjection !== undefined) {
           pendingInjection = cachedInjection;
           return;
@@ -127,7 +139,7 @@ export function createMindmodelInjectorHook(ctx: PluginInput, classifyFn: Classi
 
           if (categories.length === 0) {
             log.info("mindmodel", "No matching categories found");
-            classifiedTasks.set(task, ""); // Cache empty result
+            classifiedTasks.set(taskHash, ""); // Cache empty result
             return;
           }
 
@@ -137,7 +149,7 @@ export function createMindmodelInjectorHook(ctx: PluginInput, classifyFn: Classi
           const examples = await loadExamples(mindmodel, categories);
           if (examples.length === 0) {
             log.info("mindmodel", "No examples found for categories");
-            classifiedTasks.set(task, ""); // Cache empty result
+            classifiedTasks.set(taskHash, ""); // Cache empty result
             return;
           }
 
@@ -145,7 +157,7 @@ export function createMindmodelInjectorHook(ctx: PluginInput, classifyFn: Classi
 
           // Store for the system transform hook and cache for future requests
           pendingInjection = formatted;
-          classifiedTasks.set(task, formatted);
+          classifiedTasks.set(taskHash, formatted);
           log.info("mindmodel", `Prepared ${examples.length} examples for injection`);
         } finally {
           // Always reset the flag
