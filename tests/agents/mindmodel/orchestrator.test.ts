@@ -19,10 +19,26 @@ describe("mindmodel-orchestrator agent", () => {
     expect(mindmodelOrchestratorAgent.prompt).toContain("example-extractor");
   });
 
-  it("should disable bash and task but allow write", () => {
+  it("should disable bash but allow write and other tools", () => {
     expect(mindmodelOrchestratorAgent.tools).toEqual({
       bash: false,
-      task: false,
     });
+  });
+
+  it("should reference all v2 phase agents", () => {
+    const prompt = mindmodelOrchestratorAgent.prompt;
+    // Phase 1
+    expect(prompt).toContain("mm-stack-detector");
+    expect(prompt).toContain("mm-dependency-mapper");
+    expect(prompt).toContain("mm-convention-extractor");
+    expect(prompt).toContain("mm-domain-extractor");
+    // Phase 2
+    expect(prompt).toContain("mm-code-clusterer");
+    expect(prompt).toContain("mm-pattern-discoverer");
+    expect(prompt).toContain("mm-anti-pattern-detector");
+    // Phase 3
+    expect(prompt).toContain("mm-example-extractor");
+    // Phase 4
+    expect(prompt).toContain("mm-constraint-writer");
   });
 });
