@@ -10,6 +10,13 @@ import { executorAgent } from "./executor";
 import { implementerAgent } from "./implementer";
 import { ledgerCreatorAgent } from "./ledger-creator";
 import {
+  antiPatternDetectorAgent,
+  codeClustererAgent,
+  constraintReviewerAgent,
+  constraintWriterAgent,
+  conventionExtractorAgent,
+  dependencyMapperAgent,
+  domainExtractorAgent,
   exampleExtractorAgent,
   mindmodelOrchestratorAgent,
   mindmodelPatternDiscovererAgent,
@@ -43,6 +50,14 @@ export const agents: Record<string, AgentConfig> = {
   "mm-pattern-discoverer": { ...mindmodelPatternDiscovererAgent, model: "openai/gpt-5.2-codex" },
   "mm-example-extractor": { ...exampleExtractorAgent, model: "openai/gpt-5.2-codex" },
   "mm-orchestrator": { ...mindmodelOrchestratorAgent, model: "openai/gpt-5.2-codex" },
+  // Mindmodel v2 analysis agents
+  "mm-dependency-mapper": { ...dependencyMapperAgent, model: "openai/gpt-5.2-codex" },
+  "mm-convention-extractor": { ...conventionExtractorAgent, model: "openai/gpt-5.2-codex" },
+  "mm-domain-extractor": { ...domainExtractorAgent, model: "openai/gpt-5.2-codex" },
+  "mm-code-clusterer": { ...codeClustererAgent, model: "openai/gpt-5.2-codex" },
+  "mm-anti-pattern-detector": { ...antiPatternDetectorAgent, model: "openai/gpt-5.2-codex" },
+  "mm-constraint-writer": { ...constraintWriterAgent, model: "openai/gpt-5.2-codex" },
+  "mm-constraint-reviewer": { ...constraintReviewerAgent, model: "openai/gpt-5.2-codex" },
 };
 
 export {
