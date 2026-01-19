@@ -23,7 +23,11 @@ interface MessageWithParts {
   parts: MessagePart[];
 }
 
-export function createMindmodelInjectorHook(ctx: PluginInput, classifyFn: ClassifyFn) {
+export function createMindmodelInjectorHook(
+  ctx: PluginInput,
+  classifyFn: ClassifyFn,
+  isInternalSession: (sessionID: string) => boolean,
+) {
   let cachedMindmodel: LoadedMindmodel | null | undefined;
 
   // Cache pending injection per session (between hooks)
@@ -54,16 +58,19 @@ export function createMindmodelInjectorHook(ctx: PluginInput, classifyFn: Classi
       input: { sessionID: string },
       output: { messages: MessageWithParts[] },
     ) => {
+      // Skip internal sessions (classifier, reviewer) to prevent infinite recursion
+      if (isInternalSession(input.sessionID)) {
+        return;
+      }
+
       try {
         const mindmodel = await getMindmodel();
         if (!mindmodel) {
-          log.info("mindmodel", "No .mindmodel/ found, skipping injection");
           return;
         }
 
         const task = extractTaskFromMessages(output.messages);
         if (!task) {
-          log.info("mindmodel", "No task extracted from messages");
           return;
         }
 
@@ -103,6 +110,11 @@ export function createMindmodelInjectorHook(ctx: PluginInput, classifyFn: Classi
 
     // Hook 2: Inject into system prompt
     "experimental.chat.system.transform": async (input: { sessionID: string }, output: { system: string[] }) => {
+      // Skip internal sessions
+      if (isInternalSession(input.sessionID)) {
+        return;
+      }
+
       const injection = pendingInjection.get(input.sessionID);
       if (!injection) return;
 

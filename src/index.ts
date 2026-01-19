@@ -93,6 +93,10 @@ const OpenCodeConfigPlugin: Plugin = async (ctx) => {
   const artifactAutoIndexHook = createArtifactAutoIndexHook(ctx);
   const fileOpsTrackerHook = createFileOpsTrackerHook(ctx);
 
+  // Track internal sessions to prevent hook recursion
+  const internalSessions = new Set<string>();
+  const isInternalSession = (sessionID: string) => internalSessions.has(sessionID);
+
   // Mindmodel injector hook - classifies tasks to inject relevant code examples
   const mindmodelClassifyFn = async (classifierPrompt: string): Promise<string> => {
     let sessionId: string | undefined;
@@ -107,6 +111,9 @@ const OpenCodeConfigPlugin: Plugin = async (ctx) => {
         return "[]";
       }
       sessionId = sessionResult.data.id;
+
+      // Mark as internal to prevent hook recursion
+      internalSessions.add(sessionId);
 
       // Use a fast model via prompt - the default agent will route appropriately
       const promptResult = await ctx.client.session.prompt({
@@ -135,13 +142,14 @@ const OpenCodeConfigPlugin: Plugin = async (ctx) => {
       log.warn("mindmodel", `Classifier failed: ${error instanceof Error ? error.message : "unknown error"}`);
       return "[]";
     } finally {
-      // Clean up session
+      // Clean up session and tracking
       if (sessionId) {
+        internalSessions.delete(sessionId);
         await ctx.client.session.delete({ path: { id: sessionId } }).catch(() => {});
       }
     }
   };
-  const mindmodelInjectorHook = createMindmodelInjectorHook(ctx, mindmodelClassifyFn);
+  const mindmodelInjectorHook = createMindmodelInjectorHook(ctx, mindmodelClassifyFn, isInternalSession);
 
   // Constraint reviewer hook - reviews generated code against .mindmodel/ constraints
   const constraintReviewerHook = createConstraintReviewerHook(ctx, async (reviewPrompt) => {
@@ -156,6 +164,9 @@ const OpenCodeConfigPlugin: Plugin = async (ctx) => {
         return '{"status": "PASS", "violations": [], "summary": "Review skipped"}';
       }
       sessionId = sessionResult.data.id;
+
+      // Mark as internal to prevent hook recursion
+      internalSessions.add(sessionId);
 
       const promptResult = await ctx.client.session.prompt({
         path: { id: sessionId },
@@ -183,6 +194,7 @@ const OpenCodeConfigPlugin: Plugin = async (ctx) => {
       return '{"status": "PASS", "violations": [], "summary": "Review failed"}';
     } finally {
       if (sessionId) {
+        internalSessions.delete(sessionId);
         await ctx.client.session.delete({ path: { id: sessionId } }).catch(() => {});
       }
     }
