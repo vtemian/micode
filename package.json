@@ -42,7 +42,8 @@
   "dependencies": {
     "@opencode-ai/plugin": "1.1.23",
     "bun-pty": "^0.4.5",
-    "valibot": "^1.2.0"
+    "valibot": "^1.2.0",
+    "yaml": "^2.8.2"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.3.10",
