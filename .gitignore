@@ -16,3 +16,6 @@ yarn.lock
 
 # IDE
 .idea/
+
+# Worktrees
+.worktrees/
