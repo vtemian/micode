@@ -13,4 +13,13 @@ describe("mindmodel pattern-discoverer agent", () => {
     expect(mindmodelPatternDiscovererAgent.prompt).toContain("components");
     expect(mindmodelPatternDiscovererAgent.prompt).toContain("patterns");
   });
+
+  it("should have read-only tool restrictions", () => {
+    expect(mindmodelPatternDiscovererAgent.tools).toEqual({
+      write: false,
+      edit: false,
+      bash: false,
+      task: false,
+    });
+  });
 });

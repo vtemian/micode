@@ -13,4 +13,13 @@ describe("stack-detector agent", () => {
     expect(stackDetectorAgent.prompt).toContain("Next.js");
     expect(stackDetectorAgent.prompt).toContain("Tailwind");
   });
+
+  it("should have read-only tool restrictions", () => {
+    expect(stackDetectorAgent.tools).toEqual({
+      write: false,
+      edit: false,
+      bash: false,
+      task: false,
+    });
+  });
 });

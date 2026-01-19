@@ -2,6 +2,7 @@
 import { access, readFile } from "node:fs/promises";
 import { join } from "node:path";
 
+import { config } from "../utils/config";
 import { type MindmodelManifest, parseManifest } from "./types";
 
 export interface LoadedMindmodel {
@@ -16,7 +17,7 @@ export interface LoadedExample {
 }
 
 export async function loadMindmodel(projectDir: string): Promise<LoadedMindmodel | null> {
-  const mindmodelDir = join(projectDir, ".mindmodel");
+  const mindmodelDir = join(projectDir, config.paths.mindmodelDir);
 
   try {
     await access(mindmodelDir);
@@ -24,7 +25,7 @@ export async function loadMindmodel(projectDir: string): Promise<LoadedMindmodel
     return null;
   }
 
-  const manifestPath = join(mindmodelDir, "manifest.yaml");
+  const manifestPath = join(mindmodelDir, config.paths.mindmodelManifest);
 
   try {
     const manifestContent = await readFile(manifestPath, "utf-8");

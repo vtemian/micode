@@ -18,4 +18,11 @@ describe("mindmodel-orchestrator agent", () => {
     expect(mindmodelOrchestratorAgent.prompt).toContain("pattern-discoverer");
     expect(mindmodelOrchestratorAgent.prompt).toContain("example-extractor");
   });
+
+  it("should disable bash and task but allow write", () => {
+    expect(mindmodelOrchestratorAgent.tools).toEqual({
+      bash: false,
+      task: false,
+    });
+  });
 });

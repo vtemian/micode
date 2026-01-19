@@ -52,5 +52,11 @@ export const stackDetectorAgent: AgentConfig = {
   description: "Detects project tech stack for mindmodel generation",
   mode: "subagent",
   temperature: 0.2,
+  tools: {
+    write: false,
+    edit: false,
+    bash: false,
+    task: false,
+  },
   prompt: PROMPT,
 };

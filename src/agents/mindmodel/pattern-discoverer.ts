@@ -67,5 +67,11 @@ export const mindmodelPatternDiscovererAgent: AgentConfig = {
   description: "Discovers pattern categories for mindmodel generation",
   mode: "subagent",
   temperature: 0.3,
+  tools: {
+    write: false,
+    edit: false,
+    bash: false,
+    task: false,
+  },
   prompt: PROMPT,
 };

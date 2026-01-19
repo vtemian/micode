@@ -115,5 +115,9 @@ export const mindmodelOrchestratorAgent: AgentConfig = {
   mode: "subagent",
   temperature: 0.3,
   maxTokens: 32000,
+  tools: {
+    bash: false,
+    task: false,
+  },
   prompt: PROMPT,
 };

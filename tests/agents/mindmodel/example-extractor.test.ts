@@ -13,4 +13,13 @@ describe("example-extractor agent", () => {
     expect(exampleExtractorAgent.prompt).toContain("example");
     expect(exampleExtractorAgent.prompt).toContain("representative");
   });
+
+  it("should have read-only tool restrictions", () => {
+    expect(exampleExtractorAgent.tools).toEqual({
+      write: false,
+      edit: false,
+      bash: false,
+      task: false,
+    });
+  });
 });

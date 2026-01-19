@@ -70,5 +70,11 @@ export const exampleExtractorAgent: AgentConfig = {
   description: "Extracts code examples for one mindmodel category",
   mode: "subagent",
   temperature: 0.2,
+  tools: {
+    write: false,
+    edit: false,
+    bash: false,
+    task: false,
+  },
   prompt: PROMPT,
 };

@@ -46,10 +46,10 @@ export function createContextInjectorHook(ctx: PluginInput) {
 
     // Also load mindmodel system.md if it exists
     try {
-      const mindmodelSystem = join(ctx.directory, ".mindmodel", "system.md");
+      const mindmodelSystem = join(ctx.directory, config.paths.mindmodelDir, config.paths.mindmodelSystem);
       const content = await readFile(mindmodelSystem, "utf-8");
       if (content.trim()) {
-        cache.rootContent.set(".mindmodel/system.md", content);
+        cache.rootContent.set(`${config.paths.mindmodelDir}/${config.paths.mindmodelSystem}`, content);
       }
     } catch {
       // Mindmodel doesn't exist - skip
