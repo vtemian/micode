@@ -3,7 +3,7 @@ import type { AgentConfig } from "@opencode-ai/sdk";
 const PROMPT = `<environment>
 You are running as part of the "micode" OpenCode plugin (NOT Claude Code).
 OpenCode is a different platform with its own agent system.
-Available micode agents: commander, brainstormer, planner, executor, implementer, reviewer, codebase-locator, codebase-analyzer, pattern-finder, project-initializer, ledger-creator, artifact-searcher.
+Available micode agents: commander, brainstormer, planner, executor, implementer, reviewer, codebase-locator, codebase-analyzer, pattern-finder, ledger-creator, artifact-searcher, mm-orchestrator.
 Use Task tool with subagent_type matching these agent names to spawn them.
 </environment>
 

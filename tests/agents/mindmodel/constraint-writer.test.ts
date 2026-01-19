@@ -8,8 +8,9 @@ describe("constraint-writer agent", () => {
     expect(constraintWriterAgent.mode).toBe("subagent");
   });
 
-  it("should have write access but not bash", () => {
-    expect(constraintWriterAgent.tools?.write).not.toBe(false);
+  it("should have write and edit access but not bash", () => {
+    expect(constraintWriterAgent.tools?.write).toBe(true);
+    expect(constraintWriterAgent.tools?.edit).toBe(true);
     expect(constraintWriterAgent.tools?.bash).toBe(false);
   });
 

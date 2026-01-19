@@ -424,13 +424,14 @@ IMPORTANT:
     },
 
     event: async ({ event }) => {
-      // Session cleanup (think mode + PTY + octto)
+      // Session cleanup (think mode + PTY + octto + constraint reviewer)
       if (event.type === "session.deleted") {
         const props = event.properties as { info?: { id?: string } } | undefined;
         if (props?.info?.id) {
           const sessionId = props.info.id;
           thinkModeState.delete(sessionId);
           ptyManager.cleanupBySession(sessionId);
+          constraintReviewerHook.cleanupSession(sessionId);
 
           // Cleanup octto sessions
           const octtoSessions = octtoSessionsMap.get(sessionId);

@@ -115,6 +115,8 @@ export const constraintWriterAgent: AgentConfig = {
   temperature: 0.2,
   maxTokens: 16000,
   tools: {
+    write: true,
+    edit: true,
     bash: false,
     task: false,
   },

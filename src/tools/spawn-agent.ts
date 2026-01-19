@@ -1,5 +1,5 @@
-import { tool } from "@opencode-ai/plugin/tool";
 import type { PluginInput } from "@opencode-ai/plugin";
+import { tool } from "@opencode-ai/plugin/tool";
 
 interface SessionCreateResponse {
   data?: { id?: string };
@@ -23,7 +23,7 @@ export function createSpawnAgentTool(ctx: PluginInput) {
   return tool({
     description: `FOR SUBAGENTS ONLY - Primary agents (commander, brainstormer) should use the built-in Task tool instead.
 Spawn a subagent to execute a task synchronously. The agent runs to completion and returns its result.
-Use this when you are a SUBAGENT (executor, planner, project-initializer) and need to spawn other subagents.
+Use this when you are a SUBAGENT (executor, planner, mm-orchestrator) and need to spawn other subagents.
 For parallel execution, call spawn_agent multiple times in ONE message.`,
     args: {
       agent: tool.schema.string().describe("Agent to spawn (e.g., 'implementer', 'reviewer')"),

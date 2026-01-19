@@ -396,4 +396,81 @@ categories:
     // Output should be unchanged (graceful degradation)
     expect(output.output).toBe("some code");
   });
+
+  it("should track retry count per file, not per session", async () => {
+    setupMindmodel(testDir);
+
+    const { createConstraintReviewerHook, ConstraintViolationError } = await import(
+      "../../src/hooks/constraint-reviewer"
+    );
+
+    const mockCtx = createMockCtx(testDir);
+    const mockReviewFn = async () =>
+      JSON.stringify({
+        status: "BLOCKED",
+        violations: [{ file: "test", rule: "rule", constraint_file: "c.md", found: "x", expected: "y" }],
+      });
+
+    const hook = createConstraintReviewerHook(mockCtx as any, mockReviewFn);
+
+    // First file - first retry
+    const output1 = { output: "code" };
+    await hook["tool.execute.after"](
+      { tool: "Write", sessionID: "test-session", args: { file_path: join(testDir, "file1.ts") } },
+      output1,
+    );
+    expect(output1.output).toContain("constraint-violations");
+
+    // Second file - should also be first retry (not blocked), since retry count is per-file
+    const output2 = { output: "code" };
+    await hook["tool.execute.after"](
+      { tool: "Write", sessionID: "test-session", args: { file_path: join(testDir, "file2.ts") } },
+      output2,
+    );
+    expect(output2.output).toContain("constraint-violations");
+
+    // First file again - should now be blocked (second retry)
+    try {
+      await hook["tool.execute.after"](
+        { tool: "Write", sessionID: "test-session", args: { file_path: join(testDir, "file1.ts") } },
+        { output: "code" },
+      );
+      expect(true).toBe(false); // Should throw
+    } catch (error) {
+      expect(error).toBeInstanceOf(ConstraintViolationError);
+    }
+  });
+
+  it("should cleanup session state via cleanupSession", async () => {
+    setupMindmodel(testDir);
+
+    const { createConstraintReviewerHook } = await import("../../src/hooks/constraint-reviewer");
+
+    const mockCtx = createMockCtx(testDir);
+    const mockReviewFn = async () =>
+      JSON.stringify({
+        status: "BLOCKED",
+        violations: [{ file: "test", rule: "rule", constraint_file: "c.md", found: "x", expected: "y" }],
+      });
+
+    const hook = createConstraintReviewerHook(mockCtx as any, mockReviewFn);
+
+    // Build up some state
+    await hook["tool.execute.after"](
+      { tool: "Write", sessionID: "cleanup-test", args: { file_path: join(testDir, "test.ts") } },
+      { output: "code" },
+    );
+
+    // Cleanup
+    hook.cleanupSession("cleanup-test");
+
+    // After cleanup, retry count should be reset - so first edit should be a retry, not a block
+    const output = { output: "code" };
+    await hook["tool.execute.after"](
+      { tool: "Write", sessionID: "cleanup-test", args: { file_path: join(testDir, "test.ts") } },
+      output,
+    );
+    // Should append violations (first retry), not throw
+    expect(output.output).toContain("constraint-violations");
+  });
 });

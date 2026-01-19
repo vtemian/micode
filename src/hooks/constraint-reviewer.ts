@@ -15,8 +15,9 @@ import { log } from "../utils/logger";
 type ReviewFn = (prompt: string) => Promise<string>;
 
 interface ReviewState {
-  retryCount: number;
-  lastViolations: string;
+  /** Retry count per file path */
+  retryCountByFile: Map<string, number>;
+  /** Override active for remainder of turn */
   overrideActive: boolean;
 }
 
@@ -34,12 +35,15 @@ export function createConstraintReviewerHook(ctx: PluginInput, reviewFn: ReviewF
   function getSessionState(sessionID: string): ReviewState {
     if (!sessionState.has(sessionID)) {
       sessionState.set(sessionID, {
-        retryCount: 0,
-        lastViolations: "",
+        retryCountByFile: new Map(),
         overrideActive: false,
       });
     }
     return sessionState.get(sessionID)!;
+  }
+
+  function cleanupSession(sessionID: string): void {
+    sessionState.delete(sessionID);
   }
 
   return {
@@ -74,19 +78,22 @@ export function createConstraintReviewerHook(ctx: PluginInput, reviewFn: ReviewF
         const result = parseReviewResponse(reviewResponse);
 
         if (result.status === "PASS") {
-          state.retryCount = 0;
+          // Reset retry count for this file on success
+          state.retryCountByFile.delete(filePath);
           return;
         }
 
-        // Handle violations
-        if (state.retryCount < config.mindmodel.reviewMaxRetries) {
+        // Handle violations - track retry count per file
+        const currentRetryCount = state.retryCountByFile.get(filePath) || 0;
+
+        if (currentRetryCount < config.mindmodel.reviewMaxRetries) {
           // Trigger retry by modifying output
-          state.retryCount++;
-          state.lastViolations = formatViolationsForRetry(result.violations);
-          output.output = `${output.output}\n\n<constraint-violations>\n${state.lastViolations}\n</constraint-violations>`;
+          state.retryCountByFile.set(filePath, currentRetryCount + 1);
+          const violationsText = formatViolationsForRetry(result.violations);
+          output.output = `${output.output}\n\n<constraint-violations>\n${violationsText}\n</constraint-violations>`;
         } else {
           // Max retries reached - block
-          state.retryCount = 0;
+          state.retryCountByFile.delete(filePath);
           const userMessage = formatViolationsForUser(result.violations);
           throw new ConstraintViolationError(userMessage, result);
         }
@@ -118,6 +125,9 @@ export function createConstraintReviewerHook(ctx: PluginInput, reviewFn: ReviewF
         log.info("mindmodel", `Override activated: ${reason}`);
       }
     },
+
+    /** Cleanup session state on session deletion to prevent memory leaks */
+    cleanupSession,
   };
 }
 
