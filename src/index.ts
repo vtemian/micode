@@ -20,9 +20,11 @@ import { createTokenAwareTruncationHook } from "./hooks/token-aware-truncation";
 import { artifact_search } from "./tools/artifact-search";
 // Tools
 import { ast_grep_replace, ast_grep_search, checkAstGrepAvailable } from "./tools/ast-grep";
+import { createBatchReadTool } from "./tools/batch-read";
 import { btca_ask, checkBtcaAvailable } from "./tools/btca";
 import { look_at } from "./tools/look-at";
 import { milestone_artifact_search } from "./tools/milestone-artifact-search";
+import { createMindmodelLookupTool } from "./tools/mindmodel-lookup";
 import { createOcttoTools, createSessionStore } from "./tools/octto";
 // PTY System
 import { createPtyTools, PTYManager } from "./tools/pty";
@@ -76,7 +78,7 @@ const OpenCodeConfigPlugin: Plugin = async (ctx) => {
     console.warn(`[micode] ${btcaStatus.message}`);
   }
 
-  // Load user config for temperature/maxTokens overrides (model overrides not supported)
+  // Load user config for agent overrides and feature flags
   const userConfig = await loadMicodeConfig();
 
   // Think mode state per session
@@ -93,62 +95,15 @@ const OpenCodeConfigPlugin: Plugin = async (ctx) => {
   const artifactAutoIndexHook = createArtifactAutoIndexHook(ctx);
   const fileOpsTrackerHook = createFileOpsTrackerHook(ctx);
 
-  // Track internal sessions to prevent hook recursion (used by classifier/reviewer)
+  // Track internal sessions to prevent hook recursion (used by reviewer)
   const internalSessions = new Set<string>();
 
-  // Mindmodel injector hook - classifies tasks to inject relevant code examples
-  const mindmodelClassifyFn = async (classifierPrompt: string): Promise<string> => {
-    let sessionId: string | undefined;
-    try {
-      // Create a temporary session for classification
-      const sessionResult = await ctx.client.session.create({
-        body: { title: "mindmodel-classifier" },
-      });
+  // Mindmodel injector hook - matches tasks to patterns via keywords and injects them
+  // Feature-flagged: set features.mindmodelInjection=true in micode.json to enable
+  const mindmodelInjectorHook = userConfig?.features?.mindmodelInjection ? createMindmodelInjectorHook(ctx) : null;
 
-      if (!sessionResult.data?.id) {
-        log.warn("mindmodel", "Failed to create classifier session");
-        return "[]";
-      }
-      sessionId = sessionResult.data.id;
-
-      // Mark as internal to prevent hook recursion
-      internalSessions.add(sessionId);
-
-      // Use a fast model via prompt - the default agent will route appropriately
-      const promptResult = await ctx.client.session.prompt({
-        path: { id: sessionId },
-        body: {
-          tools: {}, // No tools needed for classification
-          parts: [{ type: "text", text: classifierPrompt }],
-        },
-      });
-
-      if (!promptResult.data?.parts) {
-        log.warn("mindmodel", "Empty response from classifier");
-        return "[]";
-      }
-
-      // Extract text response
-      let responseText = "";
-      for (const part of promptResult.data.parts) {
-        if (part.type === "text" && "text" in part) {
-          responseText += (part as { text: string }).text;
-        }
-      }
-
-      return responseText;
-    } catch (error) {
-      log.warn("mindmodel", `Classifier failed: ${error instanceof Error ? error.message : "unknown error"}`);
-      return "[]";
-    } finally {
-      // Clean up session and tracking
-      if (sessionId) {
-        internalSessions.delete(sessionId);
-        await ctx.client.session.delete({ path: { id: sessionId } }).catch(() => {});
-      }
-    }
-  };
-  const mindmodelInjectorHook = createMindmodelInjectorHook(ctx, mindmodelClassifyFn);
+  // Mindmodel lookup tool - agents call this when they need coding patterns
+  const mindmodelLookupTool = createMindmodelLookupTool(ctx);
 
   // Constraint reviewer hook - reviews generated code against .mindmodel/ constraints
   const constraintReviewerHook = createConstraintReviewerHook(ctx, async (reviewPrompt) => {
@@ -206,6 +161,9 @@ const OpenCodeConfigPlugin: Plugin = async (ctx) => {
   // Spawn agent tool (for subagents to spawn other subagents)
   const spawn_agent = createSpawnAgentTool(ctx);
 
+  // Batch read tool (for parallel file reads)
+  const batch_read = createBatchReadTool(ctx);
+
   // Octto (browser-based brainstorming) tools
   const octtoSessionStore = createSessionStore();
 
@@ -238,6 +196,8 @@ const OpenCodeConfigPlugin: Plugin = async (ctx) => {
       artifact_search,
       milestone_artifact_search,
       spawn_agent,
+      batch_read,
+      ...mindmodelLookupTool,
       ...ptyTools,
       ...octtoTools,
     },
@@ -278,7 +238,12 @@ const OpenCodeConfigPlugin: Plugin = async (ctx) => {
       config.command = {
         ...config.command,
         init: {
-          description: "Initialize project with .mindmodel/ constraints",
+          description: "Initialize project with ARCHITECTURE.md and CODE_STYLE.md",
+          agent: "project-initializer",
+          template: `Initialize this project. $ARGUMENTS`,
+        },
+        mindmodel: {
+          description: "Generate .mindmodel/ constraints for this project",
           agent: "mm-orchestrator",
           template: `Generate mindmodel for this project. $ARGUMENTS`,
         },
@@ -417,16 +382,17 @@ IMPORTANT:
       );
     },
 
-    // Extract task from messages for mindmodel injection
+    // Transform messages: match task keywords and prepare mindmodel injection
     "experimental.chat.messages.transform": async (input, output) => {
+      if (!mindmodelInjectorHook) return;
+      // Skip internal sessions (reviewer)
+      if (internalSessions.has(input.sessionID)) return;
+
       await mindmodelInjectorHook["experimental.chat.messages.transform"](input, output);
     },
 
-    // Transform system prompt: inject mindmodel examples, filter CLAUDE.md/AGENTS.md
+    // Transform system prompt: filter CLAUDE.md/AGENTS.md + inject mindmodel
     "experimental.chat.system.transform": async (input, output) => {
-      // Inject mindmodel examples first (highest priority)
-      await mindmodelInjectorHook["experimental.chat.system.transform"](input, output);
-
       // Filter out CLAUDE.md/AGENTS.md from system prompt for our agents
       output.system = output.system.filter((s) => {
         // Keep entries that don't come from CLAUDE.md or AGENTS.md
@@ -438,6 +404,11 @@ IMPORTANT:
         }
         return true;
       });
+
+      // Inject mindmodel patterns into system prompt (if enabled)
+      if (mindmodelInjectorHook) {
+        await mindmodelInjectorHook["experimental.chat.system.transform"](input, output);
+      }
     },
 
     event: async ({ event }) => {
