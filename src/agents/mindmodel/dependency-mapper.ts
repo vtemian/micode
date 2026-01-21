@@ -16,18 +16,25 @@ Analyze imports across the codebase to identify:
 
 <process>
 1. Glob for source files: **/*.{ts,tsx,js,jsx,py,go,rs}
-2. Sample 20-30 files across different directories
-3. Extract import statements from each
-4. Categorize dependencies:
+2. Select 20-30 files across different directories
+3. Use batch_read to read ALL selected files in ONE call (parallel):
+   batch_read({paths: ["src/file1.ts", "src/file2.ts", ...]})
+4. Extract import statements from the batch results
+5. Categorize dependencies:
    - External packages (from node_modules, pip, etc.)
    - Internal modules (relative imports)
    - Built-in/standard library
-5. Count usage frequency
-6. Identify patterns:
+6. Count usage frequency
+7. Identify patterns:
    - "Always use X instead of Y"
    - "Import from barrel file, not direct path"
    - "Prefer internal wrapper over raw library"
 </process>
+
+<parallel-reads>
+IMPORTANT: Use batch_read instead of reading files one at a time.
+batch_read reads all files in parallel via Promise.all - much faster than sequential reads.
+</parallel-reads>
 
 <output-format>
 ## Dependency Analysis

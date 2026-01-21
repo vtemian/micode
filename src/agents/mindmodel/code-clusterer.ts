@@ -18,16 +18,24 @@ Find and group similar code patterns across the codebase:
 </purpose>
 
 <process>
-1. Use ast-grep or grep to find pattern indicators:
+1. Use grep to find files with pattern indicators:
    - Error handling: "catch", "try", "Error", "throw"
    - API calls: "fetch", "axios", "api.", "client."
    - Validation: "validate", "schema", "parse", "zod"
    - Auth: "auth", "session", "token", "permission"
    - Logging: "log.", "console.", "logger"
-2. Sample 5-10 instances of each pattern type
-3. Identify the COMMON approach (what 80%+ of code does)
-4. Note variations and why they might exist
+2. Select 5-10 files for each pattern type
+3. Use batch_read to read ALL files at once (parallel):
+   batch_read({paths: [...all pattern files...]})
+4. Identify the COMMON approach (what 80%+ of code does)
+5. Note variations and why they might exist
 </process>
+
+<parallel-reads>
+IMPORTANT: Use batch_read to read all sample files in parallel.
+Example: batch_read({paths: ["src/api.ts", "src/auth.ts", ...other files...]})
+This is much faster than reading files one at a time.
+</parallel-reads>
 
 <output-format>
 ## Code Pattern Clusters

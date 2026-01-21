@@ -16,25 +16,34 @@ Analyze the codebase to identify coding conventions:
 </purpose>
 
 <process>
-1. Sample 30-40 source files across the codebase
-2. Analyze naming patterns:
+1. Glob for source files across the codebase
+2. Select 30-40 diverse files from different directories
+3. Use batch_read to read ALL files in ONE call (parallel):
+   batch_read({paths: ["src/file1.ts", "src/file2.ts", ...], maxLines: 100})
+4. Analyze naming patterns from batch results:
    - File naming: kebab-case, camelCase, PascalCase?
    - Function naming: verbs, prefixes like "get", "handle", "use"?
    - Variable naming: descriptive, abbreviated?
    - Type/interface naming: prefixes like "I", "T"?
-3. Analyze import organization:
+5. Analyze import organization:
    - External vs internal grouping?
    - Alphabetical ordering?
    - Type imports separate?
-4. Analyze file structure:
+6. Analyze file structure:
    - Exports at top or bottom?
    - Constants location?
    - Types inline or separate files?
-5. Analyze type patterns:
+7. Analyze type patterns:
    - Interface vs type alias preference?
    - Generics usage patterns?
    - Strict null checks?
 </process>
+
+<parallel-reads>
+IMPORTANT: Use batch_read to read all files in parallel.
+Example: batch_read({paths: [...30 file paths...], maxLines: 100})
+This is much faster than reading files one at a time.
+</parallel-reads>
 
 <output-format>
 ## Coding Conventions

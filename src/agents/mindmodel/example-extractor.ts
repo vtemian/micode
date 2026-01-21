@@ -28,12 +28,19 @@ Avoid:
 </selection-criteria>
 
 <process>
-1. Read the provided file list for this category
-2. Skim 5-6 candidate files
-3. Select 2-3 best examples based on criteria
-4. Read selected files fully
+1. Review the provided file list for this category
+2. Use batch_read to read 5-6 candidate files at once (parallel):
+   batch_read({paths: ["file1.ts", "file2.ts", ...], maxLines: 80})
+3. From batch results, select 2-3 best examples based on criteria
+4. If needed, batch_read again for full content of selected files
 5. Extract and annotate the code
 </process>
+
+<parallel-reads>
+IMPORTANT: Use batch_read to read multiple files in parallel.
+Example: batch_read({paths: [...candidate files...], maxLines: 80})
+This is much faster than reading files one at a time.
+</parallel-reads>
 
 <output-format>
 Output markdown for this category file:

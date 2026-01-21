@@ -22,11 +22,21 @@ You will receive analysis from:
 - domain-extractor: Business terminology
 - code-clusterer: Code patterns
 - anti-pattern-detector: Anti-patterns
-- pattern-discoverer: Pattern categories
-- example-extractor: Code examples
+- pattern-discoverer: Pattern categories (includes file locations)
 
 Combine these into a coherent constraint structure.
 </input>
+
+<example-extraction>
+For each constraint file, you MUST extract 2-3 real code examples from the codebase:
+
+1. From pattern-discoverer output, identify file locations for this category
+2. Use batch_read to read candidate files: batch_read({paths: ["src/file1.ts", "src/file2.ts"], maxLines: 80})
+3. Select the best 2-3 examples that show the dominant pattern
+4. Include annotated examples in the constraint file
+
+IMPORTANT: Do NOT use placeholder or fake examples. Use batch_read to get real code from the project.
+</example-extraction>
 
 <output-structure>
 .mindmodel/
@@ -110,13 +120,15 @@ categories:
 </rules>`;
 
 export const constraintWriterAgent: AgentConfig = {
-  description: "Assembles analysis into .mindmodel/ structure",
+  description: "Assembles analysis into .mindmodel/ structure with inline example extraction",
   mode: "subagent",
   temperature: 0.2,
   maxTokens: 16000,
   tools: {
     write: true,
     edit: true,
+    read: true,
+    batch_read: true,
     bash: false,
     task: false,
   },
