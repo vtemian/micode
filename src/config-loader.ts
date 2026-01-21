@@ -44,14 +44,22 @@ export function loadAvailableModels(configDir?: string): Set<string> {
 // Safe properties that users can override
 const SAFE_AGENT_PROPERTIES = ["model", "temperature", "maxTokens"] as const;
 
+// Built-in OpenCode models that don't require validation (always available)
+const BUILTIN_MODELS = new Set(["opencode/big-pickle"]);
+
 export interface AgentOverride {
   model?: string;
   temperature?: number;
   maxTokens?: number;
 }
 
+export interface MicodeFeatures {
+  mindmodelInjection?: boolean;
+}
+
 export interface MicodeConfig {
   agents?: Record<string, AgentOverride>;
+  features?: MicodeFeatures;
 }
 
 /**
@@ -67,7 +75,9 @@ export async function loadMicodeConfig(configDir?: string): Promise<MicodeConfig
     const content = await readFile(configPath, "utf-8");
     const parsed = JSON.parse(content) as Record<string, unknown>;
 
-    // Sanitize the config - only allow safe properties
+    const result: MicodeConfig = {};
+
+    // Sanitize agents - only allow safe properties
     if (parsed.agents && typeof parsed.agents === "object") {
       const sanitizedAgents: Record<string, AgentOverride> = {};
 
@@ -86,10 +96,18 @@ export async function loadMicodeConfig(configDir?: string): Promise<MicodeConfig
         }
       }
 
-      return { agents: sanitizedAgents };
+      result.agents = sanitizedAgents;
     }
 
-    return parsed as MicodeConfig;
+    // Parse features
+    if (parsed.features && typeof parsed.features === "object") {
+      const features = parsed.features as Record<string, unknown>;
+      result.features = {
+        mindmodelInjection: features.mindmodelInjection === true,
+      };
+    }
+
+    return result;
   } catch {
     return null;
   }
@@ -120,8 +138,9 @@ export function mergeAgentConfigs(
     if (userOverride) {
       // Validate model if specified
       if (userOverride.model) {
-        if (!shouldValidateModels || models.has(userOverride.model)) {
-          // Model is valid (or validation unavailable) - apply all overrides
+        const isBuiltin = BUILTIN_MODELS.has(userOverride.model);
+        if (isBuiltin || !shouldValidateModels || models.has(userOverride.model)) {
+          // Model is valid (builtin, validation unavailable, or in config) - apply all overrides
           merged[name] = {
             ...agentConfig,
             ...userOverride,
@@ -189,6 +208,12 @@ export function validateAgentModels(userConfig: MicodeConfig, providers: Provide
       if (Object.keys(otherProps).length > 0) {
         validatedAgents[agentName] = otherProps;
       }
+      continue;
+    }
+
+    // Skip validation for built-in models
+    if (BUILTIN_MODELS.has(trimmedModel)) {
+      validatedAgents[agentName] = override;
       continue;
     }
 

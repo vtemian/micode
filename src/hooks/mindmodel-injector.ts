@@ -1,17 +1,12 @@
 // src/hooks/mindmodel-injector.ts
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
+
 import type { PluginInput } from "@opencode-ai/plugin";
 
-import {
-  buildClassifierPrompt,
-  formatExamplesForInjection,
-  type LoadedMindmodel,
-  loadExamples,
-  loadMindmodel,
-  parseClassifierResponse,
-} from "../mindmodel";
-import { log } from "../utils/logger";
-
-type ClassifyFn = (prompt: string) => Promise<string>;
+import { formatExamplesForInjection, type LoadedMindmodel, loadExamples, loadMindmodel } from "../mindmodel";
+import { matchCategories } from "../tools/mindmodel-lookup";
+import { config } from "../utils/config";
 
 interface MessagePart {
   type: string;
@@ -34,7 +29,7 @@ function hashTask(task: string): string {
   return hash.toString(36);
 }
 
-// Simple LRU cache for classified tasks
+// Simple LRU cache for matched tasks
 class LRUCache<V> {
   private cache = new Map<string, V>();
   constructor(private maxSize: number) {}
@@ -65,23 +60,33 @@ class LRUCache<V> {
   }
 }
 
-export function createMindmodelInjectorHook(ctx: PluginInput, classifyFn: ClassifyFn) {
+export function createMindmodelInjectorHook(ctx: PluginInput) {
   let cachedMindmodel: LoadedMindmodel | null | undefined;
+  let cachedSystemMd: string | null | undefined;
 
   // Pending injection content (shared across hooks for current request)
   let pendingInjection: string | null = null;
 
-  // Flag to prevent recursive classification calls
-  let isClassifying = false;
-
-  // LRU cache for classified tasks (supports parallel agents, uses hashed keys)
-  const classifiedTasks = new LRUCache<string>(2000);
+  // LRU cache for matched tasks (uses hashed keys)
+  const matchedTasks = new LRUCache<string>(2000);
 
   async function getMindmodel(): Promise<LoadedMindmodel | null> {
     if (cachedMindmodel === undefined) {
       cachedMindmodel = await loadMindmodel(ctx.directory);
     }
     return cachedMindmodel;
+  }
+
+  async function getSystemMd(): Promise<string | null> {
+    if (cachedSystemMd === undefined) {
+      try {
+        const systemPath = join(ctx.directory, config.paths.mindmodelDir, config.paths.mindmodelSystem);
+        cachedSystemMd = await readFile(systemPath, "utf-8");
+      } catch {
+        cachedSystemMd = null;
+      }
+    }
+    return cachedSystemMd;
   }
 
   function extractTaskFromMessages(messages: MessageWithParts[]): string {
@@ -102,11 +107,6 @@ export function createMindmodelInjectorHook(ctx: PluginInput, classifyFn: Classi
       _input: Record<string, unknown>,
       output: { messages: MessageWithParts[] },
     ) => {
-      // Skip if we're already classifying (prevents infinite recursion)
-      if (isClassifying) {
-        return;
-      }
-
       try {
         const mindmodel = await getMindmodel();
         if (!mindmodel) {
@@ -118,71 +118,53 @@ export function createMindmodelInjectorHook(ctx: PluginInput, classifyFn: Classi
           return;
         }
 
-        // Skip if we've already classified this exact task (use cached result)
+        // Check cache first
         const taskHash = hashTask(task);
-        const cachedInjection = classifiedTasks.get(taskHash);
+        const cachedInjection = matchedTasks.get(taskHash);
         if (cachedInjection !== undefined) {
-          pendingInjection = cachedInjection;
+          pendingInjection = cachedInjection || null;
           return;
         }
 
-        log.info("mindmodel", `Classifying task: "${task.slice(0, 100)}..."`);
+        // Match categories using keywords (instant, no LLM)
+        const categories = matchCategories(task, mindmodel.manifest);
 
-        // Set flag before classification to prevent recursive calls
-        isClassifying = true;
-
-        try {
-          // Classify the task
-          const classifierPrompt = buildClassifierPrompt(task, mindmodel.manifest);
-          const classifierResponse = await classifyFn(classifierPrompt);
-          const categories = parseClassifierResponse(classifierResponse, mindmodel.manifest);
-
-          if (categories.length === 0) {
-            log.info("mindmodel", "No matching categories found");
-            classifiedTasks.set(taskHash, ""); // Cache empty result
-            return;
-          }
-
-          log.info("mindmodel", `Matched categories: ${categories.join(", ")}`);
-
-          // Load and format examples
-          const examples = await loadExamples(mindmodel, categories);
-          if (examples.length === 0) {
-            log.info("mindmodel", "No examples found for categories");
-            classifiedTasks.set(taskHash, ""); // Cache empty result
-            return;
-          }
-
-          const formatted = formatExamplesForInjection(examples);
-
-          // Store for the system transform hook and cache for future requests
-          pendingInjection = formatted;
-          classifiedTasks.set(taskHash, formatted);
-          log.info("mindmodel", `Prepared ${examples.length} examples for injection`);
-        } finally {
-          // Always reset the flag
-          isClassifying = false;
+        if (categories.length === 0) {
+          matchedTasks.set(taskHash, ""); // Cache empty result
+          return;
         }
-      } catch (error) {
-        isClassifying = false;
-        log.warn(
-          "mindmodel",
-          `Failed to prepare examples: ${error instanceof Error ? error.message : "unknown error"}`,
-        );
+
+        // Load and format examples
+        const examples = await loadExamples(mindmodel, categories);
+        if (examples.length === 0) {
+          matchedTasks.set(taskHash, ""); // Cache empty result
+          return;
+        }
+
+        const formatted = formatExamplesForInjection(examples);
+
+        // Store for the system transform hook and cache for future requests
+        pendingInjection = formatted;
+        matchedTasks.set(taskHash, formatted);
+      } catch {
+        // Silently ignore errors - don't break the main flow
       }
     },
 
     // Hook 2: Inject into system prompt
     "experimental.chat.system.transform": async (_input: { sessionID: string }, output: { system: string[] }) => {
-      if (!pendingInjection) return;
+      // Always inject system.md as base context
+      const systemMd = await getSystemMd();
+      if (systemMd) {
+        output.system.unshift(`<mindmodel-constraints>\n${systemMd}\n</mindmodel-constraints>`);
+      }
 
-      // Consume the pending injection
-      const injection = pendingInjection;
-      pendingInjection = null;
-
-      // Prepend to system prompt
-      output.system.unshift(injection);
-      log.info("mindmodel", "Injected examples into system prompt");
+      // Add keyword-matched patterns if any
+      if (pendingInjection) {
+        const injection = pendingInjection;
+        pendingInjection = null;
+        output.system.unshift(injection);
+      }
     },
   };
 }
