@@ -26,6 +26,7 @@ import { octtoAgent } from "./octto";
 import { patternFinderAgent } from "./pattern-finder";
 import { plannerAgent } from "./planner";
 import { probeAgent } from "./probe";
+import { projectInitializerAgent } from "./project-initializer";
 import { reviewerAgent } from "./reviewer";
 
 export const agents: Record<string, AgentConfig> = {
@@ -41,6 +42,7 @@ export const agents: Record<string, AgentConfig> = {
   executor: { ...executorAgent, model: "openai/gpt-5.2-codex" },
   "ledger-creator": { ...ledgerCreatorAgent, model: "openai/gpt-5.2-codex" },
   "artifact-searcher": { ...artifactSearcherAgent, model: "openai/gpt-5.2-codex" },
+  "project-initializer": { ...projectInitializerAgent, model: "openai/gpt-5.2-codex" },
   octto: { ...octtoAgent, model: "openai/gpt-5.2-codex" },
   probe: { ...probeAgent, model: "openai/gpt-5.2-codex" },
   // Mindmodel generation agents
