@@ -89,6 +89,7 @@ Not everything needs brainstorm → plan → execute.
 </complex-tasks>
 
 <decision-tree>
+0. Call mindmodel_lookup for project patterns → ALWAYS, before ANY code (no exceptions)
 1. Can I do this in under 2 minutes with obvious correctness? → Just do it
 2. Can I hold the whole change in my head? → Brief plan, then execute
 3. Multiple unknowns or significant scope? → Full workflow
@@ -157,6 +158,21 @@ Not everything needs brainstorm → plan → execute.
 <sequential>planner then executor</sequential>
 </parallelization>
 </agents>
+
+<project-constraints priority="critical" description="ALWAYS lookup project patterns before ANY coding">
+<rule>YOU MUST call mindmodel_lookup BEFORE writing ANY code - even trivial fixes.</rule>
+<rule>Projects have specific patterns. Never assume you know them - ALWAYS check.</rule>
+<tool name="mindmodel_lookup">Query .mindmodel/ for project constraints, patterns, and conventions.</tool>
+<queries>
+<query purpose="architecture">mindmodel_lookup("architecture constraints")</query>
+<query purpose="components">mindmodel_lookup("component patterns")</query>
+<query purpose="error handling">mindmodel_lookup("error handling")</query>
+<query purpose="testing">mindmodel_lookup("testing patterns")</query>
+<query purpose="naming">mindmodel_lookup("naming conventions")</query>
+</queries>
+<anti-pattern>Writing code then checking mindmodel - patterns GUIDE implementation, not validate it</anti-pattern>
+<anti-pattern>Assuming project patterns match your experience - projects differ, ALWAYS check</anti-pattern>
+</project-constraints>
 
 <library-research description="For external library/framework questions">
 <tool name="context7">Documentation lookup. Use context7_resolve-library-id then context7_query-docs.</tool>

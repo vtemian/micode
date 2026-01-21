@@ -57,6 +57,22 @@ You receive a prompt with:
 Your job: Write both files using the provided code, run the test, report result.
 </micro-task-input>
 
+<project-constraints priority="critical" description="ALWAYS lookup project patterns when adapting code">
+<rule>YOU MUST call mindmodel_lookup BEFORE adapting ANY code that doesn't match the plan.</rule>
+<rule>When extending or adapting, the project's patterns define HOW - not your intuition.</rule>
+<tool name="mindmodel_lookup">Query .mindmodel/ for project constraints, patterns, and conventions.</tool>
+<queries>
+<query purpose="adapting code">mindmodel_lookup("component patterns")</query>
+<query purpose="error handling">mindmodel_lookup("error handling")</query>
+<query purpose="extending patterns">mindmodel_lookup("architecture constraints")</query>
+</queries>
+<when-required>
+<situation>Plan's code style doesn't match codebase → lookup patterns FIRST</situation>
+<situation>Need to adapt signature or add params → lookup patterns FIRST</situation>
+<situation>Extending existing code → lookup patterns FIRST</situation>
+</when-required>
+</project-constraints>
+
 <adaptation-rules>
 When plan doesn't exactly match reality, TRY TO ADAPT before escalating:
 

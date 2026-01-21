@@ -117,15 +117,30 @@ When design is silent on implementation details, make confident decisions:
 
 <inputs>
   <required>Design document from thoughts/shared/designs/</required>
-  <injected>.mindmodel/ - project constraints and patterns (automatically available)</injected>
 </inputs>
+
+<project-constraints priority="critical" description="ALWAYS lookup project patterns before planning code">
+<rule>YOU MUST call mindmodel_lookup BEFORE writing ANY implementation code in the plan.</rule>
+<rule>Patterns define HOW code should be written. Never guess - ALWAYS check.</rule>
+<tool name="mindmodel_lookup">Query .mindmodel/ for project constraints, patterns, and conventions.</tool>
+<queries>
+<query purpose="architecture">mindmodel_lookup("architecture constraints")</query>
+<query purpose="components">mindmodel_lookup("component patterns")</query>
+<query purpose="error handling">mindmodel_lookup("error handling")</query>
+<query purpose="testing">mindmodel_lookup("testing patterns")</query>
+<query purpose="naming">mindmodel_lookup("naming conventions")</query>
+</queries>
+<anti-pattern>Writing plan code then checking if it matches project patterns - ALWAYS check first</anti-pattern>
+</project-constraints>
 
 <process>
 <phase name="understand-design">
   <action>Read the design document using Read tool (NOT a subagent)</action>
+  <action>Call mindmodel_lookup for project patterns (architecture, components, error handling, testing)</action>
   <action>Identify all components, files, and interfaces mentioned</action>
   <action>Note any constraints or decisions made by brainstormer</action>
   <rule>The design doc often contains 80% of what you need - read it carefully</rule>
+  <rule>Project patterns from mindmodel_lookup guide HOW you write the code in the plan</rule>
 </phase>
 
 <phase name="minimal-research" description="ONLY if design doc is missing critical details">

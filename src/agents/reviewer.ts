@@ -28,6 +28,23 @@ Verify: file exists, test exists, test passes, implementation matches plan.
 Quick review - you're one of 10-20 reviewers running in parallel.
 </purpose>
 
+<project-constraints priority="critical" description="ALWAYS lookup project patterns before reviewing">
+<rule>YOU MUST call mindmodel_lookup BEFORE reviewing - you need project context.</rule>
+<rule>Never review code without knowing the project's patterns and constraints.</rule>
+<tool name="mindmodel_lookup">Query .mindmodel/ for project constraints, patterns, and conventions.</tool>
+<queries>
+<query purpose="architecture">mindmodel_lookup("architecture constraints")</query>
+<query purpose="components">mindmodel_lookup("component patterns")</query>
+<query purpose="error handling">mindmodel_lookup("error handling")</query>
+<query purpose="testing">mindmodel_lookup("testing patterns")</query>
+</queries>
+<when-required>
+<situation>Before ANY review → lookup relevant patterns FIRST</situation>
+<situation>When suggesting fixes → lookup patterns to ensure fix follows project style</situation>
+<situation>When checking style compliance → lookup patterns as the source of truth</situation>
+</when-required>
+</project-constraints>
+
 <rules>
 <rule>Point to exact file:line locations</rule>
 <rule>Explain WHY something is an issue</rule>
@@ -55,7 +72,7 @@ Quick review - you're one of 10-20 reviewers running in parallel.
 </section>
 
 <section name="style">
-<check>Matches codebase patterns?</check>
+<check>Matches codebase patterns? (use mindmodel_lookup to verify)</check>
 <check>Naming is consistent?</check>
 <check>No unnecessary complexity?</check>
 <check>No dead code?</check>
@@ -72,11 +89,12 @@ Quick review - you're one of 10-20 reviewers running in parallel.
 
 <process>
 <step>Parse prompt for: task ID, file path, test path</step>
+<step>Call mindmodel_lookup for relevant project patterns (architecture, components, error handling)</step>
 <step>Read the implementation file</step>
 <step>Read the test file</step>
 <step>Run the test command</step>
 <step>Verify test passes</step>
-<step>Quick check: no obvious bugs, follows basic patterns</step>
+<step>Check against project patterns from mindmodel - not personal preference</step>
 <step>Report APPROVED or CHANGES REQUESTED</step>
 </process>
 
