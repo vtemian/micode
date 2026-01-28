@@ -159,4 +159,116 @@ describe("fragment-injector", () => {
       expect(result).toBe(`<user-instructions>\n- Single instruction\n</user-instructions>\n\n`);
     });
   });
+
+  describe("createFragmentInjectorHook", () => {
+    it("should inject fragments at beginning of system prompt", async () => {
+      // Create project fragments
+      const micodeDir = join(testDir, ".micode");
+      mkdirSync(micodeDir, { recursive: true });
+      writeFileSync(
+        join(micodeDir, "fragments.json"),
+        JSON.stringify({
+          brainstormer: ["Project instruction"],
+        }),
+      );
+
+      const { createFragmentInjectorHook } = await import("../../src/hooks/fragment-injector");
+      const ctx = createMockCtx(testDir);
+      const globalConfig = {
+        fragments: {
+          brainstormer: ["Global instruction"],
+        },
+      };
+
+      const hooks = createFragmentInjectorHook(ctx as any, globalConfig);
+
+      const input = { sessionID: "test-session" };
+      const output = {
+        system: "Original system prompt",
+        options: { agent: "brainstormer" },
+      };
+
+      await hooks["chat.params"](input, output);
+
+      expect(output.system).toContain("<user-instructions>");
+      expect(output.system).toContain("- Global instruction");
+      expect(output.system).toContain("- Project instruction");
+      // Should be at the beginning
+      expect(output.system.startsWith("<user-instructions>")).toBe(true);
+      // Original content should be preserved after
+      expect(output.system).toContain("Original system prompt");
+    });
+
+    it("should not inject when agent has no fragments", async () => {
+      const { createFragmentInjectorHook } = await import("../../src/hooks/fragment-injector");
+      const ctx = createMockCtx(testDir);
+      const globalConfig = {
+        fragments: {
+          planner: ["Planner instruction"],
+        },
+      };
+
+      const hooks = createFragmentInjectorHook(ctx as any, globalConfig);
+
+      const input = { sessionID: "test-session" };
+      const output = {
+        system: "Original system prompt",
+        options: { agent: "brainstormer" },
+      };
+
+      await hooks["chat.params"](input, output);
+
+      expect(output.system).toBe("Original system prompt");
+      expect(output.system).not.toContain("<user-instructions>");
+    });
+
+    it("should handle no global config", async () => {
+      const micodeDir = join(testDir, ".micode");
+      mkdirSync(micodeDir, { recursive: true });
+      writeFileSync(
+        join(micodeDir, "fragments.json"),
+        JSON.stringify({
+          brainstormer: ["Project only instruction"],
+        }),
+      );
+
+      const { createFragmentInjectorHook } = await import("../../src/hooks/fragment-injector");
+      const ctx = createMockCtx(testDir);
+
+      const hooks = createFragmentInjectorHook(ctx as any, null);
+
+      const input = { sessionID: "test-session" };
+      const output = {
+        system: "Original prompt",
+        options: { agent: "brainstormer" },
+      };
+
+      await hooks["chat.params"](input, output);
+
+      expect(output.system).toContain("Project only instruction");
+    });
+
+    it("should handle missing agent in options", async () => {
+      const { createFragmentInjectorHook } = await import("../../src/hooks/fragment-injector");
+      const ctx = createMockCtx(testDir);
+      const globalConfig = {
+        fragments: {
+          brainstormer: ["Some instruction"],
+        },
+      };
+
+      const hooks = createFragmentInjectorHook(ctx as any, globalConfig);
+
+      const input = { sessionID: "test-session" };
+      const output = {
+        system: "Original prompt",
+        options: {},
+      };
+
+      await hooks["chat.params"](input, output);
+
+      // Should not crash, system unchanged
+      expect(output.system).toBe("Original prompt");
+    });
+  });
 });

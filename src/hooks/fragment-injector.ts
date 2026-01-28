@@ -2,6 +2,10 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
+import type { PluginInput } from "@opencode-ai/plugin";
+
+import type { MicodeConfig } from "../config-loader";
+
 /**
  * Load project-level fragments from .micode/fragments.json
  * Returns empty object if file doesn't exist or is invalid
@@ -64,4 +68,45 @@ export function formatFragmentsBlock(fragments: string[]): string {
 
   const bullets = fragments.map((f) => `- ${f}`).join("\n");
   return `<user-instructions>\n${bullets}\n</user-instructions>\n\n`;
+}
+
+/**
+ * Create fragment injector hook
+ * Injects user-defined fragments at the beginning of agent system prompts
+ */
+export function createFragmentInjectorHook(ctx: PluginInput, globalConfig: MicodeConfig | null) {
+  // Cache for project fragments (loaded once per session)
+  let projectFragmentsCache: Record<string, string[]> | null = null;
+
+  async function getProjectFragments(): Promise<Record<string, string[]>> {
+    if (projectFragmentsCache === null) {
+      projectFragmentsCache = await loadProjectFragments(ctx.directory);
+    }
+    return projectFragmentsCache;
+  }
+
+  return {
+    "chat.params": async (
+      _input: { sessionID: string },
+      output: { options?: Record<string, unknown>; system?: string },
+    ) => {
+      const agent = output.options?.agent as string | undefined;
+      if (!agent) return;
+
+      const globalFragments = globalConfig?.fragments ?? {};
+      const projectFragments = await getProjectFragments();
+      const mergedFragments = mergeFragments(globalFragments, projectFragments);
+
+      const agentFragments = mergedFragments[agent];
+      if (!agentFragments || agentFragments.length === 0) return;
+
+      const fragmentBlock = formatFragmentsBlock(agentFragments);
+
+      if (output.system) {
+        output.system = fragmentBlock + output.system;
+      } else {
+        output.system = fragmentBlock;
+      }
+    },
+  };
 }
