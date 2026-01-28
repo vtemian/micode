@@ -135,3 +135,30 @@ micode.json (global)     .micode/fragments.json (project)
 ## Security Considerations
 
 This feature allows users to **append** instructions but not replace base prompts. The base agent behavior and safety constraints remain intact. Users can only influence behavior through natural language instructions that the agent interprets.
+
+## Implementation Status
+
+**Completed:** 2026-01-28
+
+### Commits
+
+| Hash | Message |
+|------|---------|
+| `77c5993` | feat(config): add fragments support to MicodeConfig |
+| `84b98c8` | feat(hooks): add loadProjectFragments function |
+| `364bfdd` | feat(hooks): add mergeFragments function |
+| `7ccb68d` | feat(hooks): add formatFragmentsBlock function |
+| `24118ec` | feat(hooks): add createFragmentInjectorHook factory |
+| `24d6c84` | feat(hooks): add unknown agent warning with typo suggestions |
+| `aacb8c4` | feat(plugin): register fragment-injector hook |
+| `5cd71f5` | feat(plugin): validate fragment agent names on startup |
+
+### Files Created/Modified
+
+| File | Change |
+|------|--------|
+| `src/config-loader.ts` | Extended `MicodeConfig` interface with `fragments` field |
+| `src/hooks/fragment-injector.ts` | **New file** - Hook for fragment loading, merging, and injection |
+| `src/index.ts` | Registered fragment-injector hook and startup validation |
+| `tests/config-loader.test.ts` | Added fragment loading tests |
+| `tests/hooks/fragment-injector.test.ts` | **New file** - Hook unit tests |
