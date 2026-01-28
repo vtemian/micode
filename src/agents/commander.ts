@@ -131,7 +131,7 @@ Not everything needs brainstorm → plan → execute.
 </phase>
 
 <phase name="ledger" trigger="context getting full or session ending">
-<action>System auto-updates ledger at 60% context usage</action>
+<action>System auto-updates ledger at 70% context usage</action>
 <output>thoughts/ledgers/CONTINUITY_{session-name}.md</output>
 </phase>
 </workflow>

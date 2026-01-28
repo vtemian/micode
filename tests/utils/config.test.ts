@@ -5,12 +5,12 @@ describe("config utility", () => {
   describe("config.compaction", () => {
     it("should have threshold", async () => {
       const { config } = await import("../../src/utils/config");
-      expect(config.compaction.threshold).toBe(0.5);
+      expect(config.compaction.threshold).toBe(0.7);
     });
 
     it("should have cooldownMs", async () => {
       const { config } = await import("../../src/utils/config");
-      expect(config.compaction.cooldownMs).toBe(30_000);
+      expect(config.compaction.cooldownMs).toBe(120_000);
     });
 
     it("should have timeoutMs", async () => {

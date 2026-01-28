@@ -12,9 +12,9 @@ export const config = {
    */
   compaction: {
     /** Trigger compaction when context usage exceeds this ratio */
-    threshold: 0.5,
+    threshold: 0.7,
     /** Minimum time between compaction attempts (ms) */
-    cooldownMs: 30_000,
+    cooldownMs: 120_000,
     /** Maximum time to wait for compaction to complete (ms) */
     timeoutMs: 120_000,
   },

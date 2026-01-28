@@ -159,12 +159,32 @@ ${summaryText}
         .showToast({
           body: {
             title: "Compaction Complete",
-            message: "Session summarized and ledger updated.",
+            message: "Session summarized. Continuing...",
             variant: "success",
             duration: config.timeouts.toastSuccessMs,
           },
         })
         .catch(() => {});
+
+      // Auto-continue after compaction - prompt the agent to resume work
+      await ctx.client.session
+        .prompt({
+          path: { id: sessionID },
+          body: {
+            parts: [
+              {
+                type: "text",
+                text: "Context was compacted. Continue from where you left off - check the 'In Progress' and 'Next Steps' sections in the summary above.",
+              },
+            ],
+            providerID,
+            modelID,
+          },
+          query: { directory: ctx.directory },
+        })
+        .catch(() => {
+          // If auto-continue fails, user can manually prompt
+        });
     } catch (e) {
       const errorMsg = extractErrorMessage(e);
       await ctx.client.tui
