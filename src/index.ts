@@ -13,7 +13,7 @@ import { createConstraintReviewerHook } from "./hooks/constraint-reviewer";
 import { createContextInjectorHook } from "./hooks/context-injector";
 import { createContextWindowMonitorHook } from "./hooks/context-window-monitor";
 import { createFileOpsTrackerHook, getFileOps } from "./hooks/file-ops-tracker";
-import { createFragmentInjectorHook } from "./hooks/fragment-injector";
+import { createFragmentInjectorHook, warnUnknownAgents } from "./hooks/fragment-injector";
 import { createLedgerLoaderHook } from "./hooks/ledger-loader";
 import { createMindmodelInjectorHook } from "./hooks/mindmodel-injector";
 import { createSessionRecoveryHook } from "./hooks/session-recovery";
@@ -104,6 +104,16 @@ const OpenCodeConfigPlugin: Plugin = async (ctx) => {
 
   // Fragment injector hook - injects user-defined prompt fragments
   const fragmentInjectorHook = createFragmentInjectorHook(ctx, userConfig);
+
+  // Warn about unknown agent names in fragments config
+  if (userConfig?.fragments) {
+    const knownAgentNames = new Set(Object.keys(agents));
+    const fragmentAgentNames = Object.keys(userConfig.fragments);
+    const warnings = warnUnknownAgents(fragmentAgentNames, knownAgentNames);
+    for (const warning of warnings) {
+      console.warn(warning);
+    }
+  }
 
   // Track internal sessions to prevent hook recursion (used by reviewer)
   const internalSessions = new Set<string>();
