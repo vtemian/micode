@@ -71,6 +71,75 @@ export function formatFragmentsBlock(fragments: string[]): string {
 }
 
 /**
+ * Simple Levenshtein distance for typo detection
+ */
+function levenshteinDistance(a: string, b: string): number {
+  const matrix: number[][] = [];
+
+  for (let i = 0; i <= b.length; i++) {
+    matrix[i] = [i];
+  }
+  for (let j = 0; j <= a.length; j++) {
+    matrix[0][j] = j;
+  }
+
+  for (let i = 1; i <= b.length; i++) {
+    for (let j = 1; j <= a.length; j++) {
+      if (b.charAt(i - 1) === a.charAt(j - 1)) {
+        matrix[i][j] = matrix[i - 1][j - 1];
+      } else {
+        matrix[i][j] = Math.min(
+          matrix[i - 1][j - 1] + 1, // substitution
+          matrix[i][j - 1] + 1, // insertion
+          matrix[i - 1][j] + 1, // deletion
+        );
+      }
+    }
+  }
+
+  return matrix[b.length][a.length];
+}
+
+/**
+ * Find closest matching agent name
+ */
+function findClosestAgent(unknown: string, knownAgents: Set<string>): string | null {
+  let closest: string | null = null;
+  let minDistance = Infinity;
+
+  for (const known of knownAgents) {
+    const distance = levenshteinDistance(unknown, known);
+    // Only suggest if distance is reasonable (less than half the length)
+    if (distance < minDistance && distance <= Math.ceil(known.length / 2)) {
+      minDistance = distance;
+      closest = known;
+    }
+  }
+
+  return closest;
+}
+
+/**
+ * Generate warnings for unknown agent names in fragments config
+ */
+export function warnUnknownAgents(fragmentAgents: string[], knownAgents: Set<string>): string[] {
+  const warnings: string[] = [];
+
+  for (const agent of fragmentAgents) {
+    if (!knownAgents.has(agent)) {
+      const closest = findClosestAgent(agent, knownAgents);
+      if (closest) {
+        warnings.push(`[micode] Unknown agent "${agent}" in fragments config. Did you mean "${closest}"?`);
+      } else {
+        warnings.push(`[micode] Unknown agent "${agent}" in fragments config.`);
+      }
+    }
+  }
+
+  return warnings;
+}
+
+/**
  * Create fragment injector hook
  * Injects user-defined fragments at the beginning of agent system prompts
  */

@@ -271,4 +271,43 @@ describe("fragment-injector", () => {
       expect(output.system).toBe("Original prompt");
     });
   });
+
+  describe("warnUnknownAgents", () => {
+    it("should return warning message for unknown agent names", async () => {
+      const { warnUnknownAgents } = await import("../../src/hooks/fragment-injector");
+
+      const knownAgents = new Set(["brainstormer", "planner", "implementer"]);
+      const fragmentAgents = ["brainstormer", "brianstormer", "unknown-agent"];
+
+      const warnings = warnUnknownAgents(fragmentAgents, knownAgents);
+
+      expect(warnings).toHaveLength(2);
+      expect(warnings[0]).toContain("brianstormer");
+      expect(warnings[0]).toContain('Did you mean "brainstormer"?');
+      expect(warnings[1]).toContain("unknown-agent");
+    });
+
+    it("should not warn for known agents", async () => {
+      const { warnUnknownAgents } = await import("../../src/hooks/fragment-injector");
+
+      const knownAgents = new Set(["brainstormer", "planner"]);
+      const fragmentAgents = ["brainstormer", "planner"];
+
+      const warnings = warnUnknownAgents(fragmentAgents, knownAgents);
+
+      expect(warnings).toHaveLength(0);
+    });
+
+    it("should suggest closest match for typos", async () => {
+      const { warnUnknownAgents } = await import("../../src/hooks/fragment-injector");
+
+      const knownAgents = new Set(["brainstormer", "planner", "implementer", "reviewer"]);
+      const fragmentAgents = ["planr", "implmenter"];
+
+      const warnings = warnUnknownAgents(fragmentAgents, knownAgents);
+
+      expect(warnings[0]).toContain('Did you mean "planner"?');
+      expect(warnings[1]).toContain('Did you mean "implementer"?');
+    });
+  });
 });
