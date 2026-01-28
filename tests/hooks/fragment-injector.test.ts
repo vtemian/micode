@@ -132,4 +132,31 @@ describe("fragment-injector", () => {
       expect(merged).toEqual({});
     });
   });
+
+  describe("formatFragmentsBlock", () => {
+    it("should format fragments as XML block with bullets", async () => {
+      const { formatFragmentsBlock } = await import("../../src/hooks/fragment-injector");
+
+      const fragments = ["Instruction one", "Instruction two"];
+      const result = formatFragmentsBlock(fragments);
+
+      expect(result).toBe(`<user-instructions>\n- Instruction one\n- Instruction two\n</user-instructions>\n\n`);
+    });
+
+    it("should return empty string for empty array", async () => {
+      const { formatFragmentsBlock } = await import("../../src/hooks/fragment-injector");
+
+      const result = formatFragmentsBlock([]);
+
+      expect(result).toBe("");
+    });
+
+    it("should handle single fragment", async () => {
+      const { formatFragmentsBlock } = await import("../../src/hooks/fragment-injector");
+
+      const result = formatFragmentsBlock(["Single instruction"]);
+
+      expect(result).toBe(`<user-instructions>\n- Single instruction\n</user-instructions>\n\n`);
+    });
+  });
 });

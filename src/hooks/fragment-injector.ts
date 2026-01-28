@@ -53,3 +53,15 @@ export function mergeFragments(
 
   return merged;
 }
+
+/**
+ * Format fragments as an XML block for injection into system prompt
+ */
+export function formatFragmentsBlock(fragments: string[]): string {
+  if (fragments.length === 0) {
+    return "";
+  }
+
+  const bullets = fragments.map((f) => `- ${f}`).join("\n");
+  return `<user-instructions>\n${bullets}\n</user-instructions>\n\n`;
+}
