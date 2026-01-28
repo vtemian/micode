@@ -73,7 +73,7 @@ categories:
     const { createMindmodelInjectorHook } = await import("../../src/hooks/mindmodel-injector");
 
     const ctx = createMockCtx(testDir);
-    const hook = createMindmodelInjectorHook(ctx as any, async () => "[]");
+    const hook = createMindmodelInjectorHook(ctx as any);
 
     const system = await runInjectionFlow(hook, "test", [
       { info: { role: "user" }, parts: [{ type: "text", text: "Hello" }] },
@@ -82,16 +82,15 @@ categories:
     expect(system).toEqual(["existing system prompt"]);
   });
 
-  it("should inject examples when classifier returns categories", async () => {
+  it("should inject examples when keyword matches category", async () => {
     setupMindmodel(testDir);
 
     const { createMindmodelInjectorHook } = await import("../../src/hooks/mindmodel-injector");
 
     const ctx = createMockCtx(testDir);
-    // Mock classifier that returns form category
-    const mockClassify = async () => '["components/form.md"]';
-    const hook = createMindmodelInjectorHook(ctx as any, mockClassify);
+    const hook = createMindmodelInjectorHook(ctx as any);
 
+    // "form" keyword should match components/form.md
     const system = await runInjectionFlow(hook, "test", [
       { info: { role: "user" }, parts: [{ type: "text", text: "Add a contact form" }] },
     ]);
@@ -102,15 +101,15 @@ categories:
     expect(system[0]).toContain("<Form onSubmit");
   });
 
-  it("should not inject if classifier returns empty array", async () => {
+  it("should not inject if no keywords match", async () => {
     setupMindmodel(testDir);
 
     const { createMindmodelInjectorHook } = await import("../../src/hooks/mindmodel-injector");
 
     const ctx = createMockCtx(testDir);
-    const mockClassify = async () => "[]";
-    const hook = createMindmodelInjectorHook(ctx as any, mockClassify);
+    const hook = createMindmodelInjectorHook(ctx as any);
 
+    // No keywords match
     const system = await runInjectionFlow(hook, "test", [
       { info: { role: "user" }, parts: [{ type: "text", text: "What time is it?" }] },
     ]);
@@ -124,9 +123,9 @@ categories:
     const { createMindmodelInjectorHook } = await import("../../src/hooks/mindmodel-injector");
 
     const ctx = createMockCtx(testDir);
-    const mockClassify = async () => '["components/button.md"]';
-    const hook = createMindmodelInjectorHook(ctx as any, mockClassify);
+    const hook = createMindmodelInjectorHook(ctx as any);
 
+    // "button" keyword should match components/button.md
     const system = await runInjectionFlow(hook, "test", [
       {
         info: { role: "user" },
@@ -142,34 +141,28 @@ categories:
     expect(system[0]).toContain("Button");
   });
 
-  it("should cache mindmodel and call loadMindmodel only once", async () => {
+  it("should cache results for repeated tasks", async () => {
     setupMindmodel(testDir);
 
     const { createMindmodelInjectorHook } = await import("../../src/hooks/mindmodel-injector");
 
     const ctx = createMockCtx(testDir);
-    let classifyCallCount = 0;
-    const mockClassify = async () => {
-      classifyCallCount++;
-      return '["components/button.md"]';
-    };
-    const hook = createMindmodelInjectorHook(ctx as any, mockClassify);
+    const hook = createMindmodelInjectorHook(ctx as any);
 
-    // First call
+    // First call with "button" keyword
     const system1 = await runInjectionFlow(hook, "test1", [
       { info: { role: "user" }, parts: [{ type: "text", text: "Add a button" }] },
     ]);
 
-    // Second call
+    // Second call with same text
     const system2 = await runInjectionFlow(hook, "test2", [
-      { info: { role: "user" }, parts: [{ type: "text", text: "Add another button" }] },
+      { info: { role: "user" }, parts: [{ type: "text", text: "Add a button" }] },
     ]);
 
-    // Both should have injected content (proving mindmodel was loaded)
+    // Both should have injected content
+    expect(system1.length).toBe(2);
+    expect(system2.length).toBe(2);
     expect(system1[0]).toContain("mindmodel-examples");
     expect(system2[0]).toContain("mindmodel-examples");
-
-    // Classifier should have been called twice (once per request)
-    expect(classifyCallCount).toBe(2);
   });
 });

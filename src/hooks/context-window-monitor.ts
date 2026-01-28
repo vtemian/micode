@@ -1,13 +1,20 @@
 import type { PluginInput } from "@opencode-ai/plugin";
+
 import { config } from "../utils/config";
 import { getContextLimit } from "../utils/model-limits";
+
+export interface ContextWindowMonitorConfig {
+  /** Model context limits loaded from opencode.json */
+  modelContextLimits?: Map<string, number>;
+}
 
 interface MonitorState {
   lastWarningTime: Map<string, number>;
   lastUsageRatio: Map<string, number>;
 }
 
-export function createContextWindowMonitorHook(ctx: PluginInput) {
+export function createContextWindowMonitorHook(ctx: PluginInput, hookConfig?: ContextWindowMonitorConfig) {
+  const modelLimits = hookConfig?.modelContextLimits;
   const state: MonitorState = {
     lastWarningTime: new Map(),
     lastUsageRatio: new Map(),
@@ -69,7 +76,8 @@ export function createContextWindowMonitorHook(ctx: PluginInput) {
         const totalUsed = inputTokens + cacheRead;
 
         const modelID = (info.modelID as string) || "";
-        const contextLimit = getContextLimit(modelID);
+        const providerID = (info.providerID as string) || "";
+        const contextLimit = getContextLimit(modelID, providerID, modelLimits);
         const usageRatio = totalUsed / contextLimit;
 
         state.lastUsageRatio.set(sessionID, usageRatio);

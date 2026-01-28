@@ -60,6 +60,7 @@ export interface MicodeFeatures {
 export interface MicodeConfig {
   agents?: Record<string, AgentOverride>;
   features?: MicodeFeatures;
+  compactionThreshold?: number;
 }
 
 /**
@@ -107,10 +108,52 @@ export async function loadMicodeConfig(configDir?: string): Promise<MicodeConfig
       };
     }
 
+    // Parse compactionThreshold (must be number between 0 and 1)
+    if (typeof parsed.compactionThreshold === "number") {
+      const threshold = parsed.compactionThreshold;
+      if (threshold >= 0 && threshold <= 1) {
+        result.compactionThreshold = threshold;
+      }
+    }
+
     return result;
   } catch {
     return null;
   }
+}
+
+/**
+ * Load model context limits from opencode.json
+ * Returns a Map of "provider/model" -> context limit (tokens)
+ */
+export function loadModelContextLimits(configDir?: string): Map<string, number> {
+  const limits = new Map<string, number>();
+  const baseDir = configDir ?? join(homedir(), ".config", "opencode");
+
+  try {
+    const configPath = join(baseDir, "opencode.json");
+    const content = readFileSync(configPath, "utf-8");
+    const config = JSON.parse(content) as {
+      provider?: Record<string, { models?: Record<string, { limit?: { context?: number } }> }>;
+    };
+
+    if (config.provider) {
+      for (const [providerId, providerConfig] of Object.entries(config.provider)) {
+        if (providerConfig.models) {
+          for (const [modelId, modelConfig] of Object.entries(providerConfig.models)) {
+            const contextLimit = modelConfig?.limit?.context;
+            if (typeof contextLimit === "number" && contextLimit > 0) {
+              limits.set(`${providerId}/${modelId}`, contextLimit);
+            }
+          }
+        }
+      }
+    }
+  } catch {
+    // Config doesn't exist or can't be parsed - return empty map
+  }
+
+  return limits;
 }
 
 /**

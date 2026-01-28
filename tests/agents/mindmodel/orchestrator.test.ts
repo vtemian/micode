@@ -13,10 +13,10 @@ describe("mindmodel-orchestrator agent", () => {
     expect(mindmodelOrchestratorAgent.prompt).toContain("parallel");
   });
 
-  it("should reference all mindmodel subagents", () => {
+  it("should reference key mindmodel subagents", () => {
     expect(mindmodelOrchestratorAgent.prompt).toContain("stack-detector");
     expect(mindmodelOrchestratorAgent.prompt).toContain("pattern-discoverer");
-    expect(mindmodelOrchestratorAgent.prompt).toContain("example-extractor");
+    expect(mindmodelOrchestratorAgent.prompt).toContain("constraint-writer");
   });
 
   it("should disable bash but allow write and other tools", () => {
@@ -27,18 +27,15 @@ describe("mindmodel-orchestrator agent", () => {
 
   it("should reference all v2 phase agents", () => {
     const prompt = mindmodelOrchestratorAgent.prompt;
-    // Phase 1
+    // Phase 1 - Analysis agents
     expect(prompt).toContain("mm-stack-detector");
     expect(prompt).toContain("mm-dependency-mapper");
     expect(prompt).toContain("mm-convention-extractor");
     expect(prompt).toContain("mm-domain-extractor");
-    // Phase 2
     expect(prompt).toContain("mm-code-clusterer");
     expect(prompt).toContain("mm-pattern-discoverer");
     expect(prompt).toContain("mm-anti-pattern-detector");
-    // Phase 3
-    expect(prompt).toContain("mm-example-extractor");
-    // Phase 4
+    // Phase 2 - Assembly (includes example extraction)
     expect(prompt).toContain("mm-constraint-writer");
   });
 });

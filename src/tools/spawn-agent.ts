@@ -2,9 +2,10 @@ import type { PluginInput } from "@opencode-ai/plugin";
 import { type ToolContext, tool } from "@opencode-ai/plugin/tool";
 
 // Extended context with metadata (available but not typed in plugin API)
-interface ExtendedContext extends ToolContext {
+// Using intersection to add optional metadata without type conflict
+type ExtendedContext = ToolContext & {
   metadata?: (input: { title?: string; metadata?: Record<string, unknown> }) => void;
-}
+};
 
 interface SessionCreateResponse {
   data?: { id?: string };

@@ -7,6 +7,13 @@ import { config } from "../utils/config";
 import { extractErrorMessage } from "../utils/errors";
 import { getContextLimit } from "../utils/model-limits";
 
+export interface AutoCompactConfig {
+  /** Compaction threshold (0-1), defaults to config.compaction.threshold */
+  compactionThreshold?: number;
+  /** Model context limits loaded from opencode.json */
+  modelContextLimits?: Map<string, number>;
+}
+
 interface PendingCompaction {
   resolve: () => void;
   reject: (error: Error) => void;
@@ -19,7 +26,10 @@ interface AutoCompactState {
   pendingCompactions: Map<string, PendingCompaction>;
 }
 
-export function createAutoCompactHook(ctx: PluginInput) {
+export function createAutoCompactHook(ctx: PluginInput, hookConfig?: AutoCompactConfig) {
+  const threshold = hookConfig?.compactionThreshold ?? config.compaction.threshold;
+  const modelLimits = hookConfig?.modelContextLimits;
+
   const state: AutoCompactState = {
     inProgress: new Set(),
     lastCompactTime: new Map(),
@@ -113,7 +123,7 @@ ${summaryText}
 
     try {
       const usedPercent = Math.round(usageRatio * 100);
-      const thresholdPercent = Math.round(config.compaction.threshold * 100);
+      const thresholdPercent = Math.round(threshold * 100);
 
       await ctx.client.tui
         .showToast({
@@ -222,11 +232,11 @@ ${summaryText}
 
         const modelID = (info?.modelID as string) || "";
         const providerID = (info?.providerID as string) || "";
-        const contextLimit = getContextLimit(modelID);
+        const contextLimit = getContextLimit(modelID, providerID, modelLimits);
         const usageRatio = totalUsed / contextLimit;
 
         // Trigger compaction if over threshold
-        if (usageRatio >= config.compaction.threshold) {
+        if (usageRatio >= threshold) {
           triggerCompaction(sessionID, providerID, modelID, usageRatio);
         }
       }

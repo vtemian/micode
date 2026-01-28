@@ -4,7 +4,7 @@ import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { loadMicodeConfig, mergeAgentConfigs } from "../src/config-loader";
+import { loadMicodeConfig, loadModelContextLimits, mergeAgentConfigs } from "../src/config-loader";
 
 describe("config-loader", () => {
   let testConfigDir: string;
@@ -96,8 +96,8 @@ describe("config-loader", () => {
 
     const config = await loadMicodeConfig(testConfigDir);
 
-    // agents: null is not an object, so it falls through to return the raw parsed value
-    expect(config).toEqual({ agents: null });
+    // agents: null is not a valid object, so it's ignored
+    expect(config).toEqual({});
   });
 
   it("should handle config with no agents key", async () => {
@@ -197,5 +197,197 @@ describe("mergeAgentConfigs", () => {
     const merged = mergeAgentConfigs(pluginAgents, null);
 
     expect(merged.commander.model).toBe("anthropic/claude-opus-4-5");
+  });
+});
+
+describe("loadMicodeConfig - compactionThreshold", () => {
+  let testConfigDir: string;
+
+  beforeEach(() => {
+    testConfigDir = join(tmpdir(), `micode-config-test-${Date.now()}`);
+    mkdirSync(testConfigDir, { recursive: true });
+  });
+
+  afterEach(() => {
+    rmSync(testConfigDir, { recursive: true, force: true });
+  });
+
+  it("should load compactionThreshold from micode.json", async () => {
+    const configPath = join(testConfigDir, "micode.json");
+    writeFileSync(
+      configPath,
+      JSON.stringify({
+        compactionThreshold: 0.3,
+      }),
+    );
+
+    const config = await loadMicodeConfig(testConfigDir);
+
+    expect(config).not.toBeNull();
+    expect(config?.compactionThreshold).toBe(0.3);
+  });
+
+  it("should handle compactionThreshold with other config", async () => {
+    const configPath = join(testConfigDir, "micode.json");
+    writeFileSync(
+      configPath,
+      JSON.stringify({
+        compactionThreshold: 0.4,
+        agents: {
+          commander: { model: "openai/gpt-4o" },
+        },
+      }),
+    );
+
+    const config = await loadMicodeConfig(testConfigDir);
+
+    expect(config?.compactionThreshold).toBe(0.4);
+    expect(config?.agents?.commander?.model).toBe("openai/gpt-4o");
+  });
+
+  it("should ignore invalid compactionThreshold values", async () => {
+    const configPath = join(testConfigDir, "micode.json");
+    writeFileSync(
+      configPath,
+      JSON.stringify({
+        compactionThreshold: "not-a-number",
+      }),
+    );
+
+    const config = await loadMicodeConfig(testConfigDir);
+
+    expect(config?.compactionThreshold).toBeUndefined();
+  });
+
+  it("should ignore compactionThreshold outside valid range (0-1)", async () => {
+    const configPath = join(testConfigDir, "micode.json");
+    writeFileSync(
+      configPath,
+      JSON.stringify({
+        compactionThreshold: 1.5,
+      }),
+    );
+
+    const config = await loadMicodeConfig(testConfigDir);
+
+    expect(config?.compactionThreshold).toBeUndefined();
+  });
+
+  it("should ignore negative compactionThreshold", async () => {
+    const configPath = join(testConfigDir, "micode.json");
+    writeFileSync(
+      configPath,
+      JSON.stringify({
+        compactionThreshold: -0.1,
+      }),
+    );
+
+    const config = await loadMicodeConfig(testConfigDir);
+
+    expect(config?.compactionThreshold).toBeUndefined();
+  });
+});
+
+describe("loadModelContextLimits", () => {
+  let testConfigDir: string;
+
+  beforeEach(() => {
+    testConfigDir = join(tmpdir(), `micode-config-test-${Date.now()}`);
+    mkdirSync(testConfigDir, { recursive: true });
+  });
+
+  afterEach(() => {
+    rmSync(testConfigDir, { recursive: true, force: true });
+  });
+
+  it("should load context limits from opencode.json", () => {
+    const configPath = join(testConfigDir, "opencode.json");
+    writeFileSync(
+      configPath,
+      JSON.stringify({
+        provider: {
+          openai: {
+            models: {
+              "gpt-4o": {
+                limit: { context: 128000, output: 16000 },
+              },
+            },
+          },
+          anthropic: {
+            models: {
+              "claude-opus": {
+                limit: { context: 200000, output: 4096 },
+              },
+            },
+          },
+        },
+      }),
+    );
+
+    const limits = loadModelContextLimits(testConfigDir);
+
+    expect(limits.get("openai/gpt-4o")).toBe(128000);
+    expect(limits.get("anthropic/claude-opus")).toBe(200000);
+  });
+
+  it("should return empty map when opencode.json does not exist", () => {
+    const limits = loadModelContextLimits(testConfigDir);
+
+    expect(limits.size).toBe(0);
+  });
+
+  it("should skip models without context limit", () => {
+    const configPath = join(testConfigDir, "opencode.json");
+    writeFileSync(
+      configPath,
+      JSON.stringify({
+        provider: {
+          openai: {
+            models: {
+              "gpt-4o": {
+                limit: { context: 128000 },
+              },
+              "gpt-3.5": {
+                // No limit defined
+                name: "GPT 3.5",
+              },
+            },
+          },
+        },
+      }),
+    );
+
+    const limits = loadModelContextLimits(testConfigDir);
+
+    expect(limits.get("openai/gpt-4o")).toBe(128000);
+    expect(limits.has("openai/gpt-3.5")).toBe(false);
+  });
+
+  it("should handle invalid JSON gracefully", () => {
+    const configPath = join(testConfigDir, "opencode.json");
+    writeFileSync(configPath, "{ invalid json }");
+
+    const limits = loadModelContextLimits(testConfigDir);
+
+    expect(limits.size).toBe(0);
+  });
+
+  it("should handle providers without models", () => {
+    const configPath = join(testConfigDir, "opencode.json");
+    writeFileSync(
+      configPath,
+      JSON.stringify({
+        provider: {
+          openai: {
+            // No models key
+            apiKey: "xxx",
+          },
+        },
+      }),
+    );
+
+    const limits = loadModelContextLimits(testConfigDir);
+
+    expect(limits.size).toBe(0);
   });
 });

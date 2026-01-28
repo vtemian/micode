@@ -4,7 +4,7 @@ import type { McpLocalConfig } from "@opencode-ai/sdk";
 // Agents
 import { agents, PRIMARY_AGENT_NAME } from "./agents";
 // Config loader
-import { loadMicodeConfig, mergeAgentConfigs } from "./config-loader";
+import { loadMicodeConfig, loadModelContextLimits, mergeAgentConfigs } from "./config-loader";
 import { createArtifactAutoIndexHook } from "./hooks/artifact-auto-index";
 // Hooks
 import { createAutoCompactHook } from "./hooks/auto-compact";
@@ -81,16 +81,22 @@ const OpenCodeConfigPlugin: Plugin = async (ctx) => {
   // Load user config for agent overrides and feature flags
   const userConfig = await loadMicodeConfig();
 
+  // Load model context limits from opencode.json
+  const modelContextLimits = loadModelContextLimits();
+
   // Think mode state per session
   const thinkModeState = new Map<string, boolean>();
 
   // Hooks
-  const autoCompactHook = createAutoCompactHook(ctx);
+  const autoCompactHook = createAutoCompactHook(ctx, {
+    compactionThreshold: userConfig?.compactionThreshold,
+    modelContextLimits,
+  });
   const contextInjectorHook = createContextInjectorHook(ctx);
   const ledgerLoaderHook = createLedgerLoaderHook(ctx);
   const sessionRecoveryHook = createSessionRecoveryHook(ctx);
   const tokenAwareTruncationHook = createTokenAwareTruncationHook(ctx);
-  const contextWindowMonitorHook = createContextWindowMonitorHook(ctx);
+  const contextWindowMonitorHook = createContextWindowMonitorHook(ctx, { modelContextLimits });
   const commentCheckerHook = createCommentCheckerHook(ctx);
   const artifactAutoIndexHook = createArtifactAutoIndexHook(ctx);
   const fileOpsTrackerHook = createFileOpsTrackerHook(ctx);
@@ -386,7 +392,8 @@ IMPORTANT:
     "experimental.chat.messages.transform": async (input, output) => {
       if (!mindmodelInjectorHook) return;
       // Skip internal sessions (reviewer)
-      if (internalSessions.has(input.sessionID)) return;
+      const sessionID = (input as { sessionID?: string }).sessionID;
+      if (sessionID && internalSessions.has(sessionID)) return;
 
       await mindmodelInjectorHook["experimental.chat.messages.transform"](input, output);
     },
