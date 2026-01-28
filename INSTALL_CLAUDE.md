@@ -160,15 +160,64 @@ Never run this automatically without consent.
 | `ast_grep_replace` | AST-aware code replace |
 | `look_at` | Screenshot analysis |
 
-### Model Override
+### Model Configuration
 
-To use different models, create `~/.config/opencode/micode.json`:
+micode respects your OpenCode default model. Set it in `~/.config/opencode/opencode.json`:
+
+```json
+{
+  "model": "github-copilot/gpt-5-mini"
+}
+```
+
+This model will be used for **all** micode agents automatically.
+
+#### Per-Agent Overrides
+
+To override specific agents, create `~/.config/opencode/micode.json`:
 
 ```json
 {
   "agents": {
-    "commander": { "model": "your-preferred-model" },
-    "brainstormer": { "model": "your-preferred-model" }
+    "brainstormer": { "model": "openai/gpt-4o" }
   }
 }
 ```
+
+**Model resolution priority:**
+1. Per-agent override in `micode.json` (highest)
+2. Default model from `opencode.json` `"model"` field
+3. Plugin default (hardcoded in agent definitions)
+
+#### Model Syntax
+
+Models must use the format `provider/model` where:
+- `provider` is the provider ID from your `opencode.json` (e.g., `openai`, `anthropic`, `github-copilot`)
+- `model` is the model ID configured under that provider
+
+**To find valid model names:**
+
+1. Check your `~/.config/opencode/opencode.json` for the `provider` section
+2. Look for the provider name (the key) and model names under `models`
+
+**Example opencode.json structure:**
+```json
+{
+  "provider": {
+    "github-copilot": {
+      "models": {
+        "gpt-5-mini": { "limit": { "context": 128000 } }
+      }
+    }
+  }
+}
+```
+
+For the above config, use `"model": "github-copilot/gpt-5-mini"`.
+
+**Important:** The provider name must match exactly. If OpenCode shows `github-copilot` as the provider ID, use `github-copilot/model-name` (not `github/copilot:model-name` or other variations).
+
+#### Built-in Models
+
+The following model bypasses validation:
+- `opencode/big-pickle` - OpenCode's default model, always valid

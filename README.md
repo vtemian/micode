@@ -87,6 +87,72 @@ Maintain context across sessions with structured compaction. Run `/ledger` to cr
 - **Context Injector** - Injects ARCHITECTURE.md, CODE_STYLE.md
 - **Token-Aware Truncation** - Truncates large tool outputs
 
+## Configuration
+
+### Model Configuration
+
+micode reads your default model from `opencode.json`:
+
+```json
+{
+  "model": "github-copilot/gpt-5-mini",
+  "plugin": ["micode"]
+}
+```
+
+All micode agents will use this model automatically.
+
+### micode.json
+
+Create `~/.config/opencode/micode.json` for micode-specific settings:
+
+```json
+{
+  "agents": {
+    "brainstormer": { "model": "openai/gpt-4o", "temperature": 0.8 },
+    "commander": { "maxTokens": 8192 }
+  },
+  "features": {
+    "mindmodelInjection": true
+  },
+  "compactionThreshold": 0.5,
+  "fragments": {
+    "commander": ["custom-instructions.md"]
+  }
+}
+```
+
+#### Options
+
+| Option | Type | Description |
+|--------|------|-------------|
+| `agents` | object | Per-agent overrides (model, temperature, maxTokens) |
+| `features.mindmodelInjection` | boolean | Enable mindmodel context injection |
+| `compactionThreshold` | number | Context usage threshold (0-1) for auto-compaction. Default: 0.5 |
+| `fragments` | object | Additional prompt fragments per agent |
+
+#### Model Resolution Priority
+
+1. Per-agent override in `micode.json` (highest)
+2. Default model from `opencode.json` `"model"` field
+3. Plugin default (fallback)
+
+#### Model Syntax
+
+Models use `provider/model` format. The provider must match exactly what's in your `opencode.json`:
+
+```json
+{
+  "provider": {
+    "github-copilot": {
+      "models": { "gpt-5-mini": {} }
+    }
+  }
+}
+```
+
+Use `"model": "github-copilot/gpt-5-mini"` (not `github/copilot:gpt-5-mini`).
+
 ## Development
 
 ```bash

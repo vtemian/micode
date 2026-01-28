@@ -194,9 +194,77 @@ describe("mergeAgentConfigs", () => {
       },
     };
 
-    const merged = mergeAgentConfigs(pluginAgents, null);
+    // Pass explicit null for defaultModel to avoid loading from disk
+    const merged = mergeAgentConfigs(pluginAgents, null, undefined, null);
 
     expect(merged.commander.model).toBe("anthropic/claude-opus-4-5");
+  });
+
+  it("should apply opencode default model to all agents when no per-agent override", () => {
+    const pluginAgents = {
+      commander: {
+        description: "Main agent",
+        model: "openai/gpt-5.2-codex",
+      },
+      brainstormer: {
+        description: "Design agent",
+        model: "openai/gpt-5.2-codex",
+      },
+    };
+
+    const availableModels = new Set(["openai/gpt-5.2-codex", "github-copilot/gpt-5-mini"]);
+    const defaultModel = "github-copilot/gpt-5-mini";
+
+    const merged = mergeAgentConfigs(pluginAgents, null, availableModels, defaultModel);
+
+    // Both agents should use the opencode default model
+    expect(merged.commander.model).toBe("github-copilot/gpt-5-mini");
+    expect(merged.brainstormer.model).toBe("github-copilot/gpt-5-mini");
+  });
+
+  it("should prefer per-agent override over opencode default model", () => {
+    const pluginAgents = {
+      commander: {
+        description: "Main agent",
+        model: "openai/gpt-5.2-codex",
+      },
+      brainstormer: {
+        description: "Design agent",
+        model: "openai/gpt-5.2-codex",
+      },
+    };
+
+    const userConfig = {
+      agents: {
+        commander: { model: "openai/gpt-4o" },
+      },
+    };
+    const availableModels = new Set(["openai/gpt-5.2-codex", "github-copilot/gpt-5-mini", "openai/gpt-4o"]);
+    const defaultModel = "github-copilot/gpt-5-mini";
+
+    const merged = mergeAgentConfigs(pluginAgents, userConfig, availableModels, defaultModel);
+
+    // Commander has explicit override - should use that
+    expect(merged.commander.model).toBe("openai/gpt-4o");
+    // Brainstormer has no override - should use opencode default
+    expect(merged.brainstormer.model).toBe("github-copilot/gpt-5-mini");
+  });
+
+  it("should skip invalid opencode default model", () => {
+    const pluginAgents = {
+      commander: {
+        description: "Main agent",
+        model: "openai/gpt-5.2-codex",
+      },
+    };
+
+    const availableModels = new Set(["openai/gpt-5.2-codex"]);
+    const defaultModel = "invalid/nonexistent-model";
+
+    const merged = mergeAgentConfigs(pluginAgents, null, availableModels, defaultModel);
+
+    // Invalid default should be skipped - keep plugin default
+    expect(merged.commander.model).toBe("openai/gpt-5.2-codex");
   });
 });
 

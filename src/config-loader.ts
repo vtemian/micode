@@ -13,32 +13,57 @@ export interface ProviderInfo {
 }
 
 /**
- * Load available models from opencode.json config file (synchronous)
- * Returns a Set of "provider/model" strings
+ * OpenCode config structure for reading default model and available models
  */
-export function loadAvailableModels(configDir?: string): Set<string> {
-  const availableModels = new Set<string>();
+interface OpencodeConfig {
+  model?: string;
+  provider?: Record<string, { models?: Record<string, unknown> }>;
+}
+
+/**
+ * Load opencode.json config file (synchronous)
+ * Returns the parsed config or null if unavailable
+ */
+function loadOpencodeConfig(configDir?: string): OpencodeConfig | null {
   const baseDir = configDir ?? join(homedir(), ".config", "opencode");
 
   try {
     const configPath = join(baseDir, "opencode.json");
     const content = readFileSync(configPath, "utf-8");
-    const config = JSON.parse(content) as { provider?: Record<string, { models?: Record<string, unknown> }> };
+    return JSON.parse(content) as OpencodeConfig;
+  } catch {
+    return null;
+  }
+}
 
-    if (config.provider) {
-      for (const [providerId, providerConfig] of Object.entries(config.provider)) {
-        if (providerConfig.models) {
-          for (const modelId of Object.keys(providerConfig.models)) {
-            availableModels.add(`${providerId}/${modelId}`);
-          }
+/**
+ * Load available models from opencode.json config file (synchronous)
+ * Returns a Set of "provider/model" strings
+ */
+export function loadAvailableModels(configDir?: string): Set<string> {
+  const availableModels = new Set<string>();
+  const config = loadOpencodeConfig(configDir);
+
+  if (config?.provider) {
+    for (const [providerId, providerConfig] of Object.entries(config.provider)) {
+      if (providerConfig.models) {
+        for (const modelId of Object.keys(providerConfig.models)) {
+          availableModels.add(`${providerId}/${modelId}`);
         }
       }
     }
-  } catch {
-    // Config doesn't exist or can't be parsed - return empty set
   }
 
   return availableModels;
+}
+
+/**
+ * Load the default model from opencode.json config file (synchronous)
+ * Returns the model string in "provider/model" format or null if not set
+ */
+export function loadDefaultModel(configDir?: string): string | null {
+  const config = loadOpencodeConfig(configDir);
+  return config?.model ?? null;
 }
 
 // Safe properties that users can override
@@ -178,55 +203,63 @@ export function loadModelContextLimits(configDir?: string): Map<string, number> 
  * Merge user config overrides into plugin agent configs
  * Model overrides are validated against available models from opencode.json
  * Invalid models are logged and skipped (agent uses opencode default)
+ *
+ * Model resolution priority:
+ * 1. Per-agent override in micode.json (highest)
+ * 2. Default model from opencode.json "model" field
+ * 3. Plugin default (hardcoded in agent definitions)
  */
 export function mergeAgentConfigs(
   pluginAgents: Record<string, AgentConfig>,
   userConfig: MicodeConfig | null,
   availableModels?: Set<string>,
+  defaultModel?: string | null,
 ): Record<string, AgentConfig> {
-  if (!userConfig?.agents) {
-    return pluginAgents;
-  }
-
   const models = availableModels ?? loadAvailableModels();
   const shouldValidateModels = models.size > 0;
+  const opencodeDefaultModel = defaultModel ?? loadDefaultModel();
+
+  // Helper to validate a model string
+  const isValidModel = (model: string): boolean => {
+    if (BUILTIN_MODELS.has(model)) return true;
+    if (!shouldValidateModels) return true;
+    return models.has(model);
+  };
 
   const merged: Record<string, AgentConfig> = {};
 
   for (const [name, agentConfig] of Object.entries(pluginAgents)) {
-    const userOverride = userConfig.agents[name];
+    const userOverride = userConfig?.agents?.[name];
 
+    // Start with the base agent config
+    let finalConfig: AgentConfig = { ...agentConfig };
+
+    // Apply opencode default model if available and valid (overrides plugin default)
+    if (opencodeDefaultModel && isValidModel(opencodeDefaultModel)) {
+      finalConfig = { ...finalConfig, model: opencodeDefaultModel };
+    }
+
+    // Apply user overrides from micode.json (highest priority)
     if (userOverride) {
-      // Validate model if specified
       if (userOverride.model) {
-        const isBuiltin = BUILTIN_MODELS.has(userOverride.model);
-        if (isBuiltin || !shouldValidateModels || models.has(userOverride.model)) {
-          // Model is valid (builtin, validation unavailable, or in config) - apply all overrides
-          merged[name] = {
-            ...agentConfig,
-            ...userOverride,
-          };
+        if (isValidModel(userOverride.model)) {
+          // Model is valid - apply all overrides including model
+          finalConfig = { ...finalConfig, ...userOverride };
         } else {
           // Model is invalid - log warning and apply other overrides only
           console.warn(
             `[micode] Model "${userOverride.model}" for agent "${name}" is not available. Using opencode default.`,
           );
           const { model: _ignored, ...safeOverrides } = userOverride;
-          merged[name] = {
-            ...agentConfig,
-            ...safeOverrides,
-          };
+          finalConfig = { ...finalConfig, ...safeOverrides };
         }
       } else {
-        // No model specified - apply all overrides
-        merged[name] = {
-          ...agentConfig,
-          ...userOverride,
-        };
+        // No model in override - apply other overrides (keep resolved model)
+        finalConfig = { ...finalConfig, ...userOverride };
       }
-    } else {
-      merged[name] = agentConfig;
     }
+
+    merged[name] = finalConfig;
   }
 
   return merged;
