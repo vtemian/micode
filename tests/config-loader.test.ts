@@ -391,3 +391,96 @@ describe("loadModelContextLimits", () => {
     expect(limits.size).toBe(0);
   });
 });
+
+describe("loadMicodeConfig - fragments", () => {
+  let testConfigDir: string;
+
+  beforeEach(() => {
+    testConfigDir = join(tmpdir(), `micode-config-test-${Date.now()}`);
+    mkdirSync(testConfigDir, { recursive: true });
+  });
+
+  afterEach(() => {
+    rmSync(testConfigDir, { recursive: true, force: true });
+  });
+
+  it("should load fragments from micode.json", async () => {
+    const configPath = join(testConfigDir, "micode.json");
+    writeFileSync(
+      configPath,
+      JSON.stringify({
+        fragments: {
+          brainstormer: ["Save discussions to multiple files"],
+          planner: ["Always include test tasks"],
+        },
+      }),
+    );
+
+    const config = await loadMicodeConfig(testConfigDir);
+
+    expect(config).not.toBeNull();
+    expect(config?.fragments?.brainstormer).toEqual(["Save discussions to multiple files"]);
+    expect(config?.fragments?.planner).toEqual(["Always include test tasks"]);
+  });
+
+  it("should handle empty fragments object", async () => {
+    const configPath = join(testConfigDir, "micode.json");
+    writeFileSync(configPath, JSON.stringify({ fragments: {} }));
+
+    const config = await loadMicodeConfig(testConfigDir);
+
+    expect(config?.fragments).toEqual({});
+  });
+
+  it("should filter out non-string values in fragment arrays", async () => {
+    const configPath = join(testConfigDir, "micode.json");
+    writeFileSync(
+      configPath,
+      JSON.stringify({
+        fragments: {
+          brainstormer: ["valid string", 123, null, "another valid"],
+        },
+      }),
+    );
+
+    const config = await loadMicodeConfig(testConfigDir);
+
+    expect(config?.fragments?.brainstormer).toEqual(["valid string", "another valid"]);
+  });
+
+  it("should filter out empty strings from fragments", async () => {
+    const configPath = join(testConfigDir, "micode.json");
+    writeFileSync(
+      configPath,
+      JSON.stringify({
+        fragments: {
+          brainstormer: ["valid", "", "  ", "also valid"],
+        },
+      }),
+    );
+
+    const config = await loadMicodeConfig(testConfigDir);
+
+    expect(config?.fragments?.brainstormer).toEqual(["valid", "also valid"]);
+  });
+
+  it("should skip non-array fragment values", async () => {
+    const configPath = join(testConfigDir, "micode.json");
+    writeFileSync(
+      configPath,
+      JSON.stringify({
+        fragments: {
+          brainstormer: ["valid array"],
+          planner: "not an array",
+          implementer: { not: "array" },
+        },
+      }),
+    );
+
+    const config = await loadMicodeConfig(testConfigDir);
+
+    expect(config?.fragments?.brainstormer).toEqual(["valid array"]);
+    expect(config?.fragments?.planner).toBeUndefined();
+    expect(config?.fragments?.implementer).toBeUndefined();
+  });
+});

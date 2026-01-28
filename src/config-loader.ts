@@ -61,6 +61,7 @@ export interface MicodeConfig {
   agents?: Record<string, AgentOverride>;
   features?: MicodeFeatures;
   compactionThreshold?: number;
+  fragments?: Record<string, string[]>;
 }
 
 /**
@@ -114,6 +115,23 @@ export async function loadMicodeConfig(configDir?: string): Promise<MicodeConfig
       if (threshold >= 0 && threshold <= 1) {
         result.compactionThreshold = threshold;
       }
+    }
+
+    // Parse fragments
+    if (parsed.fragments && typeof parsed.fragments === "object") {
+      const fragments = parsed.fragments as Record<string, unknown>;
+      const sanitizedFragments: Record<string, string[]> = {};
+
+      for (const [agentName, fragmentList] of Object.entries(fragments)) {
+        if (Array.isArray(fragmentList)) {
+          const validFragments = fragmentList.filter((f): f is string => typeof f === "string" && f.trim().length > 0);
+          if (validFragments.length > 0) {
+            sanitizedFragments[agentName] = validFragments;
+          }
+        }
+      }
+
+      result.fragments = sanitizedFragments;
     }
 
     return result;
