@@ -13,6 +13,7 @@ import { createConstraintReviewerHook } from "./hooks/constraint-reviewer";
 import { createContextInjectorHook } from "./hooks/context-injector";
 import { createContextWindowMonitorHook } from "./hooks/context-window-monitor";
 import { createFileOpsTrackerHook, getFileOps } from "./hooks/file-ops-tracker";
+import { createFragmentInjectorHook } from "./hooks/fragment-injector";
 import { createLedgerLoaderHook } from "./hooks/ledger-loader";
 import { createMindmodelInjectorHook } from "./hooks/mindmodel-injector";
 import { createSessionRecoveryHook } from "./hooks/session-recovery";
@@ -100,6 +101,9 @@ const OpenCodeConfigPlugin: Plugin = async (ctx) => {
   const commentCheckerHook = createCommentCheckerHook(ctx);
   const artifactAutoIndexHook = createArtifactAutoIndexHook(ctx);
   const fileOpsTrackerHook = createFileOpsTrackerHook(ctx);
+
+  // Fragment injector hook - injects user-defined prompt fragments
+  const fragmentInjectorHook = createFragmentInjectorHook(ctx, userConfig);
 
   // Track internal sessions to prevent hook recursion (used by reviewer)
   const internalSessions = new Set<string>();
@@ -281,7 +285,10 @@ const OpenCodeConfigPlugin: Plugin = async (ctx) => {
     },
 
     "chat.params": async (input, output) => {
-      // Inject ledger context first (highest priority)
+      // Inject user-defined fragments FIRST (highest priority, beginning of prompt)
+      await fragmentInjectorHook["chat.params"](input, output);
+
+      // Inject ledger context (high priority)
       await ledgerLoaderHook["chat.params"](input, output);
 
       // Inject project context files
