@@ -81,4 +81,55 @@ describe("fragment-injector", () => {
       expect(fragments.planner).toBeUndefined();
     });
   });
+
+  describe("mergeFragments", () => {
+    it("should concatenate global and project fragments", async () => {
+      const { mergeFragments } = await import("../../src/hooks/fragment-injector");
+
+      const global = {
+        brainstormer: ["global instruction 1", "global instruction 2"],
+        planner: ["global planner instruction"],
+      };
+      const project = {
+        brainstormer: ["project instruction"],
+        implementer: ["project implementer instruction"],
+      };
+
+      const merged = mergeFragments(global, project);
+
+      expect(merged.brainstormer).toEqual(["global instruction 1", "global instruction 2", "project instruction"]);
+      expect(merged.planner).toEqual(["global planner instruction"]);
+      expect(merged.implementer).toEqual(["project implementer instruction"]);
+    });
+
+    it("should return global only when project is empty", async () => {
+      const { mergeFragments } = await import("../../src/hooks/fragment-injector");
+
+      const global = { brainstormer: ["global instruction"] };
+      const project = {};
+
+      const merged = mergeFragments(global, project);
+
+      expect(merged.brainstormer).toEqual(["global instruction"]);
+    });
+
+    it("should return project only when global is empty", async () => {
+      const { mergeFragments } = await import("../../src/hooks/fragment-injector");
+
+      const global = {};
+      const project = { brainstormer: ["project instruction"] };
+
+      const merged = mergeFragments(global, project);
+
+      expect(merged.brainstormer).toEqual(["project instruction"]);
+    });
+
+    it("should return empty object when both are empty", async () => {
+      const { mergeFragments } = await import("../../src/hooks/fragment-injector");
+
+      const merged = mergeFragments({}, {});
+
+      expect(merged).toEqual({});
+    });
+  });
 });

@@ -29,3 +29,27 @@ export async function loadProjectFragments(projectDir: string): Promise<Record<s
     return {};
   }
 }
+
+/**
+ * Merge global and project fragments
+ * Global fragments come first, project fragments are appended
+ */
+export function mergeFragments(
+  global: Record<string, string[]>,
+  project: Record<string, string[]>,
+): Record<string, string[]> {
+  const allAgents = new Set([...Object.keys(global), ...Object.keys(project)]);
+  const merged: Record<string, string[]> = {};
+
+  for (const agent of allAgents) {
+    const globalFragments = global[agent] ?? [];
+    const projectFragments = project[agent] ?? [];
+    const combined = [...globalFragments, ...projectFragments];
+
+    if (combined.length > 0) {
+      merged[agent] = combined;
+    }
+  }
+
+  return merged;
+}
