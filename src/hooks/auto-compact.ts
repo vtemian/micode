@@ -177,8 +177,7 @@ ${summaryText}
                 text: "Context was compacted. Continue from where you left off - check the 'In Progress' and 'Next Steps' sections in the summary above.",
               },
             ],
-            providerID,
-            modelID,
+            model: { providerID, modelID },
           },
           query: { directory: ctx.directory },
         })
