@@ -247,8 +247,9 @@ export function mergeAgentConfigs(
           finalConfig = { ...finalConfig, ...userOverride };
         } else {
           // Model is invalid - log warning and apply other overrides only
+          const fallbackModel = finalConfig.model || "plugin default";
           console.warn(
-            `[micode] Model "${userOverride.model}" for agent "${name}" is not available. Using opencode default.`,
+            `[micode] Model "${userOverride.model}" for agent "${name}" is not available. Using ${fallbackModel}.`,
           );
           const { model: _ignored, ...safeOverrides } = userOverride;
           finalConfig = { ...finalConfig, ...safeOverrides };
