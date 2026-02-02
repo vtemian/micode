@@ -182,6 +182,36 @@ git push --follow-tags
 6. **Continuous verification** - Implementer + Reviewer per task
 7. **Session continuity** - Never lose context
 
+## micode vs oh-my-opencode
+
+Both are OpenCode plugins, but with different philosophies:
+
+| Aspect | micode | oh-my-opencode |
+|--------|--------|----------------|
+| **Philosophy** | Opinionated workflow (brainstorm→plan→implement) | Batteries-included framework |
+| **Agent Design** | Role-based (Brainstormer, Planner, Executor) | Greek mythology theme (Sisyphus, Atlas, Prometheus) |
+| **Parallelism** | Batch-first: 10-20 concurrent micro-tasks (2-5 min each) | Background tasks with tmux visual monitoring |
+| **Code Guidance** | Mindmodel system with project-specific patterns | Comment checker, keyword modes (ultrawork) |
+| **Context Recovery** | Ledger system (CONTINUITY files) | AGENTS.md hierarchy, preemptive compaction |
+| **Workflow** | TDD-enforced with adaptation over escalation | Category-based delegation (visual-engineering, ultrabrain) |
+| **Configuration** | Focused options | Extensive (34 hooks, 11 agents, fallback chains) |
+
+### When to Choose micode
+
+- You want a **structured brainstorm→plan→implement workflow**
+- You prefer **TDD-driven implementation** with test-first development
+- You need **project-specific pattern enforcement** via mindmodel
+- You want **high parallelism on granular tasks** (10-20 concurrent micro-tasks)
+- You value **session continuity** via structured ledgers
+
+### When to Choose oh-my-opencode
+
+- You want **maximum flexibility** and configuration options
+- You prefer **keyword-driven modes** (e.g., "ultrawork", "analyze")
+- You need **extensive model fallback chains** with subscription detection
+- You like **category-based task delegation** (visual-engineering, infrastructure)
+- You want **visual monitoring** via tmux integration
+
 ## Inspiration
 
 - [oh-my-opencode](https://github.com/code-yeongyu/oh-my-opencode) - Plugin architecture
