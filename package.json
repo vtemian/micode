@@ -42,6 +42,7 @@
   "dependencies": {
     "@opencode-ai/plugin": "1.1.23",
     "bun-pty": "^0.4.5",
+    "jsonc-parser": "^3.2.1",
     "valibot": "^1.2.0",
     "yaml": "^2.8.2"
   },

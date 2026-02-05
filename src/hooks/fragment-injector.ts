@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import type { PluginInput } from "@opencode-ai/plugin";
+import Jsonc from "jsonc-parser";
 
 import type { MicodeConfig } from "../config-loader";
 
@@ -15,7 +16,7 @@ export async function loadProjectFragments(projectDir: string): Promise<Record<s
 
   try {
     const content = await readFile(fragmentsPath, "utf-8");
-    const parsed = JSON.parse(content) as Record<string, unknown>;
+    const parsed = Jsonc.parse(content) as Record<string, unknown>;
 
     const fragments: Record<string, string[]> = {};
 
