@@ -5,6 +5,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 import type { AgentConfig } from "@opencode-ai/sdk";
+import Jsonc from "jsonc-parser";
 
 // Minimal type for provider validation - only what we need
 export interface ProviderInfo {
@@ -30,7 +31,7 @@ function loadOpencodeConfig(configDir?: string): OpencodeConfig | null {
   try {
     const configPath = join(baseDir, "opencode.json");
     const content = readFileSync(configPath, "utf-8");
-    return JSON.parse(content) as OpencodeConfig;
+    return Jsonc.parse(content) as OpencodeConfig;
   } catch {
     return null;
   }
@@ -100,7 +101,7 @@ export async function loadMicodeConfig(configDir?: string): Promise<MicodeConfig
 
   try {
     const content = await readFile(configPath, "utf-8");
-    const parsed = JSON.parse(content) as Record<string, unknown>;
+    const parsed = Jsonc.parse(content) as Record<string, unknown>;
 
     const result: MicodeConfig = {};
 
@@ -176,7 +177,7 @@ export function loadModelContextLimits(configDir?: string): Map<string, number> 
   try {
     const configPath = join(baseDir, "opencode.json");
     const content = readFileSync(configPath, "utf-8");
-    const config = JSON.parse(content) as {
+    const config = Jsonc.parse(content) as {
       provider?: Record<string, { models?: Record<string, { limit?: { context?: number } }> }>;
     };
 
