@@ -1,5 +1,5 @@
 // tests/config-loader.test.ts
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -50,6 +50,42 @@ describe("config-loader", () => {
 
     const config = await loadMicodeConfig(testConfigDir);
     expect(config).toBeNull();
+  });
+
+  it("should parse JSON with trailing commas", async () => {
+    const configPath = join(testConfigDir, "micode.json");
+    writeFileSync(
+      configPath,
+      `{
+        "agents": {
+          "commander": { "model": "openai/gpt-4o", },
+          "brainstormer": { "model": "anthropic/claude-opus-4-6", "temperature": 0.8, },
+        },
+        "compactionThreshold": 0.5,
+      }`,
+    );
+
+    const config = await loadMicodeConfig(testConfigDir);
+
+    expect(config).not.toBeNull();
+    expect(config?.agents?.commander?.model).toBe("openai/gpt-4o");
+    expect(config?.agents?.brainstormer?.model).toBe("anthropic/claude-opus-4-6");
+    expect(config?.agents?.brainstormer?.temperature).toBe(0.8);
+    expect(config?.compactionThreshold).toBe(0.5);
+  });
+
+  it("should warn when micode.json has invalid syntax", async () => {
+    const configPath = join(testConfigDir, "micode.json");
+    writeFileSync(configPath, '{ "agents": BROKEN }');
+
+    const warnSpy = spyOn(console, "warn").mockImplementation(() => {});
+
+    const config = await loadMicodeConfig(testConfigDir);
+
+    expect(config).toBeNull();
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("Failed to parse micode.json"));
+
+    warnSpy.mockRestore();
   });
 
   it("should handle empty agents object", async () => {
