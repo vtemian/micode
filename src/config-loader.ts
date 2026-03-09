@@ -6,6 +6,20 @@ import { join } from "node:path";
 
 import type { AgentConfig } from "@opencode-ai/sdk";
 
+import { log } from "./utils/logger";
+
+/**
+ * Strip trailing commas from JSON strings to be lenient with hand-edited configs.
+ * Matches quoted strings first (and keeps them intact) so that commas inside
+ * string values like "hello, }" are never modified.
+ */
+function stripTrailingCommas(json: string): string {
+  return json.replace(/"(?:[^"\\]|\\.)*"|,\s*([\]}])/g, (match, bracket) => {
+    if (bracket === undefined) return match;
+    return bracket;
+  });
+}
+
 // Minimal type for provider validation - only what we need
 export interface ProviderInfo {
   id: string;
@@ -30,7 +44,7 @@ function loadOpencodeConfig(configDir?: string): OpencodeConfig | null {
   try {
     const configPath = join(baseDir, "opencode.json");
     const content = readFileSync(configPath, "utf-8");
-    return JSON.parse(content) as OpencodeConfig;
+    return JSON.parse(stripTrailingCommas(content)) as OpencodeConfig;
   } catch {
     return null;
   }
@@ -100,7 +114,7 @@ export async function loadMicodeConfig(configDir?: string): Promise<MicodeConfig
 
   try {
     const content = await readFile(configPath, "utf-8");
-    const parsed = JSON.parse(content) as Record<string, unknown>;
+    const parsed = JSON.parse(stripTrailingCommas(content)) as Record<string, unknown>;
 
     const result: MicodeConfig = {};
 
@@ -160,7 +174,14 @@ export async function loadMicodeConfig(configDir?: string): Promise<MicodeConfig
     }
 
     return result;
-  } catch {
+  } catch (error: unknown) {
+    // File not found is expected and silent
+    if (error instanceof Error && "code" in error && (error as NodeJS.ErrnoException).code === "ENOENT") {
+      return null;
+    }
+    // File exists but failed to parse - warn the user
+    const message = error instanceof Error ? error.message : String(error);
+    log.warn("micode", `Failed to parse micode.json: ${message}. Config overrides will be ignored.`);
     return null;
   }
 }
@@ -176,7 +197,7 @@ export function loadModelContextLimits(configDir?: string): Map<string, number> 
   try {
     const configPath = join(baseDir, "opencode.json");
     const content = readFileSync(configPath, "utf-8");
-    const config = JSON.parse(content) as {
+    const config = JSON.parse(stripTrailingCommas(content)) as {
       provider?: Record<string, { models?: Record<string, { limit?: { context?: number } }> }>;
     };
 
