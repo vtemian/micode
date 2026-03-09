@@ -74,6 +74,27 @@ describe("config-loader", () => {
     expect(config?.compactionThreshold).toBe(0.5);
   });
 
+  it("should not corrupt string values containing commas and brackets", async () => {
+    const configPath = join(testConfigDir, "micode.json");
+    writeFileSync(
+      configPath,
+      JSON.stringify({
+        fragments: {
+          brainstormer: ["hello, }", "keep this, ]too", 'escaped \\" comma, }'],
+        },
+      }),
+    );
+
+    const config = await loadMicodeConfig(testConfigDir);
+
+    expect(config).not.toBeNull();
+    expect(config?.fragments?.brainstormer).toEqual([
+      "hello, }",
+      "keep this, ]too",
+      'escaped \\" comma, }',
+    ]);
+  });
+
   it("should warn when micode.json has invalid syntax", async () => {
     const configPath = join(testConfigDir, "micode.json");
     writeFileSync(configPath, '{ "agents": BROKEN }');

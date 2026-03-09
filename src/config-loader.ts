@@ -10,10 +10,16 @@ import { log } from "./utils/logger";
 
 /**
  * Strip trailing commas from JSON strings to be lenient with hand-edited configs.
- * Handles commas before closing `]` or `}` with optional whitespace between.
+ * Matches quoted strings first (and keeps them intact) so that commas inside
+ * string values like "hello, }" are never modified.
  */
 function stripTrailingCommas(json: string): string {
-  return json.replace(/,\s*([\]}])/g, "$1");
+  return json.replace(/"(?:[^"\\]|\\.)*"|,\s*([\]}])/g, (match, bracket) => {
+    // If bracket is undefined, this matched a quoted string — return it unchanged
+    if (bracket === undefined) return match;
+    // Otherwise it matched a trailing comma outside a string — strip the comma
+    return bracket;
+  });
 }
 
 // Minimal type for provider validation - only what we need
