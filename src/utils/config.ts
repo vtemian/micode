@@ -128,6 +128,14 @@ export const config = {
   },
 
   /**
+   * Model settings
+   */
+  model: {
+    /** Plugin fallback model when no opencode.json or micode.json model is configured */
+    default: "openai/gpt-5.2-codex",
+  },
+
+  /**
    * Mindmodel v2 settings
    */
   mindmodel: {
@@ -141,3 +149,6 @@ export const config = {
     categoryGroups: ["stack", "architecture", "patterns", "style", "components", "domain", "ops"] as readonly string[],
   },
 } as const;
+
+/** Plugin fallback model — single source of truth for the default model string */
+export const DEFAULT_MODEL = config.model.default;

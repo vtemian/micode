@@ -207,7 +207,7 @@ export function loadModelContextLimits(configDir?: string): Map<string, number> 
  * Model resolution priority:
  * 1. Per-agent override in micode.json (highest)
  * 2. Default model from opencode.json "model" field
- * 3. Plugin default (hardcoded in agent definitions)
+ * 3. DEFAULT_MODEL from config (plugin fallback)
  */
 export function mergeAgentConfigs(
   pluginAgents: Record<string, AgentConfig>,
@@ -247,7 +247,7 @@ export function mergeAgentConfigs(
           finalConfig = { ...finalConfig, ...userOverride };
         } else {
           // Model is invalid - log warning and apply other overrides only
-          const fallbackModel = finalConfig.model || "plugin default";
+          const fallbackModel = finalConfig.model || "DEFAULT_MODEL";
           console.warn(
             `[micode] Model "${userOverride.model}" for agent "${name}" is not available. Using ${fallbackModel}.`,
           );

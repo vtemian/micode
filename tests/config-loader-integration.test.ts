@@ -3,6 +3,7 @@ import { describe, expect, it } from "bun:test";
 
 import { agents } from "../src/agents";
 import { mergeAgentConfigs } from "../src/config-loader";
+import { DEFAULT_MODEL } from "../src/utils/config";
 
 describe("config-loader integration", () => {
   it("should have all agents defined in agents/index.ts", () => {
@@ -36,7 +37,7 @@ describe("config-loader integration", () => {
       },
     };
 
-    const availableModels = new Set(["openai/gpt-4o", "openai/gpt-5.2-codex"]);
+    const availableModels = new Set(["openai/gpt-4o", DEFAULT_MODEL]);
 
     const merged = mergeAgentConfigs(agents, userConfig, availableModels);
 
@@ -47,7 +48,7 @@ describe("config-loader integration", () => {
     expect(merged["mm-orchestrator"].prompt).toBeDefined();
 
     // Check other agents still have defaults
-    expect(merged.commander.model).toBe("openai/gpt-5.2-codex");
+    expect(merged.commander.model).toBe(DEFAULT_MODEL);
   });
 
   it("should preserve all agent properties when merging", () => {
@@ -57,7 +58,7 @@ describe("config-loader integration", () => {
       },
     };
 
-    const availableModels = new Set(["openai/gpt-4o", "openai/gpt-5.2-codex"]);
+    const availableModels = new Set(["openai/gpt-4o", DEFAULT_MODEL]);
 
     const merged = mergeAgentConfigs(agents, userConfig, availableModels);
 

@@ -1,5 +1,6 @@
 import type { AgentConfig } from "@opencode-ai/sdk";
 
+import { DEFAULT_MODEL } from "../utils/config";
 import { artifactSearcherAgent } from "./artifact-searcher";
 import { bootstrapperAgent } from "./bootstrapper";
 import { brainstormerAgent } from "./brainstormer";
@@ -30,34 +31,34 @@ import { projectInitializerAgent } from "./project-initializer";
 import { reviewerAgent } from "./reviewer";
 
 export const agents: Record<string, AgentConfig> = {
-  [PRIMARY_AGENT_NAME]: { ...primaryAgent, model: "openai/gpt-5.2-codex" },
-  brainstormer: { ...brainstormerAgent, model: "openai/gpt-5.2-codex" },
-  bootstrapper: { ...bootstrapperAgent, model: "openai/gpt-5.2-codex" },
-  "codebase-locator": { ...codebaseLocatorAgent, model: "openai/gpt-5.2-codex" },
-  "codebase-analyzer": { ...codebaseAnalyzerAgent, model: "openai/gpt-5.2-codex" },
-  "pattern-finder": { ...patternFinderAgent, model: "openai/gpt-5.2-codex" },
-  planner: { ...plannerAgent, model: "openai/gpt-5.2-codex" },
-  implementer: { ...implementerAgent, model: "openai/gpt-5.2-codex" },
-  reviewer: { ...reviewerAgent, model: "openai/gpt-5.2-codex" },
-  executor: { ...executorAgent, model: "openai/gpt-5.2-codex" },
-  "ledger-creator": { ...ledgerCreatorAgent, model: "openai/gpt-5.2-codex" },
-  "artifact-searcher": { ...artifactSearcherAgent, model: "openai/gpt-5.2-codex" },
-  "project-initializer": { ...projectInitializerAgent, model: "openai/gpt-5.2-codex" },
-  octto: { ...octtoAgent, model: "openai/gpt-5.2-codex" },
-  probe: { ...probeAgent, model: "openai/gpt-5.2-codex" },
+  [PRIMARY_AGENT_NAME]: { ...primaryAgent, model: DEFAULT_MODEL },
+  brainstormer: { ...brainstormerAgent, model: DEFAULT_MODEL },
+  bootstrapper: { ...bootstrapperAgent, model: DEFAULT_MODEL },
+  "codebase-locator": { ...codebaseLocatorAgent, model: DEFAULT_MODEL },
+  "codebase-analyzer": { ...codebaseAnalyzerAgent, model: DEFAULT_MODEL },
+  "pattern-finder": { ...patternFinderAgent, model: DEFAULT_MODEL },
+  planner: { ...plannerAgent, model: DEFAULT_MODEL },
+  implementer: { ...implementerAgent, model: DEFAULT_MODEL },
+  reviewer: { ...reviewerAgent, model: DEFAULT_MODEL },
+  executor: { ...executorAgent, model: DEFAULT_MODEL },
+  "ledger-creator": { ...ledgerCreatorAgent, model: DEFAULT_MODEL },
+  "artifact-searcher": { ...artifactSearcherAgent, model: DEFAULT_MODEL },
+  "project-initializer": { ...projectInitializerAgent, model: DEFAULT_MODEL },
+  octto: { ...octtoAgent, model: DEFAULT_MODEL },
+  probe: { ...probeAgent, model: DEFAULT_MODEL },
   // Mindmodel generation agents
-  "mm-stack-detector": { ...stackDetectorAgent, model: "openai/gpt-5.2-codex" },
-  "mm-pattern-discoverer": { ...mindmodelPatternDiscovererAgent, model: "openai/gpt-5.2-codex" },
-  "mm-example-extractor": { ...exampleExtractorAgent, model: "openai/gpt-5.2-codex" },
-  "mm-orchestrator": { ...mindmodelOrchestratorAgent, model: "openai/gpt-5.2-codex" },
+  "mm-stack-detector": { ...stackDetectorAgent, model: DEFAULT_MODEL },
+  "mm-pattern-discoverer": { ...mindmodelPatternDiscovererAgent, model: DEFAULT_MODEL },
+  "mm-example-extractor": { ...exampleExtractorAgent, model: DEFAULT_MODEL },
+  "mm-orchestrator": { ...mindmodelOrchestratorAgent, model: DEFAULT_MODEL },
   // Mindmodel v2 analysis agents
-  "mm-dependency-mapper": { ...dependencyMapperAgent, model: "openai/gpt-5.2-codex" },
-  "mm-convention-extractor": { ...conventionExtractorAgent, model: "openai/gpt-5.2-codex" },
-  "mm-domain-extractor": { ...domainExtractorAgent, model: "openai/gpt-5.2-codex" },
-  "mm-code-clusterer": { ...codeClustererAgent, model: "openai/gpt-5.2-codex" },
-  "mm-anti-pattern-detector": { ...antiPatternDetectorAgent, model: "openai/gpt-5.2-codex" },
-  "mm-constraint-writer": { ...constraintWriterAgent, model: "openai/gpt-5.2-codex" },
-  "mm-constraint-reviewer": { ...constraintReviewerAgent, model: "openai/gpt-5.2-codex" },
+  "mm-dependency-mapper": { ...dependencyMapperAgent, model: DEFAULT_MODEL },
+  "mm-convention-extractor": { ...conventionExtractorAgent, model: DEFAULT_MODEL },
+  "mm-domain-extractor": { ...domainExtractorAgent, model: DEFAULT_MODEL },
+  "mm-code-clusterer": { ...codeClustererAgent, model: DEFAULT_MODEL },
+  "mm-anti-pattern-detector": { ...antiPatternDetectorAgent, model: DEFAULT_MODEL },
+  "mm-constraint-writer": { ...constraintWriterAgent, model: DEFAULT_MODEL },
+  "mm-constraint-reviewer": { ...constraintReviewerAgent, model: DEFAULT_MODEL },
 };
 
 export {

@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { loadMicodeConfig, loadModelContextLimits, mergeAgentConfigs } from "../src/config-loader";
+import { DEFAULT_MODEL } from "../src/utils/config";
 
 describe("config-loader", () => {
   let testConfigDir: string;
@@ -204,15 +205,15 @@ describe("mergeAgentConfigs", () => {
     const pluginAgents = {
       commander: {
         description: "Main agent",
-        model: "openai/gpt-5.2-codex",
+        model: DEFAULT_MODEL,
       },
       brainstormer: {
         description: "Design agent",
-        model: "openai/gpt-5.2-codex",
+        model: DEFAULT_MODEL,
       },
     };
 
-    const availableModels = new Set(["openai/gpt-5.2-codex", "github-copilot/gpt-5-mini"]);
+    const availableModels = new Set([DEFAULT_MODEL, "github-copilot/gpt-5-mini"]);
     const defaultModel = "github-copilot/gpt-5-mini";
 
     const merged = mergeAgentConfigs(pluginAgents, null, availableModels, defaultModel);
@@ -226,11 +227,11 @@ describe("mergeAgentConfigs", () => {
     const pluginAgents = {
       commander: {
         description: "Main agent",
-        model: "openai/gpt-5.2-codex",
+        model: DEFAULT_MODEL,
       },
       brainstormer: {
         description: "Design agent",
-        model: "openai/gpt-5.2-codex",
+        model: DEFAULT_MODEL,
       },
     };
 
@@ -239,7 +240,7 @@ describe("mergeAgentConfigs", () => {
         commander: { model: "openai/gpt-4o" },
       },
     };
-    const availableModels = new Set(["openai/gpt-5.2-codex", "github-copilot/gpt-5-mini", "openai/gpt-4o"]);
+    const availableModels = new Set([DEFAULT_MODEL, "github-copilot/gpt-5-mini", "openai/gpt-4o"]);
     const defaultModel = "github-copilot/gpt-5-mini";
 
     const merged = mergeAgentConfigs(pluginAgents, userConfig, availableModels, defaultModel);
@@ -254,17 +255,17 @@ describe("mergeAgentConfigs", () => {
     const pluginAgents = {
       commander: {
         description: "Main agent",
-        model: "openai/gpt-5.2-codex",
+        model: DEFAULT_MODEL,
       },
     };
 
-    const availableModels = new Set(["openai/gpt-5.2-codex"]);
+    const availableModels = new Set([DEFAULT_MODEL]);
     const defaultModel = "invalid/nonexistent-model";
 
     const merged = mergeAgentConfigs(pluginAgents, null, availableModels, defaultModel);
 
     // Invalid default should be skipped - keep plugin default
-    expect(merged.commander.model).toBe("openai/gpt-5.2-codex");
+    expect(merged.commander.model).toBe(DEFAULT_MODEL);
   });
 });
 

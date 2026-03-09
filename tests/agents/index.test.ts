@@ -1,5 +1,7 @@
 import { describe, expect, it } from "bun:test";
 
+import { DEFAULT_MODEL } from "../../src/utils/config";
+
 describe("agents index", () => {
   it("should not export handoff agents", async () => {
     const module = await import("../../src/agents/index");
@@ -47,7 +49,15 @@ describe("agents index", () => {
     for (const agentName of v2Agents) {
       const agent = module.agents[agentName];
       expect(agent.mode).toBe("subagent");
-      expect(agent.model).toBe("openai/gpt-5.2-codex");
+      expect(agent.model).toBe(DEFAULT_MODEL);
+    }
+  });
+
+  it("should use DEFAULT_MODEL for all agents", async () => {
+    const module = await import("../../src/agents/index");
+
+    for (const [_name, agent] of Object.entries(module.agents)) {
+      expect(agent.model).toBe(DEFAULT_MODEL);
     }
   });
 });
