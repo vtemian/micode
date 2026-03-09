@@ -112,8 +112,20 @@ export async function loadMicodeConfig(configDir?: string): Promise<MicodeConfig
   const baseDir = configDir ?? join(homedir(), ".config", "opencode");
   const configPath = join(baseDir, "micode.json");
 
+  let content: string;
   try {
-    const content = await readFile(configPath, "utf-8");
+    content = await readFile(configPath, "utf-8");
+  } catch (error: unknown) {
+    // File not found is expected and silent
+    if (error instanceof Error && "code" in error && (error as NodeJS.ErrnoException).code === "ENOENT") {
+      return null;
+    }
+    const message = error instanceof Error ? error.message : String(error);
+    log.warn("micode", `Failed to read micode.json: ${message}. Config overrides will be ignored.`);
+    return null;
+  }
+
+  try {
     const parsed = JSON.parse(stripTrailingCommas(content)) as Record<string, unknown>;
 
     const result: MicodeConfig = {};
@@ -175,10 +187,6 @@ export async function loadMicodeConfig(configDir?: string): Promise<MicodeConfig
 
     return result;
   } catch (error: unknown) {
-    // File not found is expected and silent
-    if (error instanceof Error && "code" in error && (error as NodeJS.ErrnoException).code === "ENOENT") {
-      return null;
-    }
     // File exists but failed to parse - warn the user
     const message = error instanceof Error ? error.message : String(error);
     log.warn("micode", `Failed to parse micode.json: ${message}. Config overrides will be ignored.`);
