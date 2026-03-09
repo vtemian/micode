@@ -313,7 +313,7 @@ const OpenCodeConfigPlugin: Plugin = async (ctx) => {
           ...output.options,
           thinking: {
             type: "enabled",
-            budget_tokens: 32000,
+            budgetTokens: 32000,
           },
         };
       }
