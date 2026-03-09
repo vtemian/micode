@@ -47,7 +47,14 @@ describe("agents index", () => {
     for (const agentName of v2Agents) {
       const agent = module.agents[agentName];
       expect(agent.mode).toBe("subagent");
-      expect(agent.model).toBe("openai/gpt-5.2-codex");
+    }
+  });
+
+  it("should not hardcode models on any agent", async () => {
+    const module = await import("../../src/agents/index");
+
+    for (const [agentName, agent] of Object.entries(module.agents)) {
+      expect(agent.model).toBeUndefined();
     }
   });
 });
