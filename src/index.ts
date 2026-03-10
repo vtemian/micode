@@ -12,6 +12,7 @@ import { createCommentCheckerHook } from "./hooks/comment-checker";
 import { createConstraintReviewerHook } from "./hooks/constraint-reviewer";
 import { createContextInjectorHook } from "./hooks/context-injector";
 import { createContextWindowMonitorHook } from "./hooks/context-window-monitor";
+import { createFetchTrackerHook } from "./hooks/fetch-tracker";
 import { createFileOpsTrackerHook, getFileOps } from "./hooks/file-ops-tracker";
 import { createFragmentInjectorHook, warnUnknownAgents } from "./hooks/fragment-injector";
 import { createLedgerLoaderHook } from "./hooks/ledger-loader";
@@ -101,6 +102,7 @@ const OpenCodeConfigPlugin: Plugin = async (ctx) => {
   const commentCheckerHook = createCommentCheckerHook(ctx);
   const artifactAutoIndexHook = createArtifactAutoIndexHook(ctx);
   const fileOpsTrackerHook = createFileOpsTrackerHook(ctx);
+  const fetchTrackerHook = createFetchTrackerHook(ctx);
 
   // Fragment injector hook - injects user-defined prompt fragments
   const fragmentInjectorHook = createFragmentInjectorHook(ctx, userConfig);
@@ -235,7 +237,6 @@ const OpenCodeConfigPlugin: Plugin = async (ctx) => {
         edit: "allow",
         bash: "allow",
         webfetch: "allow",
-        doom_loop: "allow",
         external_directory: "allow",
       };
 
@@ -404,6 +405,12 @@ IMPORTANT:
         output,
       );
 
+      // Track fetch operations and cache results
+      await fetchTrackerHook["tool.execute.after"](
+        { tool: input.tool, sessionID: input.sessionID, args: input.args },
+        output,
+      );
+
       // Constraint review for Edit/Write
       await constraintReviewerHook["tool.execute.after"](
         { tool: input.tool, sessionID: input.sessionID, args: input.args },
@@ -450,6 +457,7 @@ IMPORTANT:
           thinkModeState.delete(sessionId);
           ptyManager.cleanupBySession(sessionId);
           constraintReviewerHook.cleanupSession(sessionId);
+          fetchTrackerHook.cleanupSession(sessionId);
 
           // Cleanup octto sessions
           const octtoSessions = octtoSessionsMap.get(sessionId);
@@ -470,6 +478,9 @@ IMPORTANT:
 
       // File ops tracker cleanup
       await fileOpsTrackerHook.event({ event });
+
+      // Fetch tracker cleanup
+      await fetchTrackerHook.event({ event });
     },
   };
 };

@@ -148,6 +148,20 @@ export const config = {
     /** Category groups for v2 structure */
     categoryGroups: ["stack", "architecture", "patterns", "style", "components", "domain", "ops"] as readonly string[],
   },
+
+  /**
+   * Fetch loop prevention settings
+   */
+  fetch: {
+    /** Inject warning after this many calls to the same resource */
+    warnThreshold: 3,
+    /** Hard block after this many calls to the same resource */
+    maxCallsPerResource: 5,
+    /** Cache TTL in milliseconds (5 minutes) */
+    cacheTtlMs: 300_000,
+    /** Max cached entries per session (LRU eviction) */
+    cacheMaxEntries: 50,
+  },
 } as const;
 
 /** Plugin fallback model — single source of truth for the default model string */
