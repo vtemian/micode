@@ -3,6 +3,7 @@ import { access, readFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { config } from "../utils/config";
+import { log } from "../utils/logger";
 import { type MindmodelManifest, parseManifest } from "./types";
 
 export interface LoadedMindmodel {
@@ -36,7 +37,7 @@ export async function loadMindmodel(projectDir: string): Promise<LoadedMindmodel
       manifest,
     };
   } catch (error) {
-    console.warn(`[micode] Failed to load mindmodel manifest: ${error}`);
+    log.warn("mindmodel", `Failed to load manifest: ${error}`);
     return null;
   }
 }
@@ -58,7 +59,7 @@ export async function loadExamples(mindmodel: LoadedMindmodel, categoryPaths: st
         content,
       });
     } catch {
-      console.warn(`[micode] Failed to load mindmodel example: ${categoryPath}`);
+      log.warn("mindmodel", `Failed to load example: ${categoryPath}`);
     }
   }
 

@@ -64,7 +64,7 @@ Returns relevant code examples and patterns to follow.`,
           return "No specific patterns found for this task. Proceed using general best practices.";
         }
 
-        log.info("mindmodel", `Matched categories: ${categories.join(", ")}`);
+        log.debug("mindmodel", `Matched categories: ${categories.join(", ")}`);
 
         // Load examples
         const examples = await loadExamples(mindmodel, categories);
@@ -73,7 +73,7 @@ Returns relevant code examples and patterns to follow.`,
         }
 
         const formatted = formatExamplesForInjection(examples);
-        log.info("mindmodel", `Returning ${examples.length} examples`);
+        log.debug("mindmodel", `Returning ${examples.length} examples`);
 
         return formatted;
       } catch (error) {
