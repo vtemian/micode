@@ -79,7 +79,7 @@ Maintain context across sessions with structured compaction. Run `/ledger` to cr
 
 ## Hooks
 
-- **Think Mode** - Keywords like "think hard" enable 32k token thinking budget
+- **Think Mode** - Keywords like "think hard" enable 128k token thinking budget
 - **Ledger Loader** - Injects continuity ledger into system prompt
 - **Auto-Compact** - At 50% context usage, automatically summarizes session to reduce context
 - **File Ops Tracker** - Tracks read/write/edit for deterministic logging
@@ -106,11 +106,15 @@ All micode agents will use this model automatically.
 
 Create `~/.config/opencode/micode.json` for micode-specific settings:
 
-```json
+```jsonc
 {
   "agents": {
     "brainstormer": { "model": "openai/gpt-4o", "temperature": 0.8 },
-    "commander": { "maxTokens": 8192 }
+    "commander": {
+      "maxTokens": 8192,
+      // Configure reasoning effort per agent
+      "thinking": { "type": "enabled", "budgetTokens": 100000 }
+    }
   },
   "features": {
     "mindmodelInjection": true
@@ -122,11 +126,13 @@ Create `~/.config/opencode/micode.json` for micode-specific settings:
 }
 ```
 
+> **Note:** Both `.json` and `.jsonc` formats are supported. JSONC allows comments and trailing commas.
+
 #### Options
 
 | Option | Type | Description |
 |--------|------|-------------|
-| `agents` | object | Per-agent overrides (model, temperature, maxTokens) |
+| `agents` | object | Per-agent overrides (model, temperature, maxTokens, thinking) |
 | `features.mindmodelInjection` | boolean | Enable mindmodel context injection |
 | `compactionThreshold` | number | Context usage threshold (0-1) for auto-compaction. Default: 0.5 |
 | `fragments` | object | Additional prompt fragments per agent |
