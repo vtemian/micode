@@ -183,20 +183,18 @@ export function createFetchTrackerHook(_ctx: PluginInput) {
         // Increment call count
         const count = incrementCount(input.sessionID, key);
 
+        // Hard block: exceeded max calls — unconditional, independent of cache state
+        if (count > config.fetch.maxCallsPerResource) {
+          output.output = `<fetch-blocked>This resource has been fetched ${count} times this session. The content is already available in the conversation above. Use the information already available instead of re-fetching.</fetch-blocked>`;
+          return;
+        }
+
         // Check for cached content from a previous call
         const cache = getOrCreateCache(input.sessionID);
         const cached = cache.get(key);
 
         if (count > 1 && cached && !isCacheExpired(cached)) {
-          // Repeated call with valid cache — replace output
-
-          if (count > config.fetch.maxCallsPerResource) {
-            // Hard block: exceeded max calls
-            output.output = `<fetch-blocked>This resource has been fetched ${count} times this session. The content is already available in the conversation above. Use the information already available instead of re-fetching.</fetch-blocked>`;
-            return;
-          }
-
-          // Return cached content
+          // Repeated call with valid cache — replace output with cached content
           let cachedOutput = `<from-cache>Returning cached result (fetched ${count} time${count !== 1 ? "s" : ""} previously).</from-cache>\n\n${cached.content}`;
 
           // Add warning if at or above warn threshold
