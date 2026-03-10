@@ -1,5 +1,8 @@
 // tests/tools/pty/manager.test.ts
-import { describe, it, expect, beforeEach, afterEach } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+
+import { spawn } from "bun-pty";
+
 import { PTYManager } from "../../../src/tools/pty/manager";
 
 describe("PTYManager", () => {
@@ -7,6 +10,7 @@ describe("PTYManager", () => {
 
   beforeEach(() => {
     manager = new PTYManager();
+    manager.init(spawn);
   });
 
   afterEach(() => {

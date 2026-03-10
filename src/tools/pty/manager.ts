@@ -1,7 +1,10 @@
 // src/tools/pty/manager.ts
-import { spawn, type IPty } from "bun-pty";
 import { RingBuffer } from "./buffer";
-import type { PTYSession, PTYSessionInfo, SpawnOptions, ReadResult, SearchResult } from "./types";
+import type { PTYSession, PTYSessionInfo, ReadResult, SearchResult, SpawnOptions } from "./types";
+
+// bun-pty types used locally - the actual module is injected via init()
+type IPty = import("bun-pty").IPty;
+type SpawnFn = typeof import("bun-pty").spawn;
 
 function generateId(): string {
   const hex = Array.from(crypto.getRandomValues(new Uint8Array(4)))
@@ -12,8 +15,35 @@ function generateId(): string {
 
 export class PTYManager {
   private sessions: Map<string, PTYSession> = new Map();
+  private spawnFn: SpawnFn | null = null;
+  private _available = false;
+
+  /**
+   * Initialize the manager with the bun-pty spawn function.
+   * Must be called before spawn(). If not called or called with null,
+   * PTY operations will return errors indicating PTY is unavailable.
+   */
+  init(spawnFn: SpawnFn): void {
+    this.spawnFn = spawnFn;
+    this._available = true;
+  }
+
+  /**
+   * Whether PTY functionality is available (bun-pty loaded successfully).
+   */
+  get available(): boolean {
+    return this._available;
+  }
 
   spawn(opts: SpawnOptions): PTYSessionInfo {
+    if (!this.spawnFn) {
+      throw new Error(
+        "PTY unavailable: bun-pty native library could not be loaded. " +
+          "Set BUN_PTY_LIB environment variable to the path of the native library " +
+          "(e.g., .opencode/node_modules/bun-pty/rust-pty/target/release/librust_pty.dylib)",
+      );
+    }
+
     const id = generateId();
     const args = opts.args ?? [];
     const workdir = opts.workdir ?? process.cwd();
@@ -22,7 +52,7 @@ export class PTYManager {
 
     let ptyProcess: IPty;
     try {
-      ptyProcess = spawn(opts.command, args, {
+      ptyProcess = this.spawnFn(opts.command, args, {
         name: "xterm-256color",
         cols: 120,
         rows: 40,

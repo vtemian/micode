@@ -28,7 +28,7 @@ import { milestone_artifact_search } from "./tools/milestone-artifact-search";
 import { createMindmodelLookupTool } from "./tools/mindmodel-lookup";
 import { createOcttoTools, createSessionStore } from "./tools/octto";
 // PTY System
-import { createPtyTools, PTYManager } from "./tools/pty";
+import { createPtyTools, loadBunPty, PTYManager } from "./tools/pty";
 import { createSpawnAgentTool } from "./tools/spawn-agent";
 import { log } from "./utils/logger";
 
@@ -174,9 +174,15 @@ const OpenCodeConfigPlugin: Plugin = async (ctx) => {
     }
   });
 
-  // PTY System
+  // PTY System - load bun-pty with graceful degradation
+  // Sets BUN_PTY_LIB env var to fix path resolution in OpenCode plugin environments
+  // See: https://github.com/vtemian/micode/issues/20
   const ptyManager = new PTYManager();
-  const ptyTools = createPtyTools(ptyManager);
+  const bunPty = await loadBunPty();
+  if (bunPty) {
+    ptyManager.init(bunPty.spawn);
+  }
+  const ptyTools = ptyManager.available ? createPtyTools(ptyManager) : {};
 
   // Spawn agent tool (for subagents to spawn other subagents)
   const spawn_agent = createSpawnAgentTool(ctx);

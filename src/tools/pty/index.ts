@@ -1,27 +1,29 @@
 // src/tools/pty/index.ts
-export { PTYManager } from "./manager";
+
 export { RingBuffer } from "./buffer";
+export { PTYManager } from "./manager";
+export { getBunPtyLoadError, isBunPtyAvailable, loadBunPty } from "./pty-loader";
+export { createPtyKillTool } from "./tools/kill";
+export { createPtyListTool } from "./tools/list";
+export { createPtyReadTool } from "./tools/read";
 export { createPtySpawnTool } from "./tools/spawn";
 export { createPtyWriteTool } from "./tools/write";
-export { createPtyReadTool } from "./tools/read";
-export { createPtyListTool } from "./tools/list";
-export { createPtyKillTool } from "./tools/kill";
 export type {
   PTYSession,
   PTYSessionInfo,
   PTYStatus,
-  SpawnOptions,
   ReadResult,
   SearchMatch,
   SearchResult,
+  SpawnOptions,
 } from "./types";
 
 import type { PTYManager } from "./manager";
+import { createPtyKillTool } from "./tools/kill";
+import { createPtyListTool } from "./tools/list";
+import { createPtyReadTool } from "./tools/read";
 import { createPtySpawnTool } from "./tools/spawn";
 import { createPtyWriteTool } from "./tools/write";
-import { createPtyReadTool } from "./tools/read";
-import { createPtyListTool } from "./tools/list";
-import { createPtyKillTool } from "./tools/kill";
 
 export function createPtyTools(manager: PTYManager) {
   return {

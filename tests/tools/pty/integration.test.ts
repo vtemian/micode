@@ -1,10 +1,13 @@
 // tests/tools/pty/integration.test.ts
-import { describe, it, expect, beforeEach, afterEach } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+
+import { spawn } from "bun-pty";
+
 import { PTYManager } from "../../../src/tools/pty/manager";
+import { createPtyKillTool } from "../../../src/tools/pty/tools/kill";
+import { createPtyReadTool } from "../../../src/tools/pty/tools/read";
 import { createPtySpawnTool } from "../../../src/tools/pty/tools/spawn";
 import { createPtyWriteTool } from "../../../src/tools/pty/tools/write";
-import { createPtyReadTool } from "../../../src/tools/pty/tools/read";
-import { createPtyKillTool } from "../../../src/tools/pty/tools/kill";
 
 describe("PTY Integration", () => {
   let manager: PTYManager;
@@ -20,6 +23,7 @@ describe("PTY Integration", () => {
 
   beforeEach(() => {
     manager = new PTYManager();
+    manager.init(spawn);
     pty_spawn = createPtySpawnTool(manager);
     pty_write = createPtyWriteTool(manager);
     pty_read = createPtyReadTool(manager);
