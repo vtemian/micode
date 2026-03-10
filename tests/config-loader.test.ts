@@ -4,7 +4,13 @@ import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { loadMicodeConfig, loadModelContextLimits, mergeAgentConfigs } from "../src/config-loader";
+import {
+  loadAvailableModels,
+  loadDefaultModel,
+  loadMicodeConfig,
+  loadModelContextLimits,
+  mergeAgentConfigs,
+} from "../src/config-loader";
 import { DEFAULT_MODEL } from "../src/utils/config";
 
 describe("config-loader", () => {
@@ -47,7 +53,7 @@ describe("config-loader", () => {
 
   it("should return null for invalid JSON", async () => {
     const configPath = join(testConfigDir, "micode.json");
-    writeFileSync(configPath, "{ invalid json }");
+    writeFileSync(configPath, "not json at all }{][");
 
     const config = await loadMicodeConfig(testConfigDir);
     expect(config).toBeNull();
@@ -551,5 +557,320 @@ describe("loadMicodeConfig - fragments", () => {
     expect(config?.fragments?.brainstormer).toEqual(["valid array"]);
     expect(config?.fragments?.planner).toBeUndefined();
     expect(config?.fragments?.implementer).toBeUndefined();
+  });
+});
+
+describe("JSONC parsing support", () => {
+  let testConfigDir: string;
+
+  beforeEach(() => {
+    testConfigDir = join(tmpdir(), `micode-jsonc-test-${Date.now()}`);
+    mkdirSync(testConfigDir, { recursive: true });
+  });
+
+  afterEach(() => {
+    rmSync(testConfigDir, { recursive: true, force: true });
+  });
+
+  describe("loadMicodeConfig with JSONC", () => {
+    it("should parse micode.jsonc with line comments", async () => {
+      const configPath = join(testConfigDir, "micode.jsonc");
+      writeFileSync(
+        configPath,
+        `{
+  // This is a line comment
+  "agents": {
+    "commander": { "model": "openai/gpt-4o" } // inline comment
+  }
+}`,
+      );
+
+      const config = await loadMicodeConfig(testConfigDir);
+
+      expect(config).not.toBeNull();
+      expect(config?.agents?.commander?.model).toBe("openai/gpt-4o");
+    });
+
+    it("should parse micode.jsonc with block comments", async () => {
+      const configPath = join(testConfigDir, "micode.jsonc");
+      writeFileSync(
+        configPath,
+        `{
+  /* Block comment explaining config */
+  "agents": {
+    "brainstormer": {
+      /* Use a creative model */
+      "model": "openai/gpt-4o",
+      "temperature": 0.8
+    }
+  }
+}`,
+      );
+
+      const config = await loadMicodeConfig(testConfigDir);
+
+      expect(config).not.toBeNull();
+      expect(config?.agents?.brainstormer?.model).toBe("openai/gpt-4o");
+      expect(config?.agents?.brainstormer?.temperature).toBe(0.8);
+    });
+
+    it("should parse micode.jsonc with trailing commas", async () => {
+      const configPath = join(testConfigDir, "micode.jsonc");
+      writeFileSync(
+        configPath,
+        `{
+  "agents": {
+    "commander": {
+      "model": "openai/gpt-4o",
+      "temperature": 0.3,
+    },
+  },
+  "compactionThreshold": 0.5,
+}`,
+      );
+
+      const config = await loadMicodeConfig(testConfigDir);
+
+      expect(config).not.toBeNull();
+      expect(config?.agents?.commander?.model).toBe("openai/gpt-4o");
+      expect(config?.agents?.commander?.temperature).toBe(0.3);
+      expect(config?.compactionThreshold).toBe(0.5);
+    });
+
+    it("should prefer micode.jsonc over micode.json when both exist", async () => {
+      // Write .json with one value
+      writeFileSync(
+        join(testConfigDir, "micode.json"),
+        JSON.stringify({
+          agents: { commander: { model: "openai/gpt-3.5" } },
+        }),
+      );
+      // Write .jsonc with a different value
+      writeFileSync(
+        join(testConfigDir, "micode.jsonc"),
+        `{
+  "agents": {
+    "commander": { "model": "openai/gpt-4o" }
+  }
+}`,
+      );
+
+      const config = await loadMicodeConfig(testConfigDir);
+
+      expect(config).not.toBeNull();
+      // Should use the .jsonc value, not the .json value
+      expect(config?.agents?.commander?.model).toBe("openai/gpt-4o");
+    });
+
+    it("should fall back to micode.json when micode.jsonc does not exist", async () => {
+      writeFileSync(
+        join(testConfigDir, "micode.json"),
+        JSON.stringify({
+          agents: { commander: { model: "openai/gpt-4o" } },
+        }),
+      );
+
+      const config = await loadMicodeConfig(testConfigDir);
+
+      expect(config).not.toBeNull();
+      expect(config?.agents?.commander?.model).toBe("openai/gpt-4o");
+    });
+
+    it("should return null when neither micode.jsonc nor micode.json exists", async () => {
+      const config = await loadMicodeConfig(testConfigDir);
+      expect(config).toBeNull();
+    });
+
+    it("should parse micode.jsonc with all comment types combined", async () => {
+      const configPath = join(testConfigDir, "micode.jsonc");
+      writeFileSync(
+        configPath,
+        `{
+  // Line comment
+  /* Block comment */
+  "agents": {
+    "commander": {
+      "model": "openai/gpt-4o", // trailing comma + inline comment
+      "temperature": 0.3,
+    },
+  },
+  "features": {
+    "mindmodelInjection": true, // enable mindmodel
+  },
+  "compactionThreshold": 0.4,
+}`,
+      );
+
+      const config = await loadMicodeConfig(testConfigDir);
+
+      expect(config).not.toBeNull();
+      expect(config?.agents?.commander?.model).toBe("openai/gpt-4o");
+      expect(config?.agents?.commander?.temperature).toBe(0.3);
+      expect(config?.features?.mindmodelInjection).toBe(true);
+      expect(config?.compactionThreshold).toBe(0.4);
+    });
+  });
+
+  describe("loadModelContextLimits with JSONC", () => {
+    it("should parse opencode.jsonc with comments for context limits", () => {
+      const configPath = join(testConfigDir, "opencode.jsonc");
+      writeFileSync(
+        configPath,
+        `{
+  // Provider configuration
+  "provider": {
+    "openai": {
+      "models": {
+        "gpt-4o": {
+          "limit": { "context": 128000 } // 128k context window
+        }
+      }
+    }
+  }
+}`,
+      );
+
+      const limits = loadModelContextLimits(testConfigDir);
+
+      expect(limits.get("openai/gpt-4o")).toBe(128000);
+    });
+
+    it("should parse opencode.jsonc with trailing commas for context limits", () => {
+      const configPath = join(testConfigDir, "opencode.jsonc");
+      writeFileSync(
+        configPath,
+        `{
+  "provider": {
+    "openai": {
+      "models": {
+        "gpt-4o": {
+          "limit": { "context": 128000, },
+        },
+      },
+    },
+  },
+}`,
+      );
+
+      const limits = loadModelContextLimits(testConfigDir);
+
+      expect(limits.get("openai/gpt-4o")).toBe(128000);
+    });
+
+    it("should prefer opencode.jsonc over opencode.json for context limits", () => {
+      // .json has 64000
+      writeFileSync(
+        join(testConfigDir, "opencode.json"),
+        JSON.stringify({
+          provider: {
+            openai: { models: { "gpt-4o": { limit: { context: 64000 } } } },
+          },
+        }),
+      );
+      // .jsonc has 128000
+      writeFileSync(
+        join(testConfigDir, "opencode.jsonc"),
+        `{
+  "provider": {
+    "openai": {
+      "models": {
+        "gpt-4o": { "limit": { "context": 128000 } }
+      }
+    }
+  }
+}`,
+      );
+
+      const limits = loadModelContextLimits(testConfigDir);
+
+      // Should use .jsonc value
+      expect(limits.get("openai/gpt-4o")).toBe(128000);
+    });
+
+    it("should fall back to opencode.json for context limits when .jsonc missing", () => {
+      writeFileSync(
+        join(testConfigDir, "opencode.json"),
+        JSON.stringify({
+          provider: {
+            openai: { models: { "gpt-4o": { limit: { context: 128000 } } } },
+          },
+        }),
+      );
+
+      const limits = loadModelContextLimits(testConfigDir);
+
+      expect(limits.get("openai/gpt-4o")).toBe(128000);
+    });
+
+    it("should return empty map when neither opencode.jsonc nor opencode.json exists", () => {
+      const limits = loadModelContextLimits(testConfigDir);
+
+      expect(limits.size).toBe(0);
+    });
+  });
+
+  describe("loadAvailableModels with JSONC", () => {
+    it("should load models from opencode.jsonc", () => {
+      const configPath = join(testConfigDir, "opencode.jsonc");
+      writeFileSync(
+        configPath,
+        `{
+  // Model configuration
+  "provider": {
+    "openai": {
+      "models": {
+        "gpt-4o": {}, // latest model
+      },
+    },
+  },
+}`,
+      );
+
+      const models = loadAvailableModels(testConfigDir);
+
+      expect(models.has("openai/gpt-4o")).toBe(true);
+    });
+
+    it("should prefer opencode.jsonc over opencode.json for available models", () => {
+      writeFileSync(
+        join(testConfigDir, "opencode.json"),
+        JSON.stringify({
+          provider: { openai: { models: { "gpt-3.5": {} } } },
+        }),
+      );
+      writeFileSync(
+        join(testConfigDir, "opencode.jsonc"),
+        `{
+  "provider": {
+    "openai": {
+      "models": { "gpt-4o": {} }
+    }
+  }
+}`,
+      );
+
+      const models = loadAvailableModels(testConfigDir);
+
+      // Should have model from .jsonc, not .json
+      expect(models.has("openai/gpt-4o")).toBe(true);
+      expect(models.has("openai/gpt-3.5")).toBe(false);
+    });
+  });
+
+  describe("loadDefaultModel with JSONC", () => {
+    it("should load default model from opencode.jsonc", () => {
+      const configPath = join(testConfigDir, "opencode.jsonc");
+      writeFileSync(
+        configPath,
+        `{
+  // Use GPT-4o as default
+  "model": "openai/gpt-4o",
+}`,
+      );
+
+      const model = loadDefaultModel(testConfigDir);
+
+      expect(model).toBe("openai/gpt-4o");
+    });
   });
 });

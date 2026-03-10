@@ -1,7 +1,10 @@
 // src/config-loader.test.ts
-import { describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
-import { type MicodeConfig, type ProviderInfo, validateAgentModels } from "./config-loader";
+import { loadMicodeConfig, type MicodeConfig, type ProviderInfo, validateAgentModels } from "./config-loader";
 
 // Helper to create a minimal ProviderInfo for testing
 function createProvider(id: string, modelIds: string[]): ProviderInfo {
@@ -222,5 +225,53 @@ describe("validateAgentModels", () => {
 
     // Should return { agents: {} } for consistency, not {}
     expect(result).toEqual({ agents: {} });
+  });
+});
+
+describe("JSONC parsing via loadMicodeConfig", () => {
+  let testConfigDir: string;
+
+  beforeEach(() => {
+    testConfigDir = join(tmpdir(), `micode-jsonc-unit-test-${Date.now()}`);
+    mkdirSync(testConfigDir, { recursive: true });
+  });
+
+  afterEach(() => {
+    rmSync(testConfigDir, { recursive: true, force: true });
+  });
+
+  test("parses .jsonc file with comments and trailing commas", async () => {
+    writeFileSync(
+      join(testConfigDir, "micode.jsonc"),
+      `{
+  // Agent configuration
+  "agents": {
+    "commander": {
+      "model": "openai/gpt-4o", // use GPT-4o
+      "temperature": 0.2,
+    },
+  },
+}`,
+    );
+
+    const config = await loadMicodeConfig(testConfigDir);
+
+    expect(config).not.toBeNull();
+    expect(config?.agents?.commander?.model).toBe("openai/gpt-4o");
+    expect(config?.agents?.commander?.temperature).toBe(0.2);
+  });
+
+  test("still parses plain .json files (backward compatibility)", async () => {
+    writeFileSync(
+      join(testConfigDir, "micode.json"),
+      JSON.stringify({
+        agents: { commander: { model: "openai/gpt-4o" } },
+      }),
+    );
+
+    const config = await loadMicodeConfig(testConfigDir);
+
+    expect(config).not.toBeNull();
+    expect(config?.agents?.commander?.model).toBe("openai/gpt-4o");
   });
 });

@@ -1,10 +1,11 @@
 // src/config-loader.ts
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
 import type { AgentConfig } from "@opencode-ai/sdk";
+import { type ParseError, parse as parseJsonc } from "jsonc-parser";
 
 // Minimal type for provider validation - only what we need
 export interface ProviderInfo {
@@ -21,23 +22,75 @@ interface OpencodeConfig {
 }
 
 /**
- * Load opencode.json config file (synchronous)
- * Returns the parsed config or null if unavailable
+ * Parse a JSON or JSONC string, supporting comments and trailing commas.
+ * Uses the same options as OpenCode's own parser.
  */
-function loadOpencodeConfig(configDir?: string): OpencodeConfig | null {
-  const baseDir = configDir ?? join(homedir(), ".config", "opencode");
+function parseConfigJson(content: string): unknown {
+  const errors: ParseError[] = [];
+  const result = parseJsonc(content, errors, { allowTrailingComma: true });
+  if (errors.length > 0) {
+    throw new Error(`Invalid JSON/JSONC: ${errors.length} parse error(s)`);
+  }
+  return result;
+}
+
+/**
+ * Resolve a config file path, preferring .jsonc over .json (synchronous).
+ * Returns the path to the first file found, or null if neither exists.
+ */
+function resolveConfigFileSync(baseDir: string, baseName: string): string | null {
+  const jsoncPath = join(baseDir, `${baseName}.jsonc`);
+  if (existsSync(jsoncPath)) {
+    return jsoncPath;
+  }
+
+  const jsonPath = join(baseDir, `${baseName}.json`);
+  if (existsSync(jsonPath)) {
+    return jsonPath;
+  }
+
+  return null;
+}
+
+/**
+ * Read a config file, preferring .jsonc over .json (async).
+ * Returns the file content string, or null if neither file exists.
+ */
+async function readConfigFileAsync(baseDir: string, baseName: string): Promise<string | null> {
+  // Try .jsonc first
+  try {
+    return await readFile(join(baseDir, `${baseName}.jsonc`), "utf-8");
+  } catch {
+    // .jsonc not found, try .json
+  }
 
   try {
-    const configPath = join(baseDir, "opencode.json");
-    const content = readFileSync(configPath, "utf-8");
-    return JSON.parse(content) as OpencodeConfig;
+    return await readFile(join(baseDir, `${baseName}.json`), "utf-8");
   } catch {
     return null;
   }
 }
 
 /**
- * Load available models from opencode.json config file (synchronous)
+ * Load opencode.json/opencode.jsonc config file (synchronous)
+ * Returns the parsed config or null if unavailable
+ */
+function loadOpencodeConfig(configDir?: string): OpencodeConfig | null {
+  const baseDir = configDir ?? join(homedir(), ".config", "opencode");
+
+  try {
+    const configPath = resolveConfigFileSync(baseDir, "opencode");
+    if (!configPath) return null;
+
+    const content = readFileSync(configPath, "utf-8");
+    return parseConfigJson(content) as OpencodeConfig;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Load available models from opencode.json/opencode.jsonc config file (synchronous)
  * Returns a Set of "provider/model" strings
  */
 export function loadAvailableModels(configDir?: string): Set<string> {
@@ -58,7 +111,7 @@ export function loadAvailableModels(configDir?: string): Set<string> {
 }
 
 /**
- * Load the default model from opencode.json config file (synchronous)
+ * Load the default model from opencode.json/opencode.jsonc config file (synchronous)
  * Returns the model string in "provider/model" format or null if not set
  */
 export function loadDefaultModel(configDir?: string): string | null {
@@ -90,17 +143,18 @@ export interface MicodeConfig {
 }
 
 /**
- * Load micode.json from ~/.config/opencode/micode.json
- * Returns null if file doesn't exist or is invalid JSON
+ * Load micode.json/micode.jsonc from ~/.config/opencode/
+ * Returns null if file doesn't exist or is invalid
  * @param configDir - Optional override for config directory (for testing)
  */
 export async function loadMicodeConfig(configDir?: string): Promise<MicodeConfig | null> {
   const baseDir = configDir ?? join(homedir(), ".config", "opencode");
-  const configPath = join(baseDir, "micode.json");
 
   try {
-    const content = await readFile(configPath, "utf-8");
-    const parsed = JSON.parse(content) as Record<string, unknown>;
+    const content = await readConfigFileAsync(baseDir, "micode");
+    if (!content) return null;
+
+    const parsed = parseConfigJson(content) as Record<string, unknown>;
 
     const result: MicodeConfig = {};
 
@@ -166,7 +220,7 @@ export async function loadMicodeConfig(configDir?: string): Promise<MicodeConfig
 }
 
 /**
- * Load model context limits from opencode.json
+ * Load model context limits from opencode.json/opencode.jsonc
  * Returns a Map of "provider/model" -> context limit (tokens)
  */
 export function loadModelContextLimits(configDir?: string): Map<string, number> {
@@ -174,9 +228,11 @@ export function loadModelContextLimits(configDir?: string): Map<string, number> 
   const baseDir = configDir ?? join(homedir(), ".config", "opencode");
 
   try {
-    const configPath = join(baseDir, "opencode.json");
+    const configPath = resolveConfigFileSync(baseDir, "opencode");
+    if (!configPath) return limits;
+
     const content = readFileSync(configPath, "utf-8");
-    const config = JSON.parse(content) as {
+    const config = parseConfigJson(content) as {
       provider?: Record<string, { models?: Record<string, { limit?: { context?: number } }> }>;
     };
 
