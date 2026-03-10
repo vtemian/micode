@@ -251,7 +251,7 @@ export const primaryAgent: AgentConfig = {
   temperature: 0.2,
   thinking: {
     type: "enabled",
-    budgetTokens: 32000,
+    budgetTokens: 64000,
   },
   maxTokens: 64000,
   tools: {

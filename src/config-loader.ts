@@ -120,7 +120,7 @@ export function loadDefaultModel(configDir?: string): string | null {
 }
 
 // Safe properties that users can override
-const SAFE_AGENT_PROPERTIES = ["model", "temperature", "maxTokens"] as const;
+const SAFE_AGENT_PROPERTIES = ["model", "temperature", "maxTokens", "thinking"] as const;
 
 // Built-in OpenCode models that don't require validation (always available)
 const BUILTIN_MODELS = new Set(["opencode/big-pickle"]);
@@ -129,6 +129,10 @@ export interface AgentOverride {
   model?: string;
   temperature?: number;
   maxTokens?: number;
+  thinking?: {
+    type: string;
+    budgetTokens: number;
+  };
 }
 
 export interface MicodeFeatures {
