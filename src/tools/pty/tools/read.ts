@@ -69,7 +69,7 @@ export function createPtyReadTool(manager: PTYManager) {
           regex = new RegExp(args.pattern, args.ignoreCase ? "i" : "");
         } catch (e) {
           const error = e instanceof Error ? e.message : String(e);
-          throw new Error(`Invalid regex pattern '${args.pattern}': ${error}`);
+          throw new Error(`Invalid regex pattern '${args.pattern}': ${error}`, { cause: e });
         }
 
         const result = manager.search(args.id, regex, offset, limit);

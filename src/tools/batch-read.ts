@@ -43,8 +43,7 @@ Returns content for each file, or error message if file doesn't exist.`,
           if (maxLines && maxLines > 0) {
             const lines = content.split("\n");
             if (lines.length > maxLines) {
-              content =
-                lines.slice(0, maxLines).join("\n") + `\n... (truncated, ${lines.length - maxLines} more lines)`;
+              content = `${lines.slice(0, maxLines).join("\n")}\n... (truncated, ${lines.length - maxLines} more lines)`;
             }
           }
 

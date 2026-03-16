@@ -40,7 +40,7 @@ categories:
 
     const mindmodel = await loadMindmodel(testDir);
     expect(mindmodel).not.toBeNull();
-    expect(mindmodel!.manifest.name).toBe("test-project");
+    expect(mindmodel?.manifest.name).toBe("test-project");
   });
 
   it("should return null if .mindmodel directory does not exist", async () => {

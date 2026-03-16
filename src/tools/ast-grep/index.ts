@@ -1,5 +1,5 @@
-import { spawn, which } from "bun";
 import { tool } from "@opencode-ai/plugin/tool";
+import { spawn, which } from "bun";
 
 /**
  * Check if ast-grep CLI (sg) is available on the system.

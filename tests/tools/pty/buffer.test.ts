@@ -1,5 +1,5 @@
 // tests/tools/pty/buffer.test.ts
-import { describe, it, expect } from "bun:test";
+import { describe, expect, it } from "bun:test";
 import { RingBuffer } from "../../../src/tools/pty/buffer";
 
 describe("RingBuffer", () => {

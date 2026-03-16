@@ -6,43 +6,56 @@
     "useIgnoreFile": true
   },
   "files": {
-    "ignoreUnknown": false,
-    "includes": ["**/*.ts", "**/*.tsx", "**/*.js", "**/*.jsx", "**/*.json"]
+    "ignoreUnknown": false
   },
   "formatter": {
     "enabled": true,
     "indentStyle": "space",
+    "indentWidth": 2,
     "lineWidth": 120
   },
   "linter": {
     "enabled": true,
     "rules": {
       "recommended": true,
+      "correctness": {
+        "noUnusedVariables": "off"
+      },
       "suspicious": {
-        "noExplicitAny": "off",
-        "noExtraNonNullAssertion": "off",
         "noControlCharactersInRegex": "off"
       },
       "style": {
-        "noNonNullAssertion": "off"
+        "noParameterAssign": "error",
+        "noDefaultExport": "error"
       }
     }
   },
   "javascript": {
     "formatter": {
-      "quoteStyle": "double"
+      "quoteStyle": "double",
+      "semicolons": "always",
+      "trailingCommas": "all",
+      "bracketSpacing": true,
+      "arrowParentheses": "always"
     }
   },
+  "overrides": [
+    {
+      "includes": ["*.config.ts", "*.config.js"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noDefaultExport": "off"
+          }
+        }
+      }
+    }
+  ],
   "assist": {
     "enabled": true,
     "actions": {
       "source": {
-        "organizeImports": {
-          "level": "on",
-          "options": {
-            "groups": [[":BUN:", ":NODE:"], ":BLANK_LINE:", [":PACKAGE:"], ":BLANK_LINE:", ":PATH:"]
-          }
-        }
+        "organizeImports": "on"
       }
     }
   }

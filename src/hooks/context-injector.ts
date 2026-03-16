@@ -53,8 +53,9 @@ export function createContextInjectorHook(ctx: PluginInput) {
 
     // Check cache
     const cacheKey = dirname(absPath);
-    if (cache.directoryContent.has(cacheKey)) {
-      return cache.directoryContent.get(cacheKey)!;
+    const cached = cache.directoryContent.get(cacheKey);
+    if (cached) {
+      return cached;
     }
 
     const collected = new Map<string, string>();

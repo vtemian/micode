@@ -59,7 +59,7 @@ export interface MilestoneArtifactSearchResult {
 
 export class ArtifactIndex {
   private db: Database | null = null;
-  private dbPath: string;
+  private readonly dbPath: string;
 
   constructor(dbDir: string = DEFAULT_DB_DIR) {
     this.dbPath = join(dbDir, DB_NAME);

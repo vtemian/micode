@@ -68,7 +68,9 @@ function extractCodeBlocks(content: string, sectionHeader: string): ConstraintEx
 
   // Find next section or end
   const nextSectionMatch = content.slice(sectionIndex + sectionHeader.length).match(/\n## /);
-  const sectionEnd = nextSectionMatch ? sectionIndex + sectionHeader.length + nextSectionMatch.index! : content.length;
+  const sectionEnd = nextSectionMatch
+    ? sectionIndex + sectionHeader.length + (nextSectionMatch.index ?? 0)
+    : content.length;
 
   const section = content.slice(sectionIndex, sectionEnd);
 

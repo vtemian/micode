@@ -1,7 +1,7 @@
 // tests/mindmodel/review.test.ts
 import { describe, expect, it } from "bun:test";
 
-import { parseReviewResponse, type ReviewResult } from "../../src/mindmodel/review";
+import { parseReviewResponse } from "../../src/mindmodel/review";
 
 describe("parseReviewResponse", () => {
   it("should parse PASS response", () => {

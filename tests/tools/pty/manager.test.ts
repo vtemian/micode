@@ -136,8 +136,8 @@ describe("PTYManager", () => {
 
       const result = manager.read(info.id, 1, 2);
       expect(result).not.toBeNull();
-      expect(result!.offset).toBe(1);
-      expect(result!.lines.length).toBeLessThanOrEqual(2);
+      expect(result?.offset).toBe(1);
+      expect(result?.lines.length).toBeLessThanOrEqual(2);
     });
   });
 
@@ -159,7 +159,7 @@ describe("PTYManager", () => {
 
       const result = manager.search(info.id, /error/);
       expect(result).not.toBeNull();
-      expect(result!.matches.length).toBeGreaterThan(0);
+      expect(result?.matches.length).toBeGreaterThan(0);
     });
   });
 

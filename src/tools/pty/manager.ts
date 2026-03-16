@@ -14,7 +14,7 @@ function generateId(): string {
 }
 
 export class PTYManager {
-  private sessions: Map<string, PTYSession> = new Map();
+  private readonly sessions: Map<string, PTYSession> = new Map();
   private spawnFn: SpawnFn | null = null;
   private _available = false;
 
@@ -61,7 +61,7 @@ export class PTYManager {
       });
     } catch (e) {
       const errorMsg = e instanceof Error ? e.message : String(e);
-      throw new Error(`Failed to spawn PTY for command "${opts.command}": ${errorMsg}`);
+      throw new Error(`Failed to spawn PTY for command "${opts.command}": ${errorMsg}`, { cause: e });
     }
 
     const buffer = new RingBuffer();

@@ -1,10 +1,11 @@
 #!/usr/bin/env bun
+
 // Script to index test fixtures into the artifact database
 // Run: bun tests/manual/index-fixtures.ts
 
-import { ArtifactIndex } from "../../src/tools/artifact-index";
-import { readFileSync, readdirSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { ArtifactIndex } from "../../src/tools/artifact-index";
 
 const FIXTURES_DIR = "./thoughts";
 

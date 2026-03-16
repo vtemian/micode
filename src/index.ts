@@ -485,4 +485,4 @@ IMPORTANT:
   };
 };
 
-export default OpenCodeConfigPlugin;
+export { OpenCodeConfigPlugin };

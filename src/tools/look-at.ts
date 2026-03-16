@@ -1,6 +1,6 @@
-import { tool } from "@opencode-ai/plugin/tool";
 import { readFileSync, statSync } from "node:fs";
-import { extname, basename } from "node:path";
+import { basename, extname } from "node:path";
+import { tool } from "@opencode-ai/plugin/tool";
 
 // File size threshold for triggering extraction (100KB)
 const LARGE_FILE_THRESHOLD = 100 * 1024;

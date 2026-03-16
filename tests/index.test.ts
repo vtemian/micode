@@ -41,7 +41,7 @@ describe("index.ts commands", () => {
     // The /init command should use project-initializer
     const initCommandMatch = source.match(/init:\s*\{[^}]*agent:\s*["']([^"']+)["']/);
     expect(initCommandMatch).not.toBeNull();
-    expect(initCommandMatch![1]).toBe("project-initializer");
+    expect(initCommandMatch?.[1]).toBe("project-initializer");
   });
 
   it("should use mm-orchestrator agent for /mindmodel command", async () => {
@@ -49,6 +49,6 @@ describe("index.ts commands", () => {
     // The /mindmodel command should use mm-orchestrator
     const mindmodelMatch = source.match(/mindmodel:\s*\{[^}]*agent:\s*["']([^"']+)["']/);
     expect(mindmodelMatch).not.toBeNull();
-    expect(mindmodelMatch![1]).toBe("mm-orchestrator");
+    expect(mindmodelMatch?.[1]).toBe("mm-orchestrator");
   });
 });

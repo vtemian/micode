@@ -1,4 +1,4 @@
-import { describe, it, expect } from "bun:test";
+import { describe, expect, it } from "bun:test";
 
 describe("artifact-index without handoffs", () => {
   it("should not export HandoffRecord interface", async () => {

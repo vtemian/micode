@@ -150,7 +150,7 @@ describe("fetch-tracker", () => {
       // Verify cache entry exists
       const cached = getCacheEntry(testSessionID, "webfetch|https://example.com/cached");
       expect(cached).toBeDefined();
-      expect(cached!.content).toBe("cached content here");
+      expect(cached?.content).toBe("cached content here");
     });
 
     it("should replace output with cached content on second call", async () => {

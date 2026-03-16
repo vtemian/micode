@@ -16,8 +16,8 @@ describe("agents index", () => {
     const module = await import("../../src/agents/index");
 
     expect(module.agents["ledger-creator"]).toBeDefined();
-    expect(module.agents["brainstormer"]).toBeDefined();
-    expect(module.agents["commander"]).toBeDefined();
+    expect(module.agents.brainstormer).toBeDefined();
+    expect(module.agents.commander).toBeDefined();
   });
 
   it("should register mindmodel v2 analysis agents", async () => {

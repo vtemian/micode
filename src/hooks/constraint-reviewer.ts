@@ -39,7 +39,8 @@ export function createConstraintReviewerHook(ctx: PluginInput, reviewFn: ReviewF
         overrideActive: false,
       });
     }
-    return sessionState.get(sessionID)!;
+    // Safe to assert: we just set it above if it didn't exist
+    return sessionState.get(sessionID) as ReviewState;
   }
 
   function cleanupSession(sessionID: string): void {

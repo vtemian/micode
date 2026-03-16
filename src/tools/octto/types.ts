@@ -3,12 +3,15 @@
 import type { ToolContext } from "@opencode-ai/plugin/tool";
 import type { createOpencodeClient } from "@opencode-ai/sdk";
 
-// Using `any` to avoid exposing zod types in declaration files.
+// Avoids exposing zod types in declaration files.
 // The actual tools are typesafe via zod schemas.
+// `args` holds a zod schema (type-erased here); `execute` uses `never` parameter
+// so any typed implementation is assignable (contravariance) while signaling
+// that callers should not invoke execute directly through this interface.
 export interface OcttoTool {
   description: string;
-  args: any;
-  execute: (args: any, context: ToolContext) => Promise<string>;
+  args: unknown;
+  execute: (args: never, context: ToolContext) => Promise<string>;
 }
 
 export type OcttoTools = Record<string, OcttoTool>;

@@ -21,6 +21,16 @@ let cachedModule: BunPtyModule | null = null;
 let loadAttempted = false;
 let loadError: string | null = null;
 
+function resolveNativeLibNames(platform: string, arch: string): string[] {
+  if (platform === "darwin") {
+    return arch === "arm64" ? ["librust_pty_arm64.dylib", "librust_pty.dylib"] : ["librust_pty.dylib"];
+  }
+  if (platform === "win32") {
+    return ["rust_pty.dll"];
+  }
+  return arch === "arm64" ? ["librust_pty_arm64.so", "librust_pty.so"] : ["librust_pty.so"];
+}
+
 /**
  * Probe additional paths where the bun-pty native library might live,
  * beyond what bun-pty checks itself. Sets BUN_PTY_LIB if found.
@@ -32,16 +42,7 @@ function probeBunPtyLib(): void {
   const platform = process.platform;
   const arch = process.arch;
 
-  const filenames =
-    platform === "darwin"
-      ? arch === "arm64"
-        ? ["librust_pty_arm64.dylib", "librust_pty.dylib"]
-        : ["librust_pty.dylib"]
-      : platform === "win32"
-        ? ["rust_pty.dll"]
-        : arch === "arm64"
-          ? ["librust_pty_arm64.so", "librust_pty.so"]
-          : ["librust_pty.so"];
+  const filenames = resolveNativeLibNames(platform, arch);
 
   const cwd = process.cwd();
 

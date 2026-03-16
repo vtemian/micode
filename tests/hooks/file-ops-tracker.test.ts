@@ -1,10 +1,10 @@
-import { describe, it, expect, beforeEach } from "bun:test";
+import { beforeEach, describe, expect, it } from "bun:test";
 import {
-  trackFileOp,
-  getFileOps,
   clearFileOps,
-  getAndClearFileOps,
   createFileOpsTrackerHook,
+  getAndClearFileOps,
+  getFileOps,
+  trackFileOp,
 } from "../../src/hooks/file-ops-tracker";
 
 describe("file-ops-tracker", () => {

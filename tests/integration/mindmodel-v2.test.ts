@@ -1,6 +1,6 @@
 // tests/integration/mindmodel-v2.test.ts
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -46,8 +46,8 @@ throw new Error("wrapped");
 
     const mindmodel = await loadMindmodel(tempDir);
     expect(mindmodel).not.toBeNull();
-    expect(mindmodel!.manifest.version).toBe(2);
-    expect(mindmodel!.manifest.categories[0].group).toBe("patterns");
+    expect(mindmodel?.manifest.version).toBe(2);
+    expect(mindmodel?.manifest.categories[0].group).toBe("patterns");
   });
 
   it("should parse constraint files with rules and examples", async () => {
@@ -242,7 +242,7 @@ function getUserById(id: string) {}
 
     const mindmodel = await loadMindmodel(tempDir);
     expect(mindmodel).not.toBeNull();
-    expect(mindmodel!.manifest.categories).toHaveLength(2);
+    expect(mindmodel?.manifest.categories).toHaveLength(2);
 
     const examples = await loadExamples(mindmodel!, ["patterns/error-handling.md", "style/naming.md"]);
     expect(examples).toHaveLength(2);
@@ -301,7 +301,7 @@ Use standard button component.
 
     const mindmodel = await loadMindmodel(tempDir);
     expect(mindmodel).not.toBeNull();
-    expect(mindmodel!.manifest.version).toBe(1);
-    expect(mindmodel!.manifest.categories[0].group).toBeUndefined();
+    expect(mindmodel?.manifest.version).toBe(1);
+    expect(mindmodel?.manifest.categories[0].group).toBeUndefined();
   });
 });

@@ -1,0 +1,176 @@
+import js from "@eslint/js";
+import sonarjs from "eslint-plugin-sonarjs";
+import unicorn from "eslint-plugin-unicorn";
+import tseslint from "typescript-eslint";
+
+export default [
+  {
+    ignores: [
+      "dist/**",
+      "coverage/**",
+      "node_modules/**",
+      "examples/**",
+      ".worktrees/**",
+      ".mindmodel/**",
+      ".opencode/**",
+      "*.config.ts",
+      "*.config.js",
+      "thoughts/**",
+      "docs/**",
+    ],
+  },
+  js.configs.recommended,
+  ...tseslint.configs.recommendedTypeChecked,
+  {
+    languageOptions: {
+      parserOptions: {
+        project: "./tsconfig.eslint.json",
+        tsconfigRootDir: import.meta.dirname,
+      },
+    },
+    plugins: {
+      sonarjs,
+      unicorn,
+    },
+    rules: {
+      // --- Disable rules that overlap with Biome or conflict with codebase ---
+      indent: "off",
+      quotes: "off",
+      semi: "off",
+      "comma-dangle": "off",
+      "no-unused-vars": "off",
+      "sort-imports": "off",
+      "no-multiple-empty-lines": "off",
+      "eol-last": "off",
+      // PTY code intentionally uses control characters (e.g. \x03 for SIGINT)
+      "no-control-regex": "off",
+
+      // --- Structural limits ---
+      "max-depth": ["warn", 2],
+      "max-lines-per-function": ["warn", { max: 40, skipBlankLines: true, skipComments: true }],
+
+      // --- TypeScript-specific ---
+      "@typescript-eslint/consistent-type-imports": [
+        "error",
+        { prefer: "type-imports", disallowTypeAnnotations: false },
+      ],
+      "@typescript-eslint/consistent-type-definitions": ["error", "interface"],
+      "@typescript-eslint/prefer-readonly": "warn",
+      "@typescript-eslint/use-unknown-in-catch-callback-variable": "warn",
+      // WARN: ~17 violations (audit undercounted)
+      "@typescript-eslint/explicit-function-return-type": [
+        "warn",
+        {
+          allowExpressions: true,
+          allowTypedFunctionExpressions: true,
+          allowHigherOrderFunctions: true,
+        },
+      ],
+      // OFF: OpenCode plugin framework requires async signatures even for sync hooks
+      "@typescript-eslint/require-await": "off",
+      "@typescript-eslint/no-unused-vars": [
+        "error",
+        {
+          argsIgnorePattern: "^_",
+          varsIgnorePattern: "^_",
+          caughtErrorsIgnorePattern: "^_",
+        },
+      ],
+      "@typescript-eslint/naming-convention": [
+        "warn",
+        { selector: "default", format: ["camelCase"], leadingUnderscore: "allow" },
+        {
+          selector: "variable",
+          format: ["camelCase", "UPPER_CASE"],
+          leadingUnderscore: "allow",
+          filter: {
+            regex: "(Map|Object|String|Array|List|Set|Dict|Number|Boolean|Fn|Func|Callback)$",
+            match: false,
+          },
+        },
+        {
+          selector: "function",
+          format: ["camelCase"],
+          filter: {
+            regex: "(Map|Object|String|Array|List|Set|Dict|Number|Boolean|Fn|Func|Callback)$",
+            match: false,
+          },
+        },
+        {
+          selector: "parameter",
+          format: ["camelCase"],
+          leadingUnderscore: "allow",
+          filter: {
+            regex: "(Map|Object|String|Array|List|Set|Dict|Number|Boolean|Fn|Func|Callback)$",
+            match: false,
+          },
+        },
+        { selector: "typeLike", format: ["PascalCase"] },
+        {
+          selector: "objectLiteralProperty",
+          format: null,
+          filter: { regex: "^[a-z]+(_[a-z]+)+$", match: true },
+        },
+      ],
+      "@typescript-eslint/no-magic-numbers": [
+        "warn",
+        {
+          ignore: [0, 1, -1, 2],
+          ignoreEnums: true,
+          ignoreNumericLiteralTypes: true,
+          ignoreReadonlyClassProperties: true,
+        },
+      ],
+      "@typescript-eslint/no-explicit-any": "error",
+      "@typescript-eslint/consistent-type-assertions": "off",
+      // WARN: 3 violations need fixing
+      "@typescript-eslint/no-floating-promises": "warn",
+      "@typescript-eslint/no-misused-promises": "error",
+      // WARN: violations from type assertions flowing through
+      "@typescript-eslint/no-unsafe-assignment": "warn",
+      "@typescript-eslint/no-unsafe-member-access": "warn",
+      "@typescript-eslint/no-unsafe-argument": "warn",
+      "@typescript-eslint/no-unsafe-call": "warn",
+      "@typescript-eslint/no-unsafe-return": "warn",
+      "@typescript-eslint/restrict-template-expressions": "warn",
+      // WARN: error cause chaining - good practice but not enforced yet
+      "sonarjs/sonar-prefer-optional-chain": "off",
+
+      // --- Sonarjs (complexity and duplication) ---
+      "sonarjs/cognitive-complexity": ["warn", 10],
+      "sonarjs/no-duplicate-string": ["warn", { threshold: 3 }],
+      "sonarjs/no-identical-functions": "error",
+
+      // --- Unicorn (patterns) ---
+      "unicorn/no-nested-ternary": "error",
+    },
+  },
+  {
+    // Relax rules for test files
+    files: ["tests/**/*.ts", "src/**/*.test.ts", "**/*.test.ts"],
+    rules: {
+      "@typescript-eslint/no-explicit-any": "off",
+      "@typescript-eslint/no-magic-numbers": "off",
+      "@typescript-eslint/explicit-function-return-type": "off",
+      "@typescript-eslint/no-floating-promises": "off",
+      "@typescript-eslint/no-unused-vars": "off",
+      "@typescript-eslint/no-unsafe-assignment": "off",
+      "@typescript-eslint/no-unsafe-argument": "off",
+      "@typescript-eslint/no-unsafe-call": "off",
+      "@typescript-eslint/no-unsafe-member-access": "off",
+      "@typescript-eslint/no-unsafe-return": "off",
+      "@typescript-eslint/await-thenable": "off",
+      "@typescript-eslint/no-require-imports": "off",
+      "@typescript-eslint/restrict-template-expressions": "off",
+      "@typescript-eslint/naming-convention": "off",
+      "@typescript-eslint/consistent-type-definitions": "off",
+      "@typescript-eslint/prefer-readonly": "off",
+      "@typescript-eslint/use-unknown-in-catch-callback-variable": "off",
+      "sonarjs/no-duplicate-string": "off",
+      "sonarjs/no-identical-functions": "off",
+      "sonarjs/cognitive-complexity": "off",
+      "max-depth": "off",
+      "max-lines-per-function": "off",
+    },
+  },
+];

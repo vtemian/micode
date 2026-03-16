@@ -19,7 +19,7 @@ export function extractErrorMessage(e: unknown): string {
  * @param context - Optional context about what operation failed
  */
 export function formatToolError(message: string, context?: string): string {
-  if (context && context.trim()) {
+  if (context?.trim()) {
     return `Error (${context}): ${message}`;
   }
   return `Error: ${message}`;

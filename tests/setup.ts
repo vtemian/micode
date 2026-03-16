@@ -1,5 +1,5 @@
 // tests/setup.ts
-import { beforeEach, afterEach } from "bun:test";
+import { afterEach, beforeEach } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";

@@ -31,8 +31,8 @@ function hashTask(task: string): string {
 
 // Simple LRU cache for matched tasks
 class LRUCache<V> {
-  private cache = new Map<string, V>();
-  constructor(private maxSize: number) {}
+  private readonly cache = new Map<string, V>();
+  constructor(private readonly maxSize: number) {}
 
   get(key: string): V | undefined {
     const value = this.cache.get(key);

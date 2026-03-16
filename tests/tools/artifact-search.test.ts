@@ -1,4 +1,4 @@
-import { describe, it, expect } from "bun:test";
+import { describe, expect, it } from "bun:test";
 
 describe("artifact-search tool", () => {
   it("should not have handoff in type enum", async () => {

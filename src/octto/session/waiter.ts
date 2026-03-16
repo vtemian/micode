@@ -123,10 +123,10 @@ export type WaitResult<T> = { ok: true; data: T } | { ok: false; reason: "timeou
  */
 export function waitForResponse<K, T>(waiters: Waiters<K, T>, key: K, timeoutMs: number): Promise<WaitResult<T>> {
   return new Promise((resolve) => {
+    // eslint-disable-next-line prefer-const
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
-    let cleanup: (() => void) | undefined;
 
-    cleanup = waiters.register(key, (data) => {
+    const cleanup = waiters.register(key, (data) => {
       if (timeoutId) clearTimeout(timeoutId);
       resolve({ ok: true, data });
     });

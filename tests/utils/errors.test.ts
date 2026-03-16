@@ -1,5 +1,5 @@
 // tests/utils/errors.test.ts
-import { describe, it, expect, mock, spyOn } from "bun:test";
+import { describe, expect, it, spyOn } from "bun:test";
 
 describe("errors utility", () => {
   describe("extractErrorMessage", () => {

@@ -1,8 +1,8 @@
 // src/hooks/artifact-auto-index.ts
 // Auto-indexes artifacts when written to thoughts/ directories
 
-import type { PluginInput } from "@opencode-ai/plugin";
 import { readFileSync } from "node:fs";
+import type { PluginInput } from "@opencode-ai/plugin";
 import { getArtifactIndex } from "../tools/artifact-index";
 import { log } from "../utils/logger";
 

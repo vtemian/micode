@@ -193,6 +193,7 @@ export function createSessionStore(options: SessionStoreOptions = {}): SessionSt
       const timeout = input.timeout ?? DEFAULT_ANSWER_TIMEOUT_MS;
 
       return new Promise<GetAnswerOutput>((resolve) => {
+        // eslint-disable-next-line prefer-const
         let timeoutId: ReturnType<typeof setTimeout> | undefined;
 
         const cleanup = responseWaiters.register(input.question_id, (response) => {
@@ -243,6 +244,7 @@ export function createSessionStore(options: SessionStoreOptions = {}): SessionSt
       const timeout = input.timeout ?? DEFAULT_ANSWER_TIMEOUT_MS;
 
       return new Promise<GetNextAnswerOutput>((resolve) => {
+        // eslint-disable-next-line prefer-const
         let timeoutId: ReturnType<typeof setTimeout> | undefined;
 
         const cleanup = sessionWaiters.register(input.session_id, ({ questionId, response }) => {

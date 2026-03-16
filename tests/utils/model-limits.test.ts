@@ -79,7 +79,7 @@ describe("model-limits", () => {
     });
 
     it("should have Google models", () => {
-      expect(MODEL_CONTEXT_LIMITS["gemini"]).toBe(1_000_000);
+      expect(MODEL_CONTEXT_LIMITS.gemini).toBe(1_000_000);
     });
   });
 
