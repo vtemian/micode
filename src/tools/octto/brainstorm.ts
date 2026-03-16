@@ -240,6 +240,22 @@ ${branchesXml}
 </brainstorm_created>`;
 }
 
+const brainstormBranchSchema = tool.schema
+  .array(
+    tool.schema.object({
+      id: tool.schema.string(),
+      scope: tool.schema.string(),
+      initial_question: tool.schema.object({
+        type: tool.schema.enum(QUESTION_TYPES),
+        config: tool.schema.looseObject({
+          question: tool.schema.string().optional(),
+          context: tool.schema.string().optional(),
+        }),
+      }),
+    }),
+  )
+  .describe("Branches to explore");
+
 function buildCreateBrainstormTool(
   store: StateStore,
   sessions: SessionStore,
@@ -249,21 +265,7 @@ function buildCreateBrainstormTool(
     description: "Create a new brainstorm session with exploration branches",
     args: {
       request: tool.schema.string().describe("The original user request"),
-      branches: tool.schema
-        .array(
-          tool.schema.object({
-            id: tool.schema.string(),
-            scope: tool.schema.string(),
-            initial_question: tool.schema.object({
-              type: tool.schema.enum(QUESTION_TYPES),
-              config: tool.schema.looseObject({
-                question: tool.schema.string().optional(),
-                context: tool.schema.string().optional(),
-              }),
-            }),
-          }),
-        )
-        .describe("Branches to explore"),
+      branches: brainstormBranchSchema,
     },
     execute: async (args, context) => {
       const sessionId = generateSessionId();

@@ -36,6 +36,39 @@ function formatSessionStartOutput(sessionId: string, url: string, questionIds?: 
   return output;
 }
 
+const sessionQuestionSchema = tool.schema
+  .array(
+    tool.schema.object({
+      type: tool.schema
+        .enum([
+          "pick_one",
+          "pick_many",
+          "confirm",
+          "ask_text",
+          "ask_image",
+          "ask_file",
+          "ask_code",
+          "show_diff",
+          "show_plan",
+          "show_options",
+          "review_section",
+          "thumbs",
+          "slider",
+          "rank",
+          "rate",
+          "emoji_react",
+        ])
+        .describe("Question type"),
+      config: tool.schema
+        .looseObject({
+          question: tool.schema.string().optional(),
+          context: tool.schema.string().optional(),
+        })
+        .describe("Question config (varies by type)"),
+    }),
+  )
+  .describe("REQUIRED: Initial questions to display when browser opens. Must have at least 1.");
+
 function buildStartSessionTool(sessions: SessionStore, tracker?: OcttoSessionTracker): OcttoTool {
   return tool({
     description: `Start an interactive octto session with initial questions.
@@ -43,38 +76,7 @@ Opens a browser window with questions already displayed - no waiting.
 REQUIRED: You MUST provide at least 1 question. Will fail without questions.`,
     args: {
       title: tool.schema.string().optional().describe("Session title (shown in browser)"),
-      questions: tool.schema
-        .array(
-          tool.schema.object({
-            type: tool.schema
-              .enum([
-                "pick_one",
-                "pick_many",
-                "confirm",
-                "ask_text",
-                "ask_image",
-                "ask_file",
-                "ask_code",
-                "show_diff",
-                "show_plan",
-                "show_options",
-                "review_section",
-                "thumbs",
-                "slider",
-                "rank",
-                "rate",
-                "emoji_react",
-              ])
-              .describe("Question type"),
-            config: tool.schema
-              .looseObject({
-                question: tool.schema.string().optional(),
-                context: tool.schema.string().optional(),
-              })
-              .describe("Question config (varies by type)"),
-          }),
-        )
-        .describe("REQUIRED: Initial questions to display when browser opens. Must have at least 1."),
+      questions: sessionQuestionSchema,
     },
     execute: async (args, context) => {
       if (!args.questions || args.questions.length === 0) return MISSING_QUESTIONS_ERROR;

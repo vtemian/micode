@@ -71,14 +71,13 @@ async function indexFixtures() {
       // Extract what worked (from learnings for now)
       const whatWorked = learnings;
 
-      await index.indexHandoff({
+      await index.indexLedger({
         id: `handoff-${file.replace(".md", "")}`,
         sessionName: file.replace(".md", ""),
         filePath,
-        taskSummary,
-        whatWorked,
-        learnings,
-        outcome: "SUCCEEDED",
+        goal: taskSummary,
+        stateNow: whatWorked,
+        keyDecisions: learnings,
       });
       console.log(`✓ Indexed handoff: ${file}`);
     }

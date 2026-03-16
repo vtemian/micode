@@ -43,15 +43,27 @@ describe("btca tool", () => {
   });
 
   describe("btca_ask execution", () => {
+    const mockContext = {
+      sessionID: "test-session",
+      messageID: "test-message",
+      agent: "test-agent",
+      abort: new AbortController().signal,
+      metadata: () => {},
+      ask: async () => {},
+    } as any;
+
     it("should return error message when btca not installed", async () => {
       // This test will pass if btca is not installed (expected in CI)
       // and will also pass if btca IS installed (returns actual output)
       const { btca_ask } = await import("../../src/tools/btca");
 
-      const result = await btca_ask.execute({
-        tech: "nonexistent-resource-12345",
-        question: "test question",
-      });
+      const result = await btca_ask.execute(
+        {
+          tech: "nonexistent-resource-12345",
+          question: "test question",
+        },
+        mockContext,
+      );
 
       expect(typeof result).toBe("string");
       // Either an error or actual output - both are valid strings
@@ -62,10 +74,13 @@ describe("btca tool", () => {
       const { btca_ask } = await import("../../src/tools/btca");
 
       // Empty tech should still execute and return an error from btca
-      const result = await btca_ask.execute({
-        tech: "",
-        question: "test question",
-      });
+      const result = await btca_ask.execute(
+        {
+          tech: "",
+          question: "test question",
+        },
+        mockContext,
+      );
 
       expect(typeof result).toBe("string");
     });

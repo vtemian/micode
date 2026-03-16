@@ -67,6 +67,36 @@ if (process.env.FIRECRAWL_API_KEY) {
   };
 }
 
+const PLUGIN_COMMANDS = {
+  init: {
+    description: "Initialize project with ARCHITECTURE.md and CODE_STYLE.md",
+    agent: "project-initializer",
+    template: "Initialize this project. $ARGUMENTS",
+  },
+  mindmodel: {
+    description: "Generate .mindmodel/ constraints for this project",
+    agent: "mm-orchestrator",
+    template: "Generate mindmodel for this project. $ARGUMENTS",
+  },
+  ledger: {
+    description: "Create or update continuity ledger for session state",
+    agent: "ledger-creator",
+    template: "Update the continuity ledger. $ARGUMENTS",
+  },
+  search: {
+    description: "Search past handoffs, plans, and ledgers",
+    agent: "artifact-searcher",
+    template: "Search for: $ARGUMENTS",
+  },
+};
+
+function extractTextFromParts(parts: Array<{ type: string; text?: string }>): string {
+  return parts
+    .filter((p) => p.type === "text" && "text" in p)
+    .map((p) => (p as { text: string }).text)
+    .join("");
+}
+
 // eslint-disable-next-line max-lines-per-function
 const OpenCodeConfigPlugin: Plugin = async (ctx) => {
   // Validate external tool dependencies at startup
@@ -157,14 +187,7 @@ const OpenCodeConfigPlugin: Plugin = async (ctx) => {
         return '{"status": "PASS", "violations": [], "summary": "Empty response"}';
       }
 
-      let responseText = "";
-      for (const part of promptResult.data.parts) {
-        if (part.type === "text" && "text" in part) {
-          responseText += (part as { text: string }).text;
-        }
-      }
-
-      return responseText;
+      return extractTextFromParts(promptResult.data.parts);
     } catch (error) {
       log.warn("mindmodel", `Reviewer failed: ${error instanceof Error ? error.message : "unknown"}`);
       return '{"status": "PASS", "violations": [], "summary": "Review failed"}';
@@ -216,6 +239,28 @@ const OpenCodeConfigPlugin: Plugin = async (ctx) => {
     },
   });
 
+  async function cleanupDeletedSession(event: { properties?: unknown }): Promise<void> {
+    const props = event.properties as { info?: { id?: string } } | undefined;
+    if (!props?.info?.id) return;
+
+    const sessionId = props.info.id;
+    thinkModeState.delete(sessionId);
+    ptyManager.cleanupBySession(sessionId);
+    constraintReviewerHook.cleanupSession(sessionId);
+    fetchTrackerHook.cleanupSession(sessionId);
+
+    // Cleanup octto sessions
+    const octtoSessions = octtoSessionsMap.get(sessionId);
+    if (octtoSessions) {
+      for (const octtoSessionId of octtoSessions) {
+        await octtoSessionStore.endSession(octtoSessionId).catch((_e: unknown) => {
+          /* fire-and-forget */
+        });
+      }
+      octtoSessionsMap.delete(sessionId);
+    }
+  }
+
   return {
     // Tools
     tool: {
@@ -264,29 +309,7 @@ const OpenCodeConfigPlugin: Plugin = async (ctx) => {
       };
 
       // Add commands
-      config.command = {
-        ...config.command,
-        init: {
-          description: "Initialize project with ARCHITECTURE.md and CODE_STYLE.md",
-          agent: "project-initializer",
-          template: `Initialize this project. $ARGUMENTS`,
-        },
-        mindmodel: {
-          description: "Generate .mindmodel/ constraints for this project",
-          agent: "mm-orchestrator",
-          template: `Generate mindmodel for this project. $ARGUMENTS`,
-        },
-        ledger: {
-          description: "Create or update continuity ledger for session state",
-          agent: "ledger-creator",
-          template: `Update the continuity ledger. $ARGUMENTS`,
-        },
-        search: {
-          description: "Search past handoffs, plans, and ledgers",
-          agent: "artifact-searcher",
-          template: `Search for: $ARGUMENTS`,
-        },
-      };
+      config.command = { ...config.command, ...PLUGIN_COMMANDS };
     },
 
     "chat.message": async (input, output) => {
@@ -453,25 +476,7 @@ IMPORTANT:
     event: async ({ event }) => {
       // Session cleanup (think mode + PTY + octto + constraint reviewer)
       if (event.type === "session.deleted") {
-        const props = event.properties as { info?: { id?: string } } | undefined;
-        if (props?.info?.id) {
-          const sessionId = props.info.id;
-          thinkModeState.delete(sessionId);
-          ptyManager.cleanupBySession(sessionId);
-          constraintReviewerHook.cleanupSession(sessionId);
-          fetchTrackerHook.cleanupSession(sessionId);
-
-          // Cleanup octto sessions
-          const octtoSessions = octtoSessionsMap.get(sessionId);
-          if (octtoSessions) {
-            for (const octtoSessionId of octtoSessions) {
-              await octtoSessionStore.endSession(octtoSessionId).catch((_e: unknown) => {
-                /* fire-and-forget */
-              });
-            }
-            octtoSessionsMap.delete(sessionId);
-          }
-        }
+        await cleanupDeletedSession(event);
       }
 
       // Run all event hooks

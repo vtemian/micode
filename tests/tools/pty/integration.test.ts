@@ -99,7 +99,8 @@ describe("PTY Integration", () => {
 
       // Session should have exited
       const session = manager.get(id);
-      expect(["exited", "killed"]).toContain(session?.status);
+      expect(session).toBeDefined();
+      expect(["exited", "killed"]).toContain(session!.status);
     });
   });
 

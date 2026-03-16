@@ -77,6 +77,13 @@ export function createConstraintReviewerHook(ctx: PluginInput, reviewFn: ReviewF
   };
 }
 
+function handleReviewError(error: unknown): void {
+  if (error instanceof ConstraintViolationError) {
+    throw error;
+  }
+  log.warn("mindmodel", `Review failed: ${error instanceof Error ? error.message : "unknown"}`);
+}
+
 async function reviewToolOutput(
   input: { tool: string; sessionID: string; args?: Record<string, unknown> },
   output: { output?: string },
@@ -110,10 +117,7 @@ async function reviewToolOutput(
 
     handleViolations(state, filePath, result, output);
   } catch (error) {
-    if (error instanceof ConstraintViolationError) {
-      throw error;
-    }
-    log.warn("mindmodel", `Review failed: ${error instanceof Error ? error.message : "unknown"}`);
+    handleReviewError(error);
   }
 }
 
