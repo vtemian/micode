@@ -1,4 +1,5 @@
 // src/tools/pty/tools/list.ts
+import type { ToolDefinition } from "@opencode-ai/plugin";
 import { tool } from "@opencode-ai/plugin/tool";
 import type { PTYManager } from "@/tools/pty/manager";
 
@@ -25,7 +26,7 @@ Tips:
 - Sessions remain in the list after exit until explicitly cleaned up with pty_kill
 - This allows you to compare output from multiple sessions`;
 
-export function createPtyListTool(manager: PTYManager) {
+export function createPtyListTool(manager: PTYManager): ToolDefinition {
   return tool({
     description: DESCRIPTION,
     args: {},

@@ -10,7 +10,7 @@ const FEATURE_HINTS = ["requirement", "implementation", "capability", "scope", "
 const DECISION_HINTS = ["decision", "decided", "trade-off", "rationale", "chosen"];
 const SESSION_HINTS = ["meeting", "status", "discussion", "notes", "update"];
 
-const matchesAny = (content: string, hints: string[]) => hints.some((hint) => content.includes(hint));
+const matchesAny = (content: string, hints: string[]): boolean => hints.some((hint) => content.includes(hint));
 
 export function classifyMilestoneArtifact(content: string): MilestoneArtifactType {
   const normalized = content.toLowerCase();

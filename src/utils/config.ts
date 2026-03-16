@@ -2,6 +2,13 @@
 // Centralized configuration constants
 // Organized by domain for easy discovery and maintenance
 
+const BYTES_PER_KB = 1024;
+const LARGE_FILE_KB = 100;
+const MS_PER_SECOND = 1000;
+const SECONDS_PER_MINUTE = 60;
+const ANSWER_TIMEOUT_MINUTES = 5;
+const REVIEW_TIMEOUT_MINUTES = 10;
+
 /**
  * Application configuration constants.
  * All values are compile-time constants - no runtime configuration.
@@ -90,7 +97,7 @@ export const config = {
    */
   limits: {
     /** File size threshold for triggering extraction (bytes) */
-    largeFileBytes: 100 * 1024,
+    largeFileBytes: LARGE_FILE_KB * BYTES_PER_KB,
     /** Max lines to return without extraction */
     maxLinesNoExtract: 200,
     /** Max lines in PTY buffer */
@@ -112,9 +119,9 @@ export const config = {
    */
   octto: {
     /** Answer timeout (ms) - 5 minutes */
-    answerTimeoutMs: 5 * 60 * 1000,
+    answerTimeoutMs: ANSWER_TIMEOUT_MINUTES * SECONDS_PER_MINUTE * MS_PER_SECOND,
     /** Review timeout (ms) - 10 minutes */
-    reviewTimeoutMs: 10 * 60 * 1000,
+    reviewTimeoutMs: REVIEW_TIMEOUT_MINUTES * SECONDS_PER_MINUTE * MS_PER_SECOND,
     /** Max iterations in brainstorm loop */
     maxIterations: 50,
     /** Max follow-up questions per branch */

@@ -3,6 +3,9 @@ import type { PluginInput } from "@opencode-ai/plugin";
 import { config } from "@/utils/config";
 import { getContextLimit } from "@/utils/model-limits";
 
+const PERCENT_MULTIPLIER = 100;
+const TOKENS_PER_KILOTOKEN = 1000;
+
 export interface ContextWindowMonitorConfig {
   /** Model context limits loaded from opencode.json */
   modelContextLimits?: Map<string, number>;
@@ -13,7 +16,18 @@ interface MonitorState {
   lastUsageRatio: Map<string, number>;
 }
 
-export function createContextWindowMonitorHook(ctx: PluginInput, hookConfig?: ContextWindowMonitorConfig) {
+interface ContextWindowMonitorHooks {
+  "chat.params": (
+    input: { sessionID: string },
+    output: { system?: string; options?: Record<string, unknown> },
+  ) => Promise<void>;
+  event: (input: { event: { type: string; properties?: unknown } }) => Promise<void>;
+}
+
+export function createContextWindowMonitorHook(
+  ctx: PluginInput,
+  hookConfig?: ContextWindowMonitorConfig,
+): ContextWindowMonitorHooks {
   const modelLimits = hookConfig?.modelContextLimits;
   const state: MonitorState = {
     lastWarningTime: new Map(),
@@ -21,7 +35,7 @@ export function createContextWindowMonitorHook(ctx: PluginInput, hookConfig?: Co
   };
 
   function getEncouragementMessage(usageRatio: number): string {
-    const remaining = Math.round((1 - usageRatio) * 100);
+    const remaining = Math.round((1 - usageRatio) * PERCENT_MULTIPLIER);
 
     if (usageRatio < config.contextWindow.warningThreshold) {
       return ""; // No message needed
@@ -88,19 +102,19 @@ export function createContextWindowMonitorHook(ctx: PluginInput, hookConfig?: Co
           if (Date.now() - lastWarning > config.contextWindow.warningCooldownMs) {
             state.lastWarningTime.set(sessionID, Date.now());
 
-            const remaining = Math.round((1 - usageRatio) * 100);
+            const remaining = Math.round((1 - usageRatio) * PERCENT_MULTIPLIER);
             const variant = usageRatio >= config.contextWindow.criticalThreshold ? "warning" : "info";
 
             await ctx.client.tui
               .showToast({
                 body: {
                   title: "Context Window",
-                  message: `${remaining}% remaining (${Math.round(totalUsed / 1000)}K / ${Math.round(contextLimit / 1000)}K tokens)`,
+                  message: `${remaining}% remaining (${Math.round(totalUsed / TOKENS_PER_KILOTOKEN)}K / ${Math.round(contextLimit / TOKENS_PER_KILOTOKEN)}K tokens)`,
                   variant,
                   duration: config.timeouts.toastWarningMs,
                 },
               })
-              .catch((_e) => {
+              .catch((_e: unknown) => {
                 /* fire-and-forget */
               });
           }

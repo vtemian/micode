@@ -1,5 +1,9 @@
 import type { PluginInput } from "@opencode-ai/plugin";
 
+const MAX_COMMENT_PREVIEW_LENGTH = 60;
+const MAX_CONSECUTIVE_COMMENTS = 5;
+const MAX_ISSUES_SHOWN = 3;
+
 // Patterns that indicate excessive/unnecessary comments
 const EXCESSIVE_COMMENT_PATTERNS = [
   // Obvious comments that explain what code does (not why)
@@ -61,7 +65,8 @@ function analyzeComments(content: string): CommentIssue[] {
         if (pattern.test(trimmed)) {
           issues.push({
             line: i + 1,
-            comment: trimmed.slice(0, 60) + (trimmed.length > 60 ? "..." : ""),
+            comment:
+              trimmed.slice(0, MAX_COMMENT_PREVIEW_LENGTH) + (trimmed.length > MAX_COMMENT_PREVIEW_LENGTH ? "..." : ""),
             reason: "Explains what, not why",
           });
           break;
@@ -71,10 +76,10 @@ function analyzeComments(content: string): CommentIssue[] {
       // Track consecutive comments (might indicate over-documentation)
       if (i === lastCommentLine + 1) {
         consecutiveComments++;
-        if (consecutiveComments > 5) {
+        if (consecutiveComments > MAX_CONSECUTIVE_COMMENTS) {
           issues.push({
             line: i + 1,
-            comment: trimmed.slice(0, 60),
+            comment: trimmed.slice(0, MAX_COMMENT_PREVIEW_LENGTH),
             reason: "Excessive consecutive comments",
           });
         }
@@ -88,7 +93,14 @@ function analyzeComments(content: string): CommentIssue[] {
   return issues;
 }
 
-export function createCommentCheckerHook(_ctx: PluginInput) {
+interface CommentCheckerHooks {
+  "tool.execute.after": (
+    input: { tool: string; args?: Record<string, unknown> },
+    output: { output?: string },
+  ) => Promise<void>;
+}
+
+export function createCommentCheckerHook(_ctx: PluginInput): CommentCheckerHooks {
   return {
     // Check after file edits
     "tool.execute.after": async (
@@ -105,11 +117,11 @@ export function createCommentCheckerHook(_ctx: PluginInput) {
 
       if (issues.length > 0) {
         const warning = `\n\n⚠️ **Comment Check**: Found ${issues.length} potentially unnecessary comment(s):\n${issues
-          .slice(0, 3)
+          .slice(0, MAX_ISSUES_SHOWN)
           .map((i) => `- Line ${i.line}: "${i.comment}" (${i.reason})`)
           .join(
             "\n",
-          )}${issues.length > 3 ? `\n...and ${issues.length - 3} more` : ""}\n\nComments should explain WHY, not WHAT. Consider removing obvious comments.`;
+          )}${issues.length > MAX_ISSUES_SHOWN ? `\n...and ${issues.length - MAX_ISSUES_SHOWN} more` : ""}\n\nComments should explain WHY, not WHAT. Consider removing obvious comments.`;
 
         if (output.output) {
           output.output += warning;

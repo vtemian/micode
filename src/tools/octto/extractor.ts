@@ -20,6 +20,7 @@ import type {
 import { QUESTIONS } from "@/octto/session";
 
 const MAX_TEXT_LENGTH = 100;
+const MAX_TOP_RATINGS_SHOWN = 3;
 
 function truncateText(text: string): string {
   return text.length > MAX_TEXT_LENGTH ? `${text.substring(0, MAX_TEXT_LENGTH)}...` : text;
@@ -60,7 +61,7 @@ export function extractAnswerSummary(type: QuestionType, answer: Answer): string
       if (entries.length === 0) return "no ratings";
       const sorted = entries.sort((a, b) => b[1] - a[1]);
       return sorted
-        .slice(0, 3)
+        .slice(0, MAX_TOP_RATINGS_SHOWN)
         .map(([k, v]) => `${k}: ${v}`)
         .join(", ");
     }

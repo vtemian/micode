@@ -56,7 +56,14 @@ You are resuming work from a previous context clear. The ledger above contains y
 Review it and continue from where you left off. The "Now" item is your current focus.`;
 }
 
-export function createLedgerLoaderHook(ctx: PluginInput) {
+interface LedgerLoaderHooks {
+  "chat.params": (
+    _input: { sessionID: string },
+    output: { options?: Record<string, unknown>; system?: string },
+  ) => Promise<void>;
+}
+
+export function createLedgerLoaderHook(ctx: PluginInput): LedgerLoaderHooks {
   return {
     "chat.params": async (
       _input: { sessionID: string },

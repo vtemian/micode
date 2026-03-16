@@ -63,7 +63,15 @@ export function formatFileOpsForPrompt(ops: FileOps): string {
   return result;
 }
 
-export function createFileOpsTrackerHook(_ctx: PluginInput) {
+interface FileOpsTrackerHooks {
+  "tool.execute.after": (
+    input: { tool: string; sessionID: string; args?: Record<string, unknown> },
+    _output: { output?: string },
+  ) => Promise<void>;
+  event: (input: { event: { type: string; properties?: unknown } }) => Promise<void>;
+}
+
+export function createFileOpsTrackerHook(_ctx: PluginInput): FileOpsTrackerHooks {
   return {
     "tool.execute.after": async (
       input: { tool: string; sessionID: string; args?: Record<string, unknown> },

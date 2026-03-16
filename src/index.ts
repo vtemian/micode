@@ -171,7 +171,7 @@ const OpenCodeConfigPlugin: Plugin = async (ctx) => {
     } finally {
       if (sessionId) {
         internalSessions.delete(sessionId);
-        await ctx.client.session.delete({ path: { id: sessionId } }).catch((_e) => {
+        await ctx.client.session.delete({ path: { id: sessionId } }).catch((_e: unknown) => {
           /* fire-and-forget */
         });
       }
@@ -465,7 +465,7 @@ IMPORTANT:
           const octtoSessions = octtoSessionsMap.get(sessionId);
           if (octtoSessions) {
             for (const octtoSessionId of octtoSessions) {
-              await octtoSessionStore.endSession(octtoSessionId).catch((_e) => {
+              await octtoSessionStore.endSession(octtoSessionId).catch((_e: unknown) => {
                 /* fire-and-forget */
               });
             }

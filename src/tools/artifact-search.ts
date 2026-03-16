@@ -2,6 +2,8 @@
 import { tool } from "@opencode-ai/plugin/tool";
 import { getArtifactIndex } from "./artifact-index";
 
+const DEFAULT_SEARCH_LIMIT = 10;
+
 export const artifact_search = tool({
   description: `Search past plans and ledgers for relevant precedent.
 Use this to find:
@@ -17,7 +19,7 @@ Returns ranked results with file paths for further reading.`,
   execute: async (args) => {
     try {
       const index = await getArtifactIndex();
-      const results = await index.search(args.query, args.limit || 10);
+      const results = await index.search(args.query, args.limit || DEFAULT_SEARCH_LIMIT);
 
       // Filter by type if specified
       const filtered = args.type && args.type !== "all" ? results.filter((r) => r.type === args.type) : results;

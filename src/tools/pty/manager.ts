@@ -6,9 +6,13 @@ import type { PTYSession, PTYSessionInfo, ReadResult, SearchResult, SpawnOptions
 type IPty = import("bun-pty").IPty;
 type SpawnFn = typeof import("bun-pty").spawn;
 
+const ID_RANDOM_BYTES = 4;
+const HEX_RADIX = 16;
+const ID_SUFFIX_LENGTH = -4;
+
 function generateId(): string {
-  const hex = Array.from(crypto.getRandomValues(new Uint8Array(4)))
-    .map((b) => b.toString(16).padStart(2, "0"))
+  const hex = Array.from(crypto.getRandomValues(new Uint8Array(ID_RANDOM_BYTES)))
+    .map((b) => b.toString(HEX_RADIX).padStart(2, "0"))
     .join("");
   return `pty_${hex}`;
 }
@@ -48,7 +52,8 @@ export class PTYManager {
     const args = opts.args ?? [];
     const workdir = opts.workdir ?? process.cwd();
     const env = { ...process.env, ...opts.env } as Record<string, string>;
-    const title = opts.title ?? (`${opts.command} ${args.join(" ")}`.trim() || `Terminal ${id.slice(-4)}`);
+    const title =
+      opts.title ?? (`${opts.command} ${args.join(" ")}`.trim() || `Terminal ${id.slice(ID_SUFFIX_LENGTH)}`);
 
     let ptyProcess: IPty;
     try {

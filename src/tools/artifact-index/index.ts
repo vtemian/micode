@@ -6,6 +6,8 @@ import { dirname, join } from "node:path";
 
 const DEFAULT_DB_DIR = join(homedir(), ".config", "opencode", "artifact-index");
 const DB_NAME = "context.db";
+const ERR_DB_NOT_INITIALIZED = "Database not initialized";
+const DEFAULT_SEARCH_LIMIT = 10;
 
 export interface PlanRecord {
   id: string;
@@ -136,7 +138,7 @@ export class ArtifactIndex {
   }
 
   async indexPlan(record: PlanRecord): Promise<void> {
-    if (!this.db) throw new Error("Database not initialized");
+    if (!this.db) throw new Error(ERR_DB_NOT_INITIALIZED);
 
     // Check for existing record by file_path to clean up old FTS entry
     const existing = this.db
@@ -170,7 +172,7 @@ export class ArtifactIndex {
   }
 
   async indexLedger(record: LedgerRecord): Promise<void> {
-    if (!this.db) throw new Error("Database not initialized");
+    if (!this.db) throw new Error(ERR_DB_NOT_INITIALIZED);
 
     // Check for existing record by file_path to clean up old FTS entry
     const existing = this.db
@@ -221,8 +223,8 @@ export class ArtifactIndex {
     );
   }
 
-  async search(query: string, limit: number = 10): Promise<SearchResult[]> {
-    if (!this.db) throw new Error("Database not initialized");
+  async search(query: string, limit: number = DEFAULT_SEARCH_LIMIT): Promise<SearchResult[]> {
+    if (!this.db) throw new Error(ERR_DB_NOT_INITIALIZED);
 
     const results: SearchResult[] = [];
     const escapedQuery = this.escapeFtsQuery(query);
@@ -279,7 +281,7 @@ export class ArtifactIndex {
   }
 
   async indexMilestoneArtifact(record: MilestoneArtifactRecord): Promise<void> {
-    if (!this.db) throw new Error("Database not initialized");
+    if (!this.db) throw new Error(ERR_DB_NOT_INITIALIZED);
 
     const tags = JSON.stringify(record.tags ?? []);
     const createdAt = record.createdAt ?? new Date().toISOString();
@@ -338,12 +340,12 @@ export class ArtifactIndex {
     query: string,
     options: { milestoneId?: string; artifactType?: string; limit?: number } = {},
   ): Promise<MilestoneArtifactSearchResult[]> {
-    if (!this.db) throw new Error("Database not initialized");
+    if (!this.db) throw new Error(ERR_DB_NOT_INITIALIZED);
 
     const escapedQuery = this.escapeFtsQuery(query);
     const milestoneId = options.milestoneId ?? null;
     const artifactType = options.artifactType ?? null;
-    const limit = options.limit ?? 10;
+    const limit = options.limit ?? DEFAULT_SEARCH_LIMIT;
 
     const rows = this.db
       .query(

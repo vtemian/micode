@@ -1,4 +1,5 @@
 // src/tools/pty/tools/write.ts
+import type { ToolDefinition } from "@opencode-ai/plugin";
 import { tool } from "@opencode-ai/plugin/tool";
 import type { PTYManager } from "@/tools/pty/manager";
 
@@ -60,7 +61,9 @@ function parseEscapeSequences(input: string): string {
   });
 }
 
-export function createPtyWriteTool(manager: PTYManager) {
+const MAX_WRITE_PREVIEW_LENGTH = 50;
+
+export function createPtyWriteTool(manager: PTYManager): ToolDefinition {
   return tool({
     description: DESCRIPTION,
     args: {
@@ -85,7 +88,8 @@ export function createPtyWriteTool(manager: PTYManager) {
         throw new Error(`Failed to write to PTY '${args.id}'.`);
       }
 
-      const preview = args.data.length > 50 ? `${args.data.slice(0, 50)}...` : args.data;
+      const preview =
+        args.data.length > MAX_WRITE_PREVIEW_LENGTH ? `${args.data.slice(0, MAX_WRITE_PREVIEW_LENGTH)}...` : args.data;
       const displayPreview = preview
         .replace(/\x03/g, "^C")
         .replace(/\x04/g, "^D")

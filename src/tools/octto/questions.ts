@@ -6,6 +6,11 @@ import type { ConfirmConfig, PickManyConfig, PickOneConfig, RankConfig, RateConf
 import { createQuestionToolFactory } from "./factory";
 import type { OcttoTools } from "./types";
 
+const DESC_QUESTION = "Question to display";
+const DESC_CONTEXT = "Instructions/context";
+const ERR_OPTIONS_EMPTY = "options array must not be empty";
+const DEFAULT_RATING_MAX = 5;
+
 const optionsSchema = tool.schema
   .array(
     tool.schema.object({
@@ -17,7 +22,7 @@ const optionsSchema = tool.schema
   .describe("Available options");
 
 function requireOptions(args: { options?: unknown[] }): string | null {
-  if (!args.options || args.options.length === 0) return "options array must not be empty";
+  if (!args.options || args.options.length === 0) return ERR_OPTIONS_EMPTY;
   return null;
 }
 
@@ -29,7 +34,7 @@ export function createQuestionTools(sessions: SessionStore): OcttoTools {
     description: `Ask user to select ONE option from a list.
 Response format: { selected: string } where selected is the chosen option id.`,
     args: {
-      question: tool.schema.string().describe("Question to display"),
+      question: tool.schema.string().describe(DESC_QUESTION),
       options: optionsSchema,
       recommended: tool.schema.string().optional().describe("Recommended option id (highlighted)"),
       allowOther: tool.schema.boolean().optional().describe("Allow custom 'other' input"),
@@ -48,7 +53,7 @@ Response format: { selected: string } where selected is the chosen option id.`,
     description: `Ask user to select MULTIPLE options from a list.
 Response format: { selected: string[] } where selected is array of chosen option ids.`,
     args: {
-      question: tool.schema.string().describe("Question to display"),
+      question: tool.schema.string().describe(DESC_QUESTION),
       options: optionsSchema,
       recommended: tool.schema.array(tool.schema.string()).optional().describe("Recommended option ids"),
       min: tool.schema.number().optional().describe("Minimum selections required"),
@@ -56,7 +61,7 @@ Response format: { selected: string[] } where selected is array of chosen option
       allowOther: tool.schema.boolean().optional().describe("Allow custom 'other' input"),
     },
     validate: (args) => {
-      if (!args.options || args.options.length === 0) return "options array must not be empty";
+      if (!args.options || args.options.length === 0) return ERR_OPTIONS_EMPTY;
       if (args.min !== undefined && args.max !== undefined && args.min > args.max) {
         return `min (${args.min}) cannot be greater than max (${args.max})`;
       }
@@ -77,7 +82,7 @@ Response format: { selected: string[] } where selected is array of chosen option
     description: `Ask user for Yes/No confirmation.
 Response format: { choice: "yes" | "no" | "cancel" }`,
     args: {
-      question: tool.schema.string().describe("Question to display"),
+      question: tool.schema.string().describe(DESC_QUESTION),
       context: tool.schema.string().optional().describe("Additional context/details"),
       yesLabel: tool.schema.string().optional().describe("Custom label for yes button"),
       noLabel: tool.schema.string().optional().describe("Custom label for no button"),
@@ -97,9 +102,9 @@ Response format: { choice: "yes" | "no" | "cancel" }`,
     description: `Ask user to rank/order items by dragging.
 Response format: { ranked: string[] } where ranked is array of option ids in user's order (first = highest).`,
     args: {
-      question: tool.schema.string().describe("Question to display"),
+      question: tool.schema.string().describe(DESC_QUESTION),
       options: optionsSchema.describe("Items to rank"),
-      context: tool.schema.string().optional().describe("Instructions/context"),
+      context: tool.schema.string().optional().describe(DESC_CONTEXT),
     },
     validate: requireOptions,
     toConfig: (args) => ({
@@ -114,7 +119,7 @@ Response format: { ranked: string[] } where ranked is array of option ids in use
     description: `Ask user to rate items on a numeric scale.
 Response format: { ratings: Record<string, number> } where key is option id, value is rating.`,
     args: {
-      question: tool.schema.string().describe("Question to display"),
+      question: tool.schema.string().describe(DESC_QUESTION),
       options: optionsSchema.describe("Items to rate"),
       min: tool.schema.number().optional().describe("Minimum rating value (default: 1)"),
       max: tool.schema.number().optional().describe("Maximum rating value (default: 5)"),
@@ -128,9 +133,9 @@ Response format: { ratings: Record<string, number> } where key is option id, val
         .describe("Optional labels for min/max"),
     },
     validate: (args) => {
-      if (!args.options || args.options.length === 0) return "options array must not be empty";
+      if (!args.options || args.options.length === 0) return ERR_OPTIONS_EMPTY;
       const min = args.min ?? 1;
-      const max = args.max ?? 5;
+      const max = args.max ?? DEFAULT_RATING_MAX;
       if (min >= max) return `min (${min}) must be less than max (${max})`;
       return null;
     },
@@ -138,7 +143,7 @@ Response format: { ratings: Record<string, number> } where key is option id, val
       question: args.question,
       options: args.options,
       min: args.min ?? 1,
-      max: args.max ?? 5,
+      max: args.max ?? DEFAULT_RATING_MAX,
       step: args.step,
       labels: args.labels,
     }),
@@ -180,9 +185,9 @@ function createInputTools(sessions: SessionStore): OcttoTools {
     description: `Ask user for text input (single or multi-line).
 Response format: { text: string }`,
     args: {
-      question: tool.schema.string().describe("Question to display"),
+      question: tool.schema.string().describe(DESC_QUESTION),
       placeholder: tool.schema.string().optional().describe("Placeholder text"),
-      context: tool.schema.string().optional().describe("Instructions/context"),
+      context: tool.schema.string().optional().describe(DESC_CONTEXT),
       multiline: tool.schema.boolean().optional().describe("Multi-line input (default: false)"),
       minLength: tool.schema.number().optional().describe("Minimum text length"),
       maxLength: tool.schema.number().optional().describe("Maximum text length"),
@@ -210,8 +215,8 @@ Response format: { text: string }`,
     type: "ask_image",
     description: "Ask user to upload/paste image(s).",
     args: {
-      question: tool.schema.string().describe("Question to display"),
-      context: tool.schema.string().optional().describe("Instructions/context"),
+      question: tool.schema.string().describe(DESC_QUESTION),
+      context: tool.schema.string().optional().describe(DESC_CONTEXT),
       multiple: tool.schema.boolean().optional().describe("Allow multiple images"),
       maxImages: tool.schema.number().optional().describe("Maximum number of images"),
       accept: tool.schema.array(tool.schema.string()).optional().describe("Allowed image types"),
@@ -239,8 +244,8 @@ Response format: { text: string }`,
     type: "ask_file",
     description: "Ask user to upload file(s).",
     args: {
-      question: tool.schema.string().describe("Question to display"),
-      context: tool.schema.string().optional().describe("Instructions/context"),
+      question: tool.schema.string().describe(DESC_QUESTION),
+      context: tool.schema.string().optional().describe(DESC_CONTEXT),
       multiple: tool.schema.boolean().optional().describe("Allow multiple files"),
       maxFiles: tool.schema.number().optional().describe("Maximum number of files"),
       accept: tool.schema.array(tool.schema.string()).optional().describe("Allowed file types"),
@@ -268,8 +273,8 @@ Response format: { text: string }`,
     type: "ask_code",
     description: "Ask user for code input with syntax highlighting.",
     args: {
-      question: tool.schema.string().describe("Question to display"),
-      context: tool.schema.string().optional().describe("Instructions/context"),
+      question: tool.schema.string().describe(DESC_QUESTION),
+      context: tool.schema.string().optional().describe(DESC_CONTEXT),
       language: tool.schema.string().optional().describe("Programming language for highlighting"),
       placeholder: tool.schema.string().optional().describe("Placeholder code"),
     },
@@ -370,13 +375,13 @@ Response format: { approved: boolean, annotations?: Record<sectionId, string> }`
     description: `Show options with pros/cons for user to select.
 Response format: { selected: string, feedback?: string } where selected is the chosen option id.`,
     args: {
-      question: tool.schema.string().describe("Question to display"),
+      question: tool.schema.string().describe(DESC_QUESTION),
       options: prosConsOptionSchema.describe("Options with pros/cons"),
       recommended: tool.schema.string().optional().describe("Recommended option id"),
       allowFeedback: tool.schema.boolean().optional().describe("Allow text feedback with selection"),
     },
     validate: (args) => {
-      if (!args.options || args.options.length === 0) return "options array must not be empty";
+      if (!args.options || args.options.length === 0) return ERR_OPTIONS_EMPTY;
       return null;
     },
     toConfig: (args) => ({
@@ -427,7 +432,7 @@ function createQuickTools(sessions: SessionStore): OcttoTools {
     description: `Ask user for quick thumbs up/down feedback.
 Response format: { choice: "up" | "down" }`,
     args: {
-      question: tool.schema.string().describe("Question to display"),
+      question: tool.schema.string().describe(DESC_QUESTION),
       context: tool.schema.string().optional().describe("Context to show"),
     },
     toConfig: (args) => ({
@@ -447,7 +452,7 @@ Response format: { choice: "up" | "down" }`,
     type: "emoji_react",
     description: "Ask user to react with an emoji.",
     args: {
-      question: tool.schema.string().describe("Question to display"),
+      question: tool.schema.string().describe(DESC_QUESTION),
       context: tool.schema.string().optional().describe("Context to show"),
       emojis: tool.schema.array(tool.schema.string()).optional().describe("Available emoji options"),
     },
@@ -474,12 +479,12 @@ Response format: { choice: "up" | "down" }`,
     description: `Ask user to select a value on a numeric slider.
 Response format: { value: number }`,
     args: {
-      question: tool.schema.string().describe("Question to display"),
+      question: tool.schema.string().describe(DESC_QUESTION),
       min: tool.schema.number().describe("Minimum value"),
       max: tool.schema.number().describe("Maximum value"),
       step: tool.schema.number().optional().describe("Step size (default: 1)"),
       defaultValue: tool.schema.number().optional().describe("Default value"),
-      context: tool.schema.string().optional().describe("Instructions/context"),
+      context: tool.schema.string().optional().describe(DESC_CONTEXT),
       labels: tool.schema
         .object({
           min: tool.schema.string().optional().describe("Label for minimum value"),

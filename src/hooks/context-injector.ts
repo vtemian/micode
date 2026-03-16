@@ -15,7 +15,18 @@ interface ContextCache {
   lastRootCheck: number;
 }
 
-export function createContextInjectorHook(ctx: PluginInput) {
+interface ContextInjectorHooks {
+  "chat.params": (
+    _input: { sessionID: string },
+    output: { options?: Record<string, unknown>; system?: string },
+  ) => Promise<void>;
+  "tool.execute.after": (
+    input: { tool: string; args?: Record<string, unknown> },
+    output: { output?: string },
+  ) => Promise<void>;
+}
+
+export function createContextInjectorHook(ctx: PluginInput): ContextInjectorHooks {
   const cache: ContextCache = {
     rootContent: new Map(),
     directoryContent: new Map(),

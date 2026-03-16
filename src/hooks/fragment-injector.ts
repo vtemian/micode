@@ -143,7 +143,14 @@ export function warnUnknownAgents(fragmentAgents: string[], knownAgents: Set<str
  * Create fragment injector hook
  * Injects user-defined fragments at the beginning of agent system prompts
  */
-export function createFragmentInjectorHook(ctx: PluginInput, globalConfig: MicodeConfig | null) {
+interface FragmentInjectorHooks {
+  "chat.params": (
+    _input: { sessionID: string },
+    output: { options?: Record<string, unknown>; system?: string },
+  ) => Promise<void>;
+}
+
+export function createFragmentInjectorHook(ctx: PluginInput, globalConfig: MicodeConfig | null): FragmentInjectorHooks {
   // Cache for project fragments (loaded once per session)
   let projectFragmentsCache: Record<string, string[]> | null = null;
 

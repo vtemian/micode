@@ -18,6 +18,7 @@ export type {
   SpawnOptions,
 } from "./types";
 
+import type { ToolDefinition } from "@opencode-ai/plugin";
 import type { PTYManager } from "./manager";
 import { createPtyKillTool } from "./tools/kill";
 import { createPtyListTool } from "./tools/list";
@@ -25,7 +26,7 @@ import { createPtyReadTool } from "./tools/read";
 import { createPtySpawnTool } from "./tools/spawn";
 import { createPtyWriteTool } from "./tools/write";
 
-export function createPtyTools(manager: PTYManager) {
+export function createPtyTools(manager: PTYManager): Record<string, ToolDefinition> {
   return {
     pty_spawn: createPtySpawnTool(manager),
     pty_write: createPtyWriteTool(manager),

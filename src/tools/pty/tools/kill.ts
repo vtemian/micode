@@ -1,4 +1,5 @@
 // src/tools/pty/tools/kill.ts
+import type { ToolDefinition } from "@opencode-ai/plugin";
 import { tool } from "@opencode-ai/plugin/tool";
 import type { PTYManager } from "@/tools/pty/manager";
 
@@ -28,7 +29,7 @@ Examples:
 - Kill but keep logs: cleanup=false (or omit)
 - Kill and remove: cleanup=true`;
 
-export function createPtyKillTool(manager: PTYManager) {
+export function createPtyKillTool(manager: PTYManager): ToolDefinition {
   return tool({
     description: DESCRIPTION,
     args: {

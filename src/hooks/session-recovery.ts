@@ -17,6 +17,10 @@ interface RecoveryState {
 }
 
 const MAX_RECOVERY_ATTEMPTS = 3;
+const ABORT_SETTLE_DELAY_MS = 500;
+const RECOVERY_TOAST_DURATION_MS = 3000;
+const TOAST_FAILURE_DURATION_MS = 5000;
+const ERROR_KEY_EXPIRY_MS = 10000;
 
 function extractErrorInfo(error: unknown): { message: string; messageIndex?: number } | null {
   if (!error) return null;
@@ -48,7 +52,11 @@ function identifyErrorType(errorMessage: string): RecoverableErrorType | null {
   return null;
 }
 
-export function createSessionRecoveryHook(ctx: PluginInput) {
+interface SessionRecoveryHooks {
+  event: (input: { event: { type: string; properties?: unknown } }) => Promise<void>;
+}
+
+export function createSessionRecoveryHook(ctx: PluginInput): SessionRecoveryHooks {
   const state: RecoveryState = {
     processingErrors: new Set(),
     recoveryAttempts: new Map(),
@@ -135,10 +143,10 @@ export function createSessionRecoveryHook(ctx: PluginInput) {
             title: "Recovery Failed",
             message: `Max attempts reached for ${errorType}. Manual intervention needed.`,
             variant: "error",
-            duration: 5000,
+            duration: TOAST_FAILURE_DURATION_MS,
           },
         })
-        .catch((_e) => {
+        .catch((_e: unknown) => {
           /* fire-and-forget */
         });
       return false;
@@ -152,10 +160,10 @@ export function createSessionRecoveryHook(ctx: PluginInput) {
           title: "Session Recovery",
           message: `Recovering from ${errorType.toLowerCase().replace(/_/g, " ")}...`,
           variant: "warning",
-          duration: 3000,
+          duration: RECOVERY_TOAST_DURATION_MS,
         },
       })
-      .catch((_e) => {
+      .catch((_e: unknown) => {
         /* fire-and-forget */
       });
 
@@ -163,7 +171,7 @@ export function createSessionRecoveryHook(ctx: PluginInput) {
     await abortSession(sessionID);
 
     // Wait a moment for abort to complete
-    await new Promise((resolve) => setTimeout(resolve, 500));
+    await new Promise((resolve) => setTimeout(resolve, ABORT_SETTLE_DELAY_MS));
 
     // Attempt resume
     await resumeSession(sessionID, providerID, modelID, agent);
@@ -174,10 +182,10 @@ export function createSessionRecoveryHook(ctx: PluginInput) {
           title: "Recovery Complete",
           message: "Session resumed. Continuing...",
           variant: "success",
-          duration: 3000,
+          duration: RECOVERY_TOAST_DURATION_MS,
         },
       })
-      .catch((_e) => {
+      .catch((_e: unknown) => {
         /* fire-and-forget */
       });
 
@@ -226,7 +234,7 @@ export function createSessionRecoveryHook(ctx: PluginInput) {
         state.processingErrors.add(errorKey);
 
         // Clear old error keys after 10 seconds
-        setTimeout(() => state.processingErrors.delete(errorKey), 10000);
+        setTimeout(() => state.processingErrors.delete(errorKey), ERROR_KEY_EXPIRY_MS);
 
         // Attempt recovery
         await attemptRecovery(sessionID, errorType);
@@ -251,7 +259,7 @@ export function createSessionRecoveryHook(ctx: PluginInput) {
         if (state.processingErrors.has(errorKey)) return;
         state.processingErrors.add(errorKey);
 
-        setTimeout(() => state.processingErrors.delete(errorKey), 10000);
+        setTimeout(() => state.processingErrors.delete(errorKey), ERROR_KEY_EXPIRY_MS);
 
         const providerID = info.providerID as string | undefined;
         const modelID = info.modelID as string | undefined;

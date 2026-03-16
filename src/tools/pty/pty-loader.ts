@@ -15,6 +15,8 @@ import { dirname, join } from "node:path";
 
 import { log } from "@/utils/logger";
 
+const LOG_TAG = "pty.loader";
+
 type BunPtyModule = typeof import("bun-pty");
 
 let cachedModule: BunPtyModule | null = null;
@@ -73,7 +75,7 @@ function probeBunPtyLib(): void {
       const candidate = join(basePath, filename);
       if (existsSync(candidate)) {
         process.env.BUN_PTY_LIB = candidate;
-        log.info("pty.loader", `Auto-resolved BUN_PTY_LIB=${candidate}`);
+        log.info(LOG_TAG, `Auto-resolved BUN_PTY_LIB=${candidate}`);
         return;
       }
     }
@@ -96,14 +98,14 @@ export async function loadBunPty(): Promise<BunPtyModule | null> {
 
   try {
     cachedModule = await import("bun-pty");
-    log.info("pty.loader", "bun-pty loaded successfully");
+    log.info(LOG_TAG, "bun-pty loaded successfully");
     return cachedModule;
   } catch (error) {
     loadError = error instanceof Error ? error.message : String(error);
     // Extract just the first line for a cleaner warning
     const firstLine = loadError.split("\n")[0];
-    log.warn("pty.loader", `bun-pty unavailable: ${firstLine}`);
-    log.warn("pty.loader", "PTY tools will be disabled. Set BUN_PTY_LIB env var to the native library path to fix.");
+    log.warn(LOG_TAG, `bun-pty unavailable: ${firstLine}`);
+    log.warn(LOG_TAG, "PTY tools will be disabled. Set BUN_PTY_LIB env var to the native library path to fix.");
     cachedModule = null;
     return null;
   }

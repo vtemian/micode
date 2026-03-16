@@ -67,10 +67,9 @@ export default [
       ],
       "@typescript-eslint/consistent-type-definitions": ["error", "interface"],
       "@typescript-eslint/prefer-readonly": "warn",
-      "@typescript-eslint/use-unknown-in-catch-callback-variable": "warn",
-      // WARN: ~17 violations (audit undercounted)
+      "@typescript-eslint/use-unknown-in-catch-callback-variable": "error",
       "@typescript-eslint/explicit-function-return-type": [
-        "warn",
+        "error",
         {
           allowExpressions: true,
           allowTypedFunctionExpressions: true,
@@ -88,11 +87,11 @@ export default [
         },
       ],
       "@typescript-eslint/naming-convention": [
-        "warn",
+        "error",
         { selector: "default", format: ["camelCase"], leadingUnderscore: "allow" },
         {
           selector: "variable",
-          format: ["camelCase", "UPPER_CASE"],
+          format: ["camelCase", "UPPER_CASE", "snake_case", "PascalCase"],
           leadingUnderscore: "allow",
           filter: {
             regex: "(Map|Object|String|Array|List|Set|Dict|Number|Boolean|Fn|Func|Callback)$",
@@ -120,11 +119,22 @@ export default [
         {
           selector: "objectLiteralProperty",
           format: null,
-          filter: { regex: "^[a-z]+(_[a-z]+)+$", match: true },
+        },
+        {
+          selector: "objectLiteralMethod",
+          format: null,
+        },
+        {
+          selector: "typeProperty",
+          format: null,
+        },
+        {
+          selector: "typeMethod",
+          format: null,
         },
       ],
       "@typescript-eslint/no-magic-numbers": [
-        "warn",
+        "error",
         {
           ignore: [0, 1, -1, 2],
           ignoreEnums: true,
@@ -134,8 +144,7 @@ export default [
       ],
       "@typescript-eslint/no-explicit-any": "error",
       "@typescript-eslint/consistent-type-assertions": "off",
-      // WARN: 3 violations need fixing
-      "@typescript-eslint/no-floating-promises": "warn",
+      "@typescript-eslint/no-floating-promises": "error",
       "@typescript-eslint/no-misused-promises": "error",
       // WARN: violations from type assertions flowing through
       "@typescript-eslint/no-unsafe-assignment": "warn",
@@ -149,7 +158,7 @@ export default [
 
       // --- Sonarjs (complexity and duplication) ---
       "sonarjs/cognitive-complexity": ["warn", 10],
-      "sonarjs/no-duplicate-string": ["warn", { threshold: 3 }],
+      "sonarjs/no-duplicate-string": ["error", { threshold: 3 }],
       "sonarjs/no-identical-functions": "error",
 
       // --- Unicorn (patterns) ---

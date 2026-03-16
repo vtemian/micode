@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 
-import type { PluginInput } from "@opencode-ai/plugin";
+import type { PluginInput, ToolDefinition } from "@opencode-ai/plugin";
 import { tool } from "@opencode-ai/plugin/tool";
 
 interface FileResult {
@@ -10,7 +10,7 @@ interface FileResult {
   error?: string;
 }
 
-export function createBatchReadTool(ctx: PluginInput) {
+export function createBatchReadTool(ctx: PluginInput): ToolDefinition {
   return tool({
     description: `Read multiple files in parallel. Much faster than reading files one at a time.
 Use this when you need to read 2+ files - all reads happen concurrently via Promise.all.

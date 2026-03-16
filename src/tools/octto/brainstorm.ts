@@ -57,7 +57,7 @@ async function collectAnswers(
       question_id,
       response,
       client,
-    ).catch((error) => {
+    ).catch((error: unknown) => {
       log.error("octto", `Error processing answer ${question_id}`, error);
     });
     pendingProcessing.push(processing);

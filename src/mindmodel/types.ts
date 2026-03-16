@@ -75,13 +75,17 @@ function extractCodeBlocks(content: string, sectionHeader: string): ConstraintEx
   const section = content.slice(sectionIndex, sectionEnd);
 
   // Extract H3 titles and code blocks
+  // Capture groups: (1) title, (2) language, (3) code content
   const blockRegex = /### (.+)\n```(\w+)?\n([\s\S]*?)```/g;
+  const GROUP_TITLE = 1;
+  const GROUP_LANGUAGE = 2;
+  const GROUP_CODE = 3;
   const matches = section.matchAll(blockRegex);
   for (const match of matches) {
     results.push({
-      title: match[1],
-      language: match[2] || "",
-      code: match[3].trim(),
+      title: match[GROUP_TITLE],
+      language: match[GROUP_LANGUAGE] || "",
+      code: match[GROUP_CODE].trim(),
     });
   }
 

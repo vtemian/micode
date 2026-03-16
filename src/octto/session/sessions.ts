@@ -88,10 +88,10 @@ export function createSessionStore(options: SessionStoreOptions = {}): SessionSt
       });
 
       if (!options.skipBrowser) {
-        await openBrowser(url).catch((error) => {
+        await openBrowser(url).catch(async (error: unknown) => {
           sessions.delete(sessionId);
           for (const qId of questionIds) questionToSession.delete(qId);
-          server.stop();
+          await server.stop();
           throw error;
         });
       }
@@ -115,7 +115,7 @@ export function createSessionStore(options: SessionStoreOptions = {}): SessionSt
       }
 
       if (session.server) {
-        session.server.stop();
+        await session.server.stop();
       }
 
       for (const questionId of session.questions.keys()) {

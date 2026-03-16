@@ -9,7 +9,20 @@ import { log } from "@/utils/logger";
 const LEDGER_PATH_PATTERN = /thoughts\/ledgers\/CONTINUITY_(.+)\.md$/;
 const PLAN_PATH_PATTERN = /thoughts\/shared\/plans\/(.+)\.md$/;
 
-export function parseLedger(content: string, filePath: string, sessionName: string) {
+export function parseLedger(
+  content: string,
+  filePath: string,
+  sessionName: string,
+): {
+  id: string;
+  sessionName: string;
+  filePath: string;
+  goal: string;
+  stateNow: string;
+  keyDecisions: string;
+  filesRead: string;
+  filesModified: string;
+} {
   const goalMatch = content.match(/## Goal\n([^\n]+)/);
   const stateMatch = content.match(/### In Progress\n- \[ \] ([^\n]+)/);
   const decisionsMatch = content.match(/## Key Decisions\n([\s\S]*?)(?=\n## |$)/);
@@ -47,7 +60,17 @@ export function parseLedger(content: string, filePath: string, sessionName: stri
   };
 }
 
-function parsePlan(content: string, filePath: string, fileName: string) {
+function parsePlan(
+  content: string,
+  filePath: string,
+  fileName: string,
+): {
+  id: string;
+  title: string;
+  filePath: string;
+  overview: string;
+  approach: string;
+} {
   // Extract title (first heading)
   const titleMatch = content.match(/^# (.+)$/m);
   const title = titleMatch?.[1] || fileName;
@@ -69,7 +92,14 @@ function parsePlan(content: string, filePath: string, fileName: string) {
   };
 }
 
-export function createArtifactAutoIndexHook(_ctx: PluginInput) {
+interface ArtifactAutoIndexHooks {
+  "tool.execute.after": (
+    input: { tool: string; args?: Record<string, unknown> },
+    _output: { output?: string },
+  ) => Promise<void>;
+}
+
+export function createArtifactAutoIndexHook(_ctx: PluginInput): ArtifactAutoIndexHooks {
   return {
     "tool.execute.after": async (
       input: { tool: string; args?: Record<string, unknown> },

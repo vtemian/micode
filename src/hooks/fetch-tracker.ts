@@ -157,7 +157,16 @@ function isCacheExpired(entry: CacheEntry): boolean {
 
 // --- Hook factory ---
 
-export function createFetchTrackerHook(_ctx: PluginInput) {
+interface FetchTrackerHooks {
+  "tool.execute.after": (
+    input: { tool: string; sessionID: string; args?: Record<string, unknown> },
+    output: { output?: string },
+  ) => Promise<void>;
+  event: (input: { event: { type: string; properties?: unknown } }) => Promise<void>;
+  cleanupSession: (sessionID: string) => void;
+}
+
+export function createFetchTrackerHook(_ctx: PluginInput): FetchTrackerHooks {
   return {
     /**
      * After hook: track fetch calls, cache results, inject warnings/blocks.

@@ -1,4 +1,5 @@
 // src/tools/pty/tools/read.ts
+import type { ToolDefinition } from "@opencode-ai/plugin";
 import { tool } from "@opencode-ai/plugin/tool";
 import type { PTYManager } from "@/tools/pty/manager";
 
@@ -43,8 +44,9 @@ Examples:
 
 const DEFAULT_LIMIT = 500;
 const MAX_LINE_LENGTH = 2000;
+const LINE_NUMBER_PAD_WIDTH = 5;
 
-export function createPtyReadTool(manager: PTYManager) {
+export function createPtyReadTool(manager: PTYManager): ToolDefinition {
   return tool({
     description: DESCRIPTION,
     args: {
@@ -87,7 +89,7 @@ export function createPtyReadTool(manager: PTYManager) {
         }
 
         const formattedLines = result.matches.map((match) => {
-          const lineNum = match.lineNumber.toString().padStart(5, "0");
+          const lineNum = match.lineNumber.toString().padStart(LINE_NUMBER_PAD_WIDTH, "0");
           const truncatedLine =
             match.text.length > MAX_LINE_LENGTH ? `${match.text.slice(0, MAX_LINE_LENGTH)}...` : match.text;
           return `${lineNum}| ${truncatedLine}`;
@@ -128,7 +130,7 @@ export function createPtyReadTool(manager: PTYManager) {
       }
 
       const formattedLines = result.lines.map((line, index) => {
-        const lineNum = (result.offset + index + 1).toString().padStart(5, "0");
+        const lineNum = (result.offset + index + 1).toString().padStart(LINE_NUMBER_PAD_WIDTH, "0");
         const truncatedLine = line.length > MAX_LINE_LENGTH ? `${line.slice(0, MAX_LINE_LENGTH)}...` : line;
         return `${lineNum}| ${truncatedLine}`;
       });

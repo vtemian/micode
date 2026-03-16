@@ -1,4 +1,4 @@
-import type { PluginInput } from "@opencode-ai/plugin";
+import type { PluginInput, ToolDefinition } from "@opencode-ai/plugin";
 import { type ToolContext, tool } from "@opencode-ai/plugin/tool";
 
 // Extended context with metadata (available but not typed in plugin API)
@@ -6,6 +6,8 @@ import { type ToolContext, tool } from "@opencode-ai/plugin/tool";
 type ExtendedContext = ToolContext & {
   metadata?: (input: { title?: string; metadata?: Record<string, unknown> }) => void;
 };
+
+const MS_PER_SECOND = 1000;
 
 interface SessionCreateResponse {
   data?: { id?: string };
@@ -31,7 +33,7 @@ interface AgentTask {
   description: string;
 }
 
-export function createSpawnAgentTool(ctx: PluginInput) {
+export function createSpawnAgentTool(ctx: PluginInput): ToolDefinition {
   async function runAgent(
     task: AgentTask,
     toolCtx: ExtendedContext,
@@ -40,9 +42,9 @@ export function createSpawnAgentTool(ctx: PluginInput) {
     const { agent, prompt, description } = task;
     const agentStartTime = Date.now();
 
-    const updateProgress = (status: string) => {
+    const updateProgress = (status: string): void => {
       if (toolCtx.metadata && progressState) {
-        const elapsed = ((Date.now() - progressState.startTime) / 1000).toFixed(0);
+        const elapsed = ((Date.now() - progressState.startTime) / MS_PER_SECOND).toFixed(0);
         toolCtx.metadata({
           title: `[${progressState.completed}/${progressState.total}] ${status} (${elapsed}s)`,
         });
@@ -90,11 +92,11 @@ export function createSpawnAgentTool(ctx: PluginInput) {
           path: { id: sessionID },
           query: { directory: ctx.directory },
         })
-        .catch((_e) => {
+        .catch((_e: unknown) => {
           /* fire-and-forget */
         });
 
-      const agentTime = ((Date.now() - agentStartTime) / 1000).toFixed(1);
+      const agentTime = ((Date.now() - agentStartTime) / MS_PER_SECOND).toFixed(1);
       return `## ${description} (${agentTime}s)\n\n**Agent**: ${agent}\n\n### Result\n\n${result}`;
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
@@ -148,7 +150,7 @@ spawn_agent({
       const runWithProgress = async (task: AgentTask): Promise<string> => {
         const result = await runAgent(task, extCtx, progressState);
         progressState.completed++;
-        const elapsed = ((Date.now() - startTime) / 1000).toFixed(0);
+        const elapsed = ((Date.now() - startTime) / MS_PER_SECOND).toFixed(0);
         extCtx.metadata?.({
           title: `[${progressState.completed}/${agents.length}] ${task.agent} done (${elapsed}s)`,
         });
@@ -156,7 +158,7 @@ spawn_agent({
       };
 
       const results = await Promise.all(agents.map(runWithProgress));
-      const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
+      const totalTime = ((Date.now() - startTime) / MS_PER_SECOND).toFixed(1);
 
       extCtx.metadata?.({
         title: `${agents.length} agents completed in ${totalTime}s`,

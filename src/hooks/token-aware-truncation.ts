@@ -65,7 +65,12 @@ interface TruncationState {
   sessionTokenUsage: Map<string, { used: number; limit: number }>;
 }
 
-export function createTokenAwareTruncationHook(ctx: PluginInput) {
+interface TokenAwareTruncationHooks {
+  event: (input: { event: { type: string; properties?: unknown } }) => Promise<void>;
+  "tool.execute.after": (input: { name: string; sessionID: string }, output: { output?: string }) => Promise<void>;
+}
+
+export function createTokenAwareTruncationHook(ctx: PluginInput): TokenAwareTruncationHooks {
   const state: TruncationState = {
     sessionTokenUsage: new Map(),
   };

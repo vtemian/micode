@@ -21,7 +21,19 @@ interface ReviewState {
   overrideActive: boolean;
 }
 
-export function createConstraintReviewerHook(ctx: PluginInput, reviewFn: ReviewFn) {
+interface ConstraintReviewerHooks {
+  "tool.execute.after": (
+    input: { tool: string; sessionID: string; args?: Record<string, unknown> },
+    output: { output?: string },
+  ) => Promise<void>;
+  "chat.message": (
+    input: { sessionID: string },
+    output: { parts: Array<{ type: string; text?: string }> },
+  ) => Promise<void>;
+  cleanupSession: (sessionID: string) => void;
+}
+
+export function createConstraintReviewerHook(ctx: PluginInput, reviewFn: ReviewFn): ConstraintReviewerHooks {
   let cachedMindmodel: LoadedMindmodel | null | undefined;
   const sessionState = new Map<string, ReviewState>();
 

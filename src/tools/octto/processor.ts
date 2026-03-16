@@ -89,7 +89,7 @@ async function runProbeAgent(client: OpencodeClient, state: BrainstormState, bra
 
     return JSON.parse(jsonMatch[0]) as ProbeResult;
   } finally {
-    await client.session.delete({ path: { id: probeSessionId } }).catch((_e) => {
+    await client.session.delete({ path: { id: probeSessionId } }).catch((_e: unknown) => {
       /* fire-and-forget */
     });
   }

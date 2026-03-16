@@ -8,6 +8,10 @@ import { formatExamplesForInjection, type LoadedMindmodel, loadExamples, loadMin
 import { matchCategories } from "@/tools/mindmodel-lookup";
 import { config } from "@/utils/config";
 
+const HASH_BIT_SHIFT = 5;
+const BASE_36_RADIX = 36;
+const TASK_CACHE_MAX_ENTRIES = 2000;
+
 interface MessagePart {
   type: string;
   text?: string;
@@ -23,10 +27,10 @@ function hashTask(task: string): string {
   let hash = 0;
   for (let i = 0; i < task.length; i++) {
     const char = task.charCodeAt(i);
-    hash = (hash << 5) - hash + char;
+    hash = (hash << HASH_BIT_SHIFT) - hash + char;
     hash = hash & hash; // Convert to 32-bit integer
   }
-  return hash.toString(36);
+  return hash.toString(BASE_36_RADIX);
 }
 
 // Simple LRU cache for matched tasks
@@ -60,7 +64,15 @@ class LRUCache<V> {
   }
 }
 
-export function createMindmodelInjectorHook(ctx: PluginInput) {
+interface MindmodelInjectorHooks {
+  "experimental.chat.messages.transform": (
+    _input: Record<string, unknown>,
+    output: { messages: MessageWithParts[] },
+  ) => Promise<void>;
+  "experimental.chat.system.transform": (_input: { sessionID: string }, output: { system: string[] }) => Promise<void>;
+}
+
+export function createMindmodelInjectorHook(ctx: PluginInput): MindmodelInjectorHooks {
   let cachedMindmodel: LoadedMindmodel | null | undefined;
   let cachedSystemMd: string | null | undefined;
 
@@ -68,7 +80,7 @@ export function createMindmodelInjectorHook(ctx: PluginInput) {
   let pendingInjection: string | null = null;
 
   // LRU cache for matched tasks (uses hashed keys)
-  const matchedTasks = new LRUCache<string>(2000);
+  const matchedTasks = new LRUCache<string>(TASK_CACHE_MAX_ENTRIES);
 
   async function getMindmodel(): Promise<LoadedMindmodel | null> {
     if (cachedMindmodel === undefined) {

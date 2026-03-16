@@ -7,6 +7,10 @@ import { config } from "@/utils/config";
 import { extractErrorMessage } from "@/utils/errors";
 import { getContextLimit } from "@/utils/model-limits";
 
+const SESSION_ID_PREFIX_LENGTH = 8;
+const PERCENT_MULTIPLIER = 100;
+const MAX_ERROR_MESSAGE_LENGTH = 100;
+
 export interface AutoCompactConfig {
   /** Compaction threshold (0-1), defaults to config.compaction.threshold */
   compactionThreshold?: number;
@@ -26,7 +30,11 @@ interface AutoCompactState {
   pendingCompactions: Map<string, PendingCompaction>;
 }
 
-export function createAutoCompactHook(ctx: PluginInput, hookConfig?: AutoCompactConfig) {
+interface AutoCompactHooks {
+  event: (input: { event: { type: string; properties?: unknown } }) => Promise<void>;
+}
+
+export function createAutoCompactHook(ctx: PluginInput, hookConfig?: AutoCompactConfig): AutoCompactHooks {
   const threshold = hookConfig?.compactionThreshold ?? config.compaction.threshold;
   const modelLimits = hookConfig?.modelContextLimits;
 
@@ -73,7 +81,7 @@ export function createAutoCompactHook(ctx: PluginInput, hookConfig?: AutoCompact
 
       // Write ledger file - summary is already structured (Factory.ai/pi-mono format)
       const timestamp = new Date().toISOString();
-      const sessionName = sessionID.slice(0, 8); // Use first 8 chars of session ID
+      const sessionName = sessionID.slice(0, SESSION_ID_PREFIX_LENGTH);
       const ledgerPath = join(ledgerDir, `${config.paths.ledgerPrefix}${sessionName}.md`);
 
       // Add metadata header, then the structured summary as-is
@@ -122,8 +130,8 @@ ${summaryText}
     state.inProgress.add(sessionID);
 
     try {
-      const usedPercent = Math.round(usageRatio * 100);
-      const thresholdPercent = Math.round(threshold * 100);
+      const usedPercent = Math.round(usageRatio * PERCENT_MULTIPLIER);
+      const thresholdPercent = Math.round(threshold * PERCENT_MULTIPLIER);
 
       await ctx.client.tui
         .showToast({
@@ -134,7 +142,7 @@ ${summaryText}
             duration: config.timeouts.toastWarningMs,
           },
         })
-        .catch((_e) => {
+        .catch((_e: unknown) => {
           /* fire-and-forget */
         });
 
@@ -166,7 +174,7 @@ ${summaryText}
             duration: config.timeouts.toastSuccessMs,
           },
         })
-        .catch((_e) => {
+        .catch((_e: unknown) => {
           /* fire-and-forget */
         });
 
@@ -185,7 +193,7 @@ ${summaryText}
           },
           query: { directory: ctx.directory },
         })
-        .catch((_e) => {
+        .catch((_e: unknown) => {
           // If auto-continue fails, user can manually prompt
         });
     } catch (e) {
@@ -194,12 +202,12 @@ ${summaryText}
         .showToast({
           body: {
             title: "Compaction Failed",
-            message: errorMsg.slice(0, 100),
+            message: errorMsg.slice(0, MAX_ERROR_MESSAGE_LENGTH),
             variant: "error",
             duration: config.timeouts.toastErrorMs,
           },
         })
-        .catch((_e) => {
+        .catch((_e: unknown) => {
           /* fire-and-forget */
         });
     } finally {
@@ -262,7 +270,7 @@ ${summaryText}
 
         // Trigger compaction if over threshold
         if (usageRatio >= threshold) {
-          triggerCompaction(sessionID, providerID, modelID, usageRatio);
+          void triggerCompaction(sessionID, providerID, modelID, usageRatio);
         }
       }
     },
