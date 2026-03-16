@@ -168,15 +168,15 @@ async function attemptRecovery(
 
 function cleanupSession(state: RecoveryState, sessionID: string): void {
   for (const key of state.recoveryAttempts.keys()) {
-    if (key.startsWith(sessionID)) state.recoveryAttempts.delete(key);
+    if (key.startsWith(`${sessionID}:`)) state.recoveryAttempts.delete(key);
   }
   for (const key of state.processingErrors) {
-    if (key.startsWith(sessionID)) state.processingErrors.delete(key);
+    if (key.startsWith(`${sessionID}:`)) state.processingErrors.delete(key);
   }
 }
 
 function deduplicateError(state: RecoveryState, sessionID: string, errorType: RecoverableErrorType): boolean {
-  const errorKey = `${sessionID}:${errorType}:${Date.now()}`;
+  const errorKey = `${sessionID}:${errorType}`;
   if (state.processingErrors.has(errorKey)) return false;
   state.processingErrors.add(errorKey);
   setTimeout(() => state.processingErrors.delete(errorKey), ERROR_KEY_EXPIRY_MS);

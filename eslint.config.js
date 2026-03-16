@@ -47,9 +47,8 @@ export default [
 
       // --- Empty blocks and class prohibition ---
       "no-empty": ["error", { allowEmptyCatch: false }],
-      // WARN: 5 classes (LRUCache x2, RingBuffer, ArtifactIndex, PTYManager) need refactoring
       "no-restricted-syntax": [
-        "warn",
+        "error",
         {
           selector: "ClassDeclaration:not([superClass.name='Error'])",
           message: "No classes for business logic. Use factory functions with closed-over state.",
@@ -57,8 +56,8 @@ export default [
       ],
 
       // --- Structural limits ---
-      "max-depth": ["warn", 2],
-      "max-lines-per-function": ["warn", { max: 40, skipBlankLines: true, skipComments: true }],
+      "max-depth": ["error", 2],
+      "max-lines-per-function": ["error", { max: 40, skipBlankLines: true, skipComments: true }],
 
       // --- TypeScript-specific ---
       "@typescript-eslint/consistent-type-imports": [
@@ -66,7 +65,7 @@ export default [
         { prefer: "type-imports", disallowTypeAnnotations: false },
       ],
       "@typescript-eslint/consistent-type-definitions": ["error", "interface"],
-      "@typescript-eslint/prefer-readonly": "warn",
+      "@typescript-eslint/prefer-readonly": "error",
       "@typescript-eslint/use-unknown-in-catch-callback-variable": "error",
       "@typescript-eslint/explicit-function-return-type": [
         "error",
@@ -147,17 +146,17 @@ export default [
       "@typescript-eslint/no-floating-promises": "error",
       "@typescript-eslint/no-misused-promises": "error",
       // WARN: violations from type assertions flowing through
-      "@typescript-eslint/no-unsafe-assignment": "warn",
-      "@typescript-eslint/no-unsafe-member-access": "warn",
-      "@typescript-eslint/no-unsafe-argument": "warn",
-      "@typescript-eslint/no-unsafe-call": "warn",
-      "@typescript-eslint/no-unsafe-return": "warn",
-      "@typescript-eslint/restrict-template-expressions": "warn",
+      "@typescript-eslint/no-unsafe-assignment": "error",
+      "@typescript-eslint/no-unsafe-member-access": "error",
+      "@typescript-eslint/no-unsafe-argument": "error",
+      "@typescript-eslint/no-unsafe-call": "error",
+      "@typescript-eslint/no-unsafe-return": "error",
+      "@typescript-eslint/restrict-template-expressions": "error",
       // WARN: error cause chaining - good practice but not enforced yet
       "sonarjs/sonar-prefer-optional-chain": "off",
 
       // --- Sonarjs (complexity and duplication) ---
-      "sonarjs/cognitive-complexity": ["warn", 10],
+      "sonarjs/cognitive-complexity": ["error", 10],
       "sonarjs/no-duplicate-string": ["error", { threshold: 3 }],
       "sonarjs/no-identical-functions": "error",
 

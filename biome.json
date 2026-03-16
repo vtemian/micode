@@ -32,7 +32,7 @@
           "options": {
             "patterns": [
               {
-                "group": ["../*"],
+                "group": ["../**"],
                 "message": "Use @/* path aliases instead of parent-relative imports."
               }
             ]
@@ -69,7 +69,8 @@
             "noExplicitAny": "off"
           },
           "style": {
-            "noNonNullAssertion": "off"
+            "noNonNullAssertion": "off",
+            "noRestrictedImports": "off"
           }
         }
       }

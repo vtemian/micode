@@ -103,7 +103,7 @@ async function walkUpForContext(ctx: PluginInput, cache: ContextCache, filePath:
   const collected = new Map<string, string>();
   let currentDir = dirname(absPath);
 
-  while (currentDir.startsWith(projectRoot) || currentDir === projectRoot) {
+  while (currentDir === projectRoot || currentDir.startsWith(`${projectRoot}/`)) {
     await collectDirContextFiles(currentDir, projectRoot, collected);
     if (currentDir === projectRoot) break;
     const parent = dirname(currentDir);
