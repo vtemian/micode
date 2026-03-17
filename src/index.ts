@@ -468,8 +468,11 @@ IMPORTANT:
       });
 
       // Inject mindmodel patterns into system prompt (if enabled)
-      if (mindmodelInjectorHook) {
-        await mindmodelInjectorHook["experimental.chat.system.transform"](input, output);
+      if (mindmodelInjectorHook && input.sessionID) {
+        await mindmodelInjectorHook["experimental.chat.system.transform"](
+          input as typeof input & { sessionID: string },
+          output,
+        );
       }
     },
 
