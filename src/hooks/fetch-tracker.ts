@@ -226,11 +226,11 @@ function handleFetchAfter(
 
 function buildCachedOutput(cached: CacheEntry, count: number): string {
   const plural = count !== 1 ? "s" : "";
-  let result = `<from-cache>Returning cached result (fetched ${count} time${plural} previously).</from-cache>\n\n${cached.content}`;
+  let cachedOutput = `<from-cache>Returning cached result (fetched ${count} time${plural} previously).</from-cache>\n\n${cached.content}`;
 
   if (count >= config.fetch.warnThreshold) {
-    result += `\n\n<fetch-warning>You have fetched this resource ${count} times. The content is cached and identical. Consider using the information you already have instead of re-fetching.</fetch-warning>`;
+    cachedOutput += `\n\n<fetch-warning>You have fetched this resource ${count} times. The content is cached and identical. Consider using the information you already have instead of re-fetching.</fetch-warning>`;
   }
 
-  return result;
+  return cachedOutput;
 }
