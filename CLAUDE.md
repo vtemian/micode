@@ -69,8 +69,8 @@
 - YAGNI: no speculative features or unused abstractions
 - Fail fast: validate inputs early, return/throw before the happy path
 - Dependency injection: pass dependencies in, don't import singletons
-- Errors are values: use `extractErrorMessage`/`formatToolError` from `src/utils/errors.ts`, no bare `catch {}`
-- Graceful degradation: use `catchAndLog`/`catchAndLogAsync` for non-critical operations
+- Errors are values: use `extractErrorMessage` from `src/utils/errors.ts` in catch blocks, not manual `instanceof Error` checks
+- Bare `catch {}` is acceptable for intentional flow control (file-not-found probing, parse fallbacks) but should include a comment explaining the intent
 - Unused parameters: prefix with `_` (e.g., `_ctx`, `_output`)
 
 ## Validation
