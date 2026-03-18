@@ -1,10 +1,5 @@
 # Micode: Project Rules
 
-## Cursor Integration
-
-- Cursor-native rules are defined in `.cursor/rules/*.mdc`
-- Keep this file aligned with those rules; `.mdc` files are the authoritative source for scoped guidance
-
 ## Writing
 
 - Never use em dashes. Use colons, commas, or parentheses for asides, and restructure sentences that rely on em dashes.
