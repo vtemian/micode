@@ -1,9 +1,12 @@
 // src/octto/session/server.ts
+
 import type { Server, ServerWebSocket } from "bun";
+import * as v from "valibot";
 import { getHtmlBundle } from "@/octto/ui";
 import { config } from "@/utils/config";
 import { extractErrorMessage } from "@/utils/errors";
 import { log } from "@/utils/logger";
+import { WsClientMessageSchema } from "./schemas";
 import type { SessionStore } from "./sessions";
 import type { WsClientMessage } from "./types";
 
@@ -90,9 +93,9 @@ function createWebSocketHandlers(store: SessionStore): {
 function handleWsMessage(ws: ServerWebSocket<WsData>, message: string | Buffer, store: SessionStore): void {
   const { sessionId } = ws.data;
 
-  let parsed: WsClientMessage;
+  let raw: unknown;
   try {
-    parsed = JSON.parse(message.toString()) as WsClientMessage;
+    raw = JSON.parse(message.toString());
   } catch (error) {
     log.error("octto", "Failed to parse WebSocket message", error);
     ws.send(
@@ -105,5 +108,18 @@ function handleWsMessage(ws: ServerWebSocket<WsData>, message: string | Buffer, 
     return;
   }
 
-  store.handleWsMessage(sessionId, parsed);
+  const result = v.safeParse(WsClientMessageSchema, raw);
+  if (!result.success) {
+    log.error("octto", "Invalid WebSocket message schema", result.issues);
+    ws.send(
+      JSON.stringify({
+        type: "error",
+        error: "Invalid message schema",
+        details: result.issues.map((i) => i.message).join("; "),
+      }),
+    );
+    return;
+  }
+
+  store.handleWsMessage(sessionId, result.output as WsClientMessage);
 }

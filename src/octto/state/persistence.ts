@@ -1,8 +1,11 @@
 // src/octto/state/persistence.ts
 import { existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
+import * as v from "valibot";
 
 import { STATE_DIR } from "@/octto/constants";
+import { log } from "@/utils/logger";
+import { BrainstormStateSchema } from "./schemas";
 import type { BrainstormState } from "./types";
 
 export interface StatePersistence {
@@ -16,6 +19,22 @@ function validateSessionId(sessionId: string): void {
   if (!/^[a-zA-Z0-9_-]+$/.test(sessionId)) {
     throw new Error(`Invalid session ID: ${sessionId}`);
   }
+}
+
+function deserializeState(content: string, filePath: string): BrainstormState | null {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(content);
+  } catch {
+    log.error("octto", `Failed to parse state file: ${filePath}`);
+    return null;
+  }
+  const result = v.safeParse(BrainstormStateSchema, raw);
+  if (!result.success) {
+    log.error("octto", `Invalid state file schema: ${filePath}`, result.issues);
+    return null;
+  }
+  return result.output as BrainstormState;
 }
 
 export function createStatePersistence(baseDir = STATE_DIR): StatePersistence {
@@ -44,7 +63,7 @@ export function createStatePersistence(baseDir = STATE_DIR): StatePersistence {
         return null;
       }
       const content = await Bun.file(filePath).text();
-      return JSON.parse(content) as BrainstormState;
+      return deserializeState(content, filePath);
     },
 
     async delete(sessionId: string): Promise<void> {

@@ -1,5 +1,6 @@
 import { tool } from "@opencode-ai/plugin/tool";
 import { spawn, which } from "bun";
+import * as v from "valibot";
 
 /**
  * Check if ast-grep CLI (sg) is available on the system.
@@ -48,6 +49,25 @@ const LANGUAGES = [
   "yaml",
 ] as const;
 
+const PositionSchema = v.object({
+  line: v.number(),
+  column: v.number(),
+});
+
+const RangeSchema = v.object({
+  start: PositionSchema,
+  end: PositionSchema,
+});
+
+const MatchSchema = v.object({
+  file: v.string(),
+  range: RangeSchema,
+  text: v.string(),
+  replacement: v.optional(v.string()),
+});
+
+const MatchArraySchema = v.array(MatchSchema);
+
 interface Match {
   file: string;
   range: { start: { line: number; column: number }; end: { line: number; column: number } };
@@ -55,7 +75,26 @@ interface Match {
   replacement?: string;
 }
 
-async function runSg(args: string[]): Promise<{ matches: Match[]; error?: string }> {
+interface SgResult {
+  matches: Match[];
+  error?: string;
+}
+
+function parseMatchOutput(stdout: string): SgResult {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(stdout);
+  } catch {
+    return { matches: [], error: "Failed to parse output" };
+  }
+  const result = v.safeParse(MatchArraySchema, raw);
+  if (!result.success) {
+    return { matches: [], error: "ast-grep output did not match expected schema" };
+  }
+  return { matches: result.output };
+}
+
+async function runSg(args: string[]): Promise<SgResult> {
   try {
     const proc = spawn(["sg", ...args], {
       stdout: "pipe",
@@ -78,12 +117,7 @@ async function runSg(args: string[]): Promise<{ matches: Match[]; error?: string
 
     if (!stdout.trim()) return { matches: [] };
 
-    try {
-      const matches = JSON.parse(stdout) as Match[];
-      return { matches };
-    } catch {
-      return { matches: [], error: "Failed to parse output" };
-    }
+    return parseMatchOutput(stdout);
   } catch (e) {
     const err = e as Error;
     if (err.message?.includes("ENOENT")) {
