@@ -14,6 +14,11 @@
 - Use `unknown` at system boundaries and normalize with Valibot or `extractErrorMessage(...)` before handling
 - No comments explaining *what*, only *why* when non-obvious
 - Double quotes, semicolons, trailing commas (enforced by Biome)
+- Max cognitive complexity: 10 per function (enforced by sonarjs)
+- No duplicate string literals beyond 3 occurrences (enforced by sonarjs)
+- No nested ternaries (enforced by unicorn)
+- 2-space indent, 120-char line width, bracket spacing, always-parenthesized arrow functions (enforced by Biome)
+- All promises must be awaited or explicitly handled; no floating promises
 
 ## Architecture
 
@@ -66,6 +71,7 @@
 - Dependency injection: pass dependencies in, don't import singletons
 - Errors are values: use `extractErrorMessage`/`formatToolError` from `src/utils/errors.ts`, no bare `catch {}`
 - Graceful degradation: use `catchAndLog`/`catchAndLogAsync` for non-critical operations
+- Unused parameters: prefix with `_` (e.g., `_ctx`, `_output`)
 
 ## Validation
 
