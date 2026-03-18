@@ -1,5 +1,6 @@
 // src/tools/octto/processor.ts
 
+import * as v from "valibot";
 import type { Answer, QuestionType, SessionStore } from "@/octto/session";
 import { BRANCH_STATUSES, type BrainstormState, type StateStore } from "@/octto/state";
 import { log } from "@/utils/logger";
@@ -8,6 +9,17 @@ import type { OpencodeClient } from "./types";
 
 // Agent name constant - matches the agent exported from src/agents/probe.ts
 const PROBE_AGENT = "probe";
+
+const ProbeQuestionSchema = v.object({
+  type: v.string(),
+  config: v.record(v.string(), v.unknown()),
+});
+
+const ProbeResultSchema = v.object({
+  done: v.boolean(),
+  finding: v.optional(v.string()),
+  question: v.optional(ProbeQuestionSchema),
+});
 
 interface ProbeResult {
   done: boolean;
@@ -68,7 +80,19 @@ function parseProbeResponse(responseText: string): ProbeResult {
   if (!jsonMatch) {
     return { done: true, finding: "Could not parse probe response" };
   }
-  return JSON.parse(jsonMatch[0]) as ProbeResult;
+
+  let raw: unknown;
+  try {
+    raw = JSON.parse(jsonMatch[0]);
+  } catch {
+    return { done: true, finding: "Could not parse probe response JSON" };
+  }
+
+  const parsed = v.safeParse(ProbeResultSchema, raw);
+  if (!parsed.success) {
+    return { done: true, finding: "Probe response did not match expected schema" };
+  }
+  return parsed.output as ProbeResult;
 }
 
 async function runProbeAgent(client: OpencodeClient, state: BrainstormState, branchId: string): Promise<ProbeResult> {

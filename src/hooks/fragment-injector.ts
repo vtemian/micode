@@ -3,8 +3,15 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import type { PluginInput } from "@opencode-ai/plugin";
+import * as v from "valibot";
 
 import type { MicodeConfig } from "@/config-loader";
+
+/**
+ * Schema for a project fragments file: Record<string, string[]>
+ * Uses record of unknown values to allow graceful per-key validation.
+ */
+const ProjectFragmentsSchema = v.record(v.string(), v.unknown());
 
 /**
  * Extract valid string fragments from an unknown value
@@ -18,9 +25,12 @@ function extractValidFragments(value: unknown): string[] | null {
 /**
  * Parse a raw fragments object into validated Record<string, string[]>
  */
-function parseFragments(parsed: Record<string, unknown>): Record<string, string[]> {
+function parseFragments(raw: unknown): Record<string, string[]> {
+  const parsed = v.safeParse(ProjectFragmentsSchema, raw);
+  if (!parsed.success) return {};
+
   const result: Record<string, string[]> = {};
-  for (const [agentName, fragments] of Object.entries(parsed)) {
+  for (const [agentName, fragments] of Object.entries(parsed.output)) {
     const valid = extractValidFragments(fragments);
     if (valid) result[agentName] = valid;
   }
@@ -36,8 +46,8 @@ export async function loadProjectFragments(projectDir: string): Promise<Record<s
 
   try {
     const content = await readFile(fragmentsPath, "utf-8");
-    const parsed = JSON.parse(content) as Record<string, unknown>;
-    return parseFragments(parsed);
+    const raw: unknown = JSON.parse(content);
+    return parseFragments(raw);
   } catch {
     return {};
   }

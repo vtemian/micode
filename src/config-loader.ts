@@ -6,6 +6,17 @@ import { join } from "node:path";
 
 import type { AgentConfig } from "@opencode-ai/sdk";
 import { type ParseError, parse as parseJsonc } from "jsonc-parser";
+import * as v from "valibot";
+import {
+  extractContextLimits,
+  extractProviderModels,
+  OpencodeConfigSchema,
+  RawMicodeConfigSchema,
+  sanitizeAgentsRecord,
+  sanitizeCompactionThreshold,
+  sanitizeFeatures,
+  sanitizeFragments,
+} from "@/config-schemas";
 import { log } from "@/utils/logger";
 
 const LOG_MODULE = "config-loader";
@@ -19,10 +30,7 @@ export interface ProviderInfo {
 /**
  * OpenCode config structure for reading default model and available models
  */
-interface OpencodeConfig {
-  readonly model?: string;
-  readonly provider?: Record<string, { models?: Record<string, unknown> }>;
-}
+type OpencodeConfig = v.InferOutput<typeof OpencodeConfigSchema>;
 
 /**
  * Parse a JSON or JSONC string, supporting comments and trailing commas.
@@ -86,7 +94,10 @@ function loadOpencodeConfig(configDir?: string): OpencodeConfig | null {
     if (!configPath) return null;
 
     const content = readFileSync(configPath, "utf-8");
-    return parseConfigJson(content) as OpencodeConfig;
+    const raw = parseConfigJson(content);
+    const parsed = v.safeParse(OpencodeConfigSchema, raw);
+    if (!parsed.success) return null;
+    return parsed.output;
   } catch {
     return null;
   }
@@ -97,26 +108,9 @@ function loadOpencodeConfig(configDir?: string): OpencodeConfig | null {
  * Returns a Set of "provider/model" strings
  */
 export function loadAvailableModels(configDir?: string): Set<string> {
-  const availableModels = new Set<string>();
   const config = loadOpencodeConfig(configDir);
-
-  if (config?.provider) {
-    collectProviderModels(config.provider, availableModels);
-  }
-
-  return availableModels;
-}
-
-function collectProviderModels(
-  provider: Record<string, { models?: Record<string, unknown> }>,
-  target: Set<string>,
-): void {
-  for (const [providerId, providerConfig] of Object.entries(provider)) {
-    if (!providerConfig.models) continue;
-    for (const modelId of Object.keys(providerConfig.models)) {
-      target.add(`${providerId}/${modelId}`);
-    }
-  }
+  if (!config?.provider) return new Set<string>();
+  return extractProviderModels(config.provider);
 }
 
 /**
@@ -127,9 +121,6 @@ export function loadDefaultModel(configDir?: string): string | null {
   const config = loadOpencodeConfig(configDir);
   return config?.model ?? null;
 }
-
-// Safe properties that users can override
-const SAFE_AGENT_PROPERTIES = ["model", "temperature", "maxTokens", "thinking"] as const;
 
 // Built-in OpenCode models that don't require validation (always available)
 const BUILTIN_MODELS = new Set(["opencode/big-pickle"]);
@@ -167,72 +158,38 @@ export async function loadMicodeConfig(configDir?: string): Promise<MicodeConfig
     const content = await readConfigFileAsync(baseDir, "micode");
     if (!content) return null;
 
-    const parsed = parseConfigJson(content) as Record<string, unknown>;
-    return buildMicodeConfig(parsed);
+    const raw = parseConfigJson(content);
+    return buildMicodeConfig(raw);
   } catch {
     return null;
   }
 }
 
-function buildMicodeConfig(parsed: Record<string, unknown>): MicodeConfig {
+function buildMicodeConfig(raw: unknown): MicodeConfig {
+  const parsed = v.safeParse(RawMicodeConfigSchema, raw);
+  if (!parsed.success) return {};
+
+  const config = parsed.output;
   const micodeConfig: MicodeConfig = {};
 
-  if (parsed.agents && typeof parsed.agents === "object") {
-    micodeConfig.agents = sanitizeAgents(parsed.agents as Record<string, unknown>);
+  if (config.agents) {
+    micodeConfig.agents = sanitizeAgentsRecord(config.agents);
   }
 
-  if (parsed.features && typeof parsed.features === "object") {
-    const features = parsed.features as Record<string, unknown>;
-    micodeConfig.features = { mindmodelInjection: features.mindmodelInjection === true };
+  if (config.features && typeof config.features === "object") {
+    micodeConfig.features = sanitizeFeatures(config.features as Record<string, unknown>);
   }
 
-  if (typeof parsed.compactionThreshold === "number") {
-    const threshold = parsed.compactionThreshold;
-    if (threshold >= 0 && threshold <= 1) {
-      micodeConfig.compactionThreshold = threshold;
-    }
+  const threshold = sanitizeCompactionThreshold(config.compactionThreshold);
+  if (threshold !== undefined) {
+    micodeConfig.compactionThreshold = threshold;
   }
 
-  if (parsed.fragments && typeof parsed.fragments === "object") {
-    micodeConfig.fragments = sanitizeFragments(parsed.fragments as Record<string, unknown>);
+  if (config.fragments) {
+    micodeConfig.fragments = sanitizeFragments(config.fragments);
   }
 
   return micodeConfig;
-}
-
-function sanitizeAgents(agents: Record<string, unknown>): Record<string, AgentOverride> {
-  const sanitized: Record<string, AgentOverride> = {};
-
-  for (const [agentName, agentConfig] of Object.entries(agents)) {
-    if (!agentConfig || typeof agentConfig !== "object") continue;
-    sanitized[agentName] = pickSafeProperties(agentConfig as Record<string, unknown>);
-  }
-
-  return sanitized;
-}
-
-function pickSafeProperties(config: Record<string, unknown>): AgentOverride {
-  const override: AgentOverride = {};
-  for (const prop of SAFE_AGENT_PROPERTIES) {
-    if (prop in config) {
-      (override as Record<string, unknown>)[prop] = config[prop];
-    }
-  }
-  return override;
-}
-
-function sanitizeFragments(raw: Record<string, unknown>): Record<string, string[]> {
-  const sanitized: Record<string, string[]> = {};
-
-  for (const [agentName, fragments] of Object.entries(raw)) {
-    if (!Array.isArray(fragments)) continue;
-    const valid = fragments.filter((f): f is string => typeof f === "string" && f.trim().length > 0);
-    if (valid.length > 0) {
-      sanitized[agentName] = valid;
-    }
-  }
-
-  return sanitized;
 }
 
 /**
@@ -240,49 +197,9 @@ function sanitizeFragments(raw: Record<string, unknown>): Record<string, string[
  * Returns a Map of "provider/model" -> context limit (tokens)
  */
 export function loadModelContextLimits(configDir?: string): Map<string, number> {
-  const limits = new Map<string, number>();
-  const baseDir = configDir ?? join(homedir(), ".config", "opencode");
-
-  try {
-    const configPath = resolveConfigFileSync(baseDir, "opencode");
-    if (!configPath) return limits;
-
-    const content = readFileSync(configPath, "utf-8");
-    const config = parseConfigJson(content) as {
-      provider?: Record<string, { models?: Record<string, { limit?: { context?: number } }> }>;
-    };
-
-    if (config.provider) {
-      collectContextLimits(config.provider, limits);
-    }
-  } catch {
-    // Config doesn't exist or can't be parsed - return empty map
-  }
-
-  return limits;
-}
-
-function collectContextLimits(
-  provider: Record<string, { models?: Record<string, { limit?: { context?: number } }> }>,
-  limits: Map<string, number>,
-): void {
-  for (const [providerId, providerConfig] of Object.entries(provider)) {
-    if (!providerConfig.models) continue;
-    collectModelsContextLimits(providerId, providerConfig.models, limits);
-  }
-}
-
-function collectModelsContextLimits(
-  providerId: string,
-  models: Record<string, { limit?: { context?: number } }>,
-  limits: Map<string, number>,
-): void {
-  for (const [modelId, modelConfig] of Object.entries(models)) {
-    const contextLimit = modelConfig?.limit?.context;
-    if (typeof contextLimit === "number" && contextLimit > 0) {
-      limits.set(`${providerId}/${modelId}`, contextLimit);
-    }
-  }
+  const config = loadOpencodeConfig(configDir);
+  if (!config?.provider) return new Map<string, number>();
+  return extractContextLimits(config.provider);
 }
 
 /**
