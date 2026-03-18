@@ -2,6 +2,7 @@
 import type { ServerWebSocket } from "bun";
 
 import { DEFAULT_ANSWER_TIMEOUT_MS } from "@/octto/constants";
+import { log } from "@/utils/logger";
 import { openBrowser } from "./browser";
 import { createServer } from "./server";
 import {
@@ -190,7 +191,7 @@ function pushNewQuestion(
     const msg: WsServerMessage = { type: WS_MESSAGES.QUESTION, id: questionId, questionType: type, config };
     session.wsClient.send(JSON.stringify(msg));
   } else if (!options.skipBrowser) {
-    openBrowser(session.url).catch(console.error);
+    openBrowser(session.url).catch((e: unknown) => log.error("octto", "Failed to open browser", e));
   }
 
   return { question_id: questionId };

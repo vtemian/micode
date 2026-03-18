@@ -104,12 +104,12 @@ const OpenCodeConfigPlugin: Plugin = async (ctx) => {
   // Validate external tool dependencies at startup
   const astGrepStatus = await checkAstGrepAvailable();
   if (!astGrepStatus.available) {
-    console.warn(`[micode] ${astGrepStatus.message}`);
+    log.warn("micode", astGrepStatus.message ?? "ast-grep unavailable");
   }
 
   const btcaStatus = await checkBtcaAvailable();
   if (!btcaStatus.available) {
-    console.warn(`[micode] ${btcaStatus.message}`);
+    log.warn("micode", btcaStatus.message ?? "btca unavailable");
   }
 
   // Load user config for agent overrides and feature flags
@@ -145,7 +145,7 @@ const OpenCodeConfigPlugin: Plugin = async (ctx) => {
     const fragmentAgentNames = Object.keys(userConfig.fragments);
     const warnings = warnUnknownAgents(fragmentAgentNames, knownAgentNames);
     for (const warning of warnings) {
-      console.warn(warning);
+      log.warn("micode", warning);
     }
   }
 

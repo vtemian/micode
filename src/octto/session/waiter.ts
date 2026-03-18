@@ -1,5 +1,6 @@
 // src/octto/session/waiter.ts
 // Immutable waiter management for async response handling
+import { log } from "@/utils/logger";
 
 export interface Waiters<K, T> {
   register: (key: K, callback: (data: T) => void) => () => void;
@@ -120,7 +121,7 @@ function invokeCallbacks<T>(callbacks: Array<(data: T) => void>, data: T): void 
     try {
       callback(data);
     } catch (error) {
-      console.error("Waiter notifyAll failed", error);
+      log.error("octto", "Waiter notifyAll failed", error);
       break;
     }
   }

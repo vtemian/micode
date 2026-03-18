@@ -3,6 +3,7 @@ import type { Server, ServerWebSocket } from "bun";
 import { getHtmlBundle } from "@/octto/ui";
 import { config } from "@/utils/config";
 import { extractErrorMessage } from "@/utils/errors";
+import { log } from "@/utils/logger";
 import type { SessionStore } from "./sessions";
 import type { WsClientMessage } from "./types";
 
@@ -93,7 +94,7 @@ function handleWsMessage(ws: ServerWebSocket<WsData>, message: string | Buffer, 
   try {
     parsed = JSON.parse(message.toString()) as WsClientMessage;
   } catch (error) {
-    console.error("[octto] Failed to parse WebSocket message:", error);
+    log.error("octto", "Failed to parse WebSocket message", error);
     ws.send(
       JSON.stringify({
         type: "error",

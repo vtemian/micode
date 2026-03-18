@@ -6,6 +6,9 @@ import { join } from "node:path";
 
 import type { AgentConfig } from "@opencode-ai/sdk";
 import { type ParseError, parse as parseJsonc } from "jsonc-parser";
+import { log } from "@/utils/logger";
+
+const LOG_MODULE = "config-loader";
 
 // Minimal type for provider validation - only what we need
 export interface ProviderInfo {
@@ -352,7 +355,7 @@ function applyUserOverride(
 
   // Model is invalid - log warning and apply other overrides only
   const fallbackModel = config.model || "DEFAULT_MODEL";
-  console.warn(`[micode] Model "${override.model}" for agent "${name}" is not available. Using ${fallbackModel}.`);
+  log.warn(LOG_MODULE, `Model "${override.model}" for agent "${name}" is not available. Using ${fallbackModel}.`);
   const { model: _ignored, ...safeOverrides } = override;
   return { ...config, ...safeOverrides };
 }
@@ -395,7 +398,7 @@ function validateOneAgent(
 
   const trimmedModel = override.model.trim();
   if (!trimmedModel) {
-    console.warn(`[micode] Empty model for agent "${agentName}". Using default model.`);
+    log.warn(LOG_MODULE, `Empty model for agent "${agentName}". Using default model.`);
     return stripModel(override);
   }
 
@@ -408,7 +411,7 @@ function validateOneAgent(
 
   if (isValid) return override;
 
-  console.warn(`[micode] Model "${override.model}" not found for agent "${agentName}". Using default model.`);
+  log.warn(LOG_MODULE, `Model "${override.model}" not found for agent "${agentName}". Using default model.`);
   return stripModel(override);
 }
 
