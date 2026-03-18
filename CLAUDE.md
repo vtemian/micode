@@ -38,7 +38,7 @@
 
 ## Module Structure
 
-- Order files as: imports -> exported types/constants -> internal constants/schemas -> main factory -> private helpers
+- Order files as: imports -> exported types/constants -> internal constants/schemas -> private helpers -> main factory/export
 - Keep comments sparse and only for non-obvious behavior
 
 ## Imports and Paths
