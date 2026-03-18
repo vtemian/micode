@@ -218,12 +218,12 @@ function pickSafeProperties(config: Record<string, unknown>): AgentOverride {
   return override;
 }
 
-function sanitizeFragments(fragments: Record<string, unknown>): Record<string, string[]> {
+function sanitizeFragments(raw: Record<string, unknown>): Record<string, string[]> {
   const sanitized: Record<string, string[]> = {};
 
-  for (const [agentName, fragmentList] of Object.entries(fragments)) {
-    if (!Array.isArray(fragmentList)) continue;
-    const valid = fragmentList.filter((f): f is string => typeof f === "string" && f.trim().length > 0);
+  for (const [agentName, fragments] of Object.entries(raw)) {
+    if (!Array.isArray(fragments)) continue;
+    const valid = fragments.filter((f): f is string => typeof f === "string" && f.trim().length > 0);
     if (valid.length > 0) {
       sanitized[agentName] = valid;
     }
@@ -367,29 +367,29 @@ export function validateAgentModels(userConfig: MicodeConfig, providers: Provide
   const hasAnyModels = providers.some((provider) => Object.keys(provider.models).length > 0);
   if (!hasAnyModels) return userConfig;
 
-  const providerMap = buildProviderMap(providers);
+  const modelsByProvider = buildProviders(providers);
   const validatedAgents: Record<string, AgentOverride> = {};
 
   for (const [agentName, override] of Object.entries(userConfig.agents)) {
-    const validated = validateOneAgent(agentName, override, providerMap);
+    const validated = validateOneAgent(agentName, override, modelsByProvider);
     if (validated) validatedAgents[agentName] = validated;
   }
 
   return { agents: validatedAgents };
 }
 
-function buildProviderMap(providers: ProviderInfo[]): Map<string, Set<string>> {
-  const providerMap = new Map<string, Set<string>>();
+function buildProviders(providers: ProviderInfo[]): Map<string, Set<string>> {
+  const result = new Map<string, Set<string>>();
   for (const provider of providers) {
-    providerMap.set(provider.id, new Set(Object.keys(provider.models)));
+    result.set(provider.id, new Set(Object.keys(provider.models)));
   }
-  return providerMap;
+  return result;
 }
 
 function validateOneAgent(
   agentName: string,
   override: AgentOverride,
-  providerMap: Map<string, Set<string>>,
+  providers: Map<string, Set<string>>,
 ): AgentOverride | null {
   if (override.model === undefined) return override;
 
@@ -403,7 +403,7 @@ function validateOneAgent(
 
   const [providerID, ...rest] = trimmedModel.split("/");
   const modelID = rest.join("/");
-  const providerModels = providerMap.get(providerID);
+  const providerModels = providers.get(providerID);
   const isValid = providerModels?.has(modelID) ?? false;
 
   if (isValid) return override;

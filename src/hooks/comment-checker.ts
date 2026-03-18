@@ -111,10 +111,10 @@ export function createCommentCheckerHook(_ctx: PluginInput): CommentCheckerHooks
       // Only check Edit tool
       if (input.tool !== "Edit" && input.tool !== "edit") return;
 
-      const newString = input.args?.new_string as string | undefined;
-      if (!newString) return;
+      const replacement = input.args?.new_string as string | undefined;
+      if (!replacement) return;
 
-      const issues = analyzeComments(newString);
+      const issues = analyzeComments(replacement);
 
       if (issues.length > 0) {
         const warning = formatCommentWarning(issues);

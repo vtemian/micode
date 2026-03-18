@@ -19,12 +19,12 @@ function extractValidFragments(value: unknown): string[] | null {
  * Parse a raw fragments object into validated Record<string, string[]>
  */
 function parseFragments(parsed: Record<string, unknown>): Record<string, string[]> {
-  const fragments: Record<string, string[]> = {};
-  for (const [agentName, fragmentList] of Object.entries(parsed)) {
-    const valid = extractValidFragments(fragmentList);
-    if (valid) fragments[agentName] = valid;
+  const result: Record<string, string[]> = {};
+  for (const [agentName, fragments] of Object.entries(parsed)) {
+    const valid = extractValidFragments(fragments);
+    if (valid) result[agentName] = valid;
   }
-  return fragments;
+  return result;
 }
 
 /**

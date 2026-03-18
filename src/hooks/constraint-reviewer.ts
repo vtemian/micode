@@ -13,7 +13,7 @@ import { config } from "@/utils/config";
 import { extractErrorMessage } from "@/utils/errors";
 import { log } from "@/utils/logger";
 
-type ReviewFn = (prompt: string) => Promise<string>;
+type Reviewer = (prompt: string) => Promise<string>;
 
 interface ReviewState {
   /** Retry count per file path */
@@ -34,7 +34,7 @@ interface ConstraintReviewerHooks {
   cleanupSession: (sessionID: string) => void;
 }
 
-export function createConstraintReviewerHook(ctx: PluginInput, reviewFn: ReviewFn): ConstraintReviewerHooks {
+export function createConstraintReviewerHook(ctx: PluginInput, review: Reviewer): ConstraintReviewerHooks {
   let mindmodel: LoadedMindmodel | null | undefined;
   const sessionState = new Map<string, ReviewState>();
 
@@ -66,7 +66,7 @@ export function createConstraintReviewerHook(ctx: PluginInput, reviewFn: ReviewF
       output: { output?: string },
     ) => {
       const mindmodel = await getMindmodel();
-      await reviewToolOutput(input, output, mindmodel, getSessionState, reviewFn);
+      await reviewToolOutput(input, output, mindmodel, getSessionState, review);
     },
 
     "chat.message": async (input: { sessionID: string }, output: { parts: Array<{ type: string; text?: string }> }) => {
@@ -90,7 +90,7 @@ async function reviewToolOutput(
   output: { output?: string },
   mindmodel: LoadedMindmodel | null,
   getSessionState: (sessionID: string) => ReviewState,
-  reviewFn: ReviewFn,
+  review: Reviewer,
 ): Promise<void> {
   if (!["Write", "Edit"].includes(input.tool)) return;
   if (!config.mindmodel.reviewEnabled) return;
@@ -108,15 +108,15 @@ async function reviewToolOutput(
 
   try {
     const reviewPrompt = buildReviewPrompt(output.output || "", filePath, mindmodel);
-    const reviewResponse = await reviewFn(reviewPrompt);
-    const review = parseReviewResponse(reviewResponse);
+    const reviewResponse = await review(reviewPrompt);
+    const result = parseReviewResponse(reviewResponse);
 
-    if (review.status === "PASS") {
+    if (result.status === "PASS") {
       state.retryCountByFile.delete(filePath);
       return;
     }
 
-    handleViolations(state, filePath, review, output);
+    handleViolations(state, filePath, result, output);
   } catch (error) {
     handleReviewError(error);
   }

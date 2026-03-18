@@ -5,7 +5,7 @@ import type { PTYSession, PTYSessionInfo, ReadResult, SearchResult, SpawnOptions
 
 // bun-pty types used locally - the actual module is injected via init()
 type IPty = import("bun-pty").IPty;
-type SpawnFn = typeof import("bun-pty").spawn;
+type Spawner = typeof import("bun-pty").spawn;
 
 const ID_RANDOM_BYTES = 4;
 const HEX_RADIX = 16;
@@ -16,7 +16,7 @@ const PTY_UNAVAILABLE_MSG =
   "(e.g., .opencode/node_modules/bun-pty/rust-pty/target/release/librust_pty.dylib)";
 
 export interface PTYManager {
-  init(fn: SpawnFn): void;
+  init(fn: Spawner): void;
   readonly available: boolean;
   spawn(opts: SpawnOptions): PTYSessionInfo;
   write(id: string, data: string): boolean;
@@ -52,14 +52,14 @@ function toInfo(session: PTYSession): PTYSessionInfo {
 }
 
 function spawnPtyProcess(
-  spawnFn: SpawnFn,
+  spawner: Spawner,
   command: string,
   args: string[],
   workdir: string,
   env: Record<string, string>,
 ): IPty {
   try {
-    return spawnFn(command, args, { name: "xterm-256color", cols: 120, rows: 40, cwd: workdir, env });
+    return spawner(command, args, { name: "xterm-256color", cols: 120, rows: 40, cwd: workdir, env });
   } catch (e) {
     const errorMsg = extractErrorMessage(e);
     throw new Error(`Failed to spawn PTY for command "${command}": ${errorMsg}`, { cause: e });
@@ -135,12 +135,12 @@ function searchInSession(session: PTYSession, pattern: RegExp, offset: number, l
   return { matches: paginatedMatches, totalMatches, totalLines, offset, hasMore };
 }
 
-function spawnSession(spawnFn: SpawnFn, sessions: Map<string, PTYSession>, opts: SpawnOptions): PTYSessionInfo {
+function spawnSession(spawner: Spawner, sessions: Map<string, PTYSession>, opts: SpawnOptions): PTYSessionInfo {
   const id = generateId();
   const args = opts.args ?? [];
   const workdir = opts.workdir ?? process.cwd();
   const env = { ...process.env, ...opts.env } as Record<string, string>;
-  const ptyProcess = spawnPtyProcess(spawnFn, opts.command, args, workdir, env);
+  const ptyProcess = spawnPtyProcess(spawner, opts.command, args, workdir, env);
   const session = createSession(id, opts, args, workdir, ptyProcess);
   sessions.set(id, session);
   return toInfo(session);
@@ -165,20 +165,20 @@ function cleanupAllSessions(sessions: Map<string, PTYSession>): void {
 
 export function createPTYManager(): PTYManager {
   const sessions: Map<string, PTYSession> = new Map();
-  let spawnFn: SpawnFn | null = null;
+  let spawner: Spawner | null = null;
   let isAvailable = false;
 
   return {
-    init(fn: SpawnFn): void {
-      spawnFn = fn;
+    init(fn: Spawner): void {
+      spawner = fn;
       isAvailable = true;
     },
     get available(): boolean {
       return isAvailable;
     },
     spawn(opts: SpawnOptions): PTYSessionInfo {
-      if (!spawnFn) throw new Error(PTY_UNAVAILABLE_MSG);
-      return spawnSession(spawnFn, sessions, opts);
+      if (!spawner) throw new Error(PTY_UNAVAILABLE_MSG);
+      return spawnSession(spawner, sessions, opts);
     },
     write(id: string, data: string): boolean {
       return writeToSession(sessions, id, data);
