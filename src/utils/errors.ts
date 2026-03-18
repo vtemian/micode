@@ -12,15 +12,3 @@ export function extractErrorMessage(e: unknown): string {
   }
   return String(e);
 }
-
-/**
- * Format error message for tool responses (LLM-facing).
- * @param message - The error message
- * @param context - Optional context about what operation failed
- */
-export function formatToolError(message: string, context?: string): string {
-  if (context?.trim()) {
-    return `Error (${context}): ${message}`;
-  }
-  return `Error: ${message}`;
-}

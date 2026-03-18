@@ -35,23 +35,4 @@ describe("errors utility", () => {
       expect(extractErrorMessage(obj)).toBe("custom object");
     });
   });
-
-  describe("formatToolError", () => {
-    it("should format error without context", async () => {
-      const { formatToolError } = await import("../../src/utils/errors");
-      expect(formatToolError("File not found")).toBe("Error: File not found");
-    });
-
-    it("should format error with context", async () => {
-      const { formatToolError } = await import("../../src/utils/errors");
-      expect(formatToolError("File not found", "reading config.json")).toBe(
-        "Error (reading config.json): File not found",
-      );
-    });
-
-    it("should handle empty context", async () => {
-      const { formatToolError } = await import("../../src/utils/errors");
-      expect(formatToolError("File not found", "")).toBe("Error: File not found");
-    });
-  });
 });
