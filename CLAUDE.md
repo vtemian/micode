@@ -68,7 +68,7 @@
 
 - Never let listener exceptions break loops; wrap fan-out callbacks in `try/catch`
 - Make cleanup best-effort (`disconnect/close/unsubscribe` should not mask primary failures)
-- Keep status names consistent: `running | idle | completed | error`
+- Define status names as `as const` maps with derived union types (see PTY, octto, and mindmodel modules for existing patterns)
 
 ## Testing
 
