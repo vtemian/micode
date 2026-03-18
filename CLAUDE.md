@@ -69,10 +69,12 @@
 
 ## Validation
 
-- Use Valibot (`v.*`) for schema definition and runtime validation
+- Use Valibot (`v.*`) for schema definition and runtime validation at system boundaries
 - Derive types from schemas via `v.InferOutput<typeof Schema>`
 - Use pipe-based validation chains (`v.pipe(v.number(), v.minValue(1))`)
 - Treat parse failures as non-fatal where possible: accumulate warnings and continue
+- Reference implementation: `src/mindmodel/types.ts` (manifest schema with parse function)
+- Known gap: config-loader and octto modules use manual validation; migrate to Valibot schemas when touching these files
 
 ## Event and Runtime Safety
 
