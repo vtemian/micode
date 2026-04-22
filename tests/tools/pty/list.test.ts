@@ -28,7 +28,7 @@ describe("pty_list tool", () => {
   });
 
   it("should return empty message when no sessions", async () => {
-    const result = await pty_list.execute({}, {} as any);
+    const result = await pty_list.execute({}, {});
 
     expect(result).toContain("<pty_list>");
     expect(result).toContain("No active PTY sessions");
@@ -45,7 +45,7 @@ describe("pty_list tool", () => {
       messageID: "msg",
     } as any);
 
-    const result = await pty_list.execute({}, {} as any);
+    const result = await pty_list.execute({}, {});
 
     expect(result).toContain("<pty_list>");
     expect(result).toContain("First");
@@ -60,7 +60,7 @@ describe("pty_list tool", () => {
       messageID: "msg",
     } as any);
 
-    const result = await pty_list.execute({}, {} as any);
+    const result = await pty_list.execute({}, {});
 
     expect(result).toContain("Command: sleep 10");
     expect(result).toContain("Status: running");

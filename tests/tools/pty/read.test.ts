@@ -39,7 +39,7 @@ describe("pty_read tool", () => {
   });
 
   it("should throw error for unknown session", async () => {
-    await expect(pty_read.execute({ id: "pty_nonexistent" }, {} as any)).rejects.toThrow("not found");
+    await expect(pty_read.execute({ id: "pty_nonexistent" }, {})).rejects.toThrow("not found");
   });
 
   it("should read output from a session", async () => {
@@ -55,11 +55,11 @@ describe("pty_read tool", () => {
     // Wait a bit for output
     await new Promise((resolve) => setTimeout(resolve, 100));
 
-    const result = await pty_read.execute({ id: id! }, {} as any);
+    const result = await pty_read.execute({ id: id! }, {});
 
     expect(result).toContain("<pty_output");
     expect(result).toContain("</pty_output>");
-    expect(result).toContain(id!);
+    expect(result).toContain(id);
   });
 
   it("should handle pattern filtering", async () => {
@@ -73,7 +73,7 @@ describe("pty_read tool", () => {
 
     await new Promise((resolve) => setTimeout(resolve, 100));
 
-    const result = await pty_read.execute({ id: id!, pattern: "error" }, {} as any);
+    const result = await pty_read.execute({ id: id!, pattern: "error" }, {});
 
     expect(result).toContain("pattern=");
     // Verify filtering actually works - should contain the matched line
@@ -89,6 +89,6 @@ describe("pty_read tool", () => {
     const idMatch = spawnResult.match(/ID: (pty_[a-f0-9]+)/);
     const id = idMatch?.[1];
 
-    await expect(pty_read.execute({ id: id!, pattern: "[invalid" }, {} as any)).rejects.toThrow("Invalid regex");
+    await expect(pty_read.execute({ id: id!, pattern: "[invalid" }, {})).rejects.toThrow("Invalid regex");
   });
 });

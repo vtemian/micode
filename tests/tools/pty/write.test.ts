@@ -34,7 +34,7 @@ describe("pty_write tool", () => {
   });
 
   it("should throw error for unknown session", async () => {
-    await expect(pty_write.execute({ id: "pty_nonexistent", data: "test" }, {} as any)).rejects.toThrow("not found");
+    await expect(pty_write.execute({ id: "pty_nonexistent", data: "test" }, {})).rejects.toThrow("not found");
   });
 
   it("should write to a running session", async () => {
@@ -47,10 +47,10 @@ describe("pty_write tool", () => {
     const id = idMatch?.[1];
     expect(id).toBeDefined();
 
-    const result = await pty_write.execute({ id: id!, data: "hello\\n" }, {} as any);
+    const result = await pty_write.execute({ id: id!, data: "hello\\n" }, {});
 
     expect(result).toContain("Sent");
-    expect(result).toContain(id!);
+    expect(result).toContain(id);
   });
 
   it("should parse escape sequences", async () => {
@@ -63,7 +63,7 @@ describe("pty_write tool", () => {
     const id = idMatch?.[1];
 
     // Send Ctrl+C
-    const result = await pty_write.execute({ id: id!, data: "\\x03" }, {} as any);
+    const result = await pty_write.execute({ id: id!, data: "\\x03" }, {});
 
     expect(result).toContain("Sent");
   });

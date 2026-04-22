@@ -1,6 +1,6 @@
 // src/tools/octto/types.ts
 
-import type { ToolContext } from "@opencode-ai/plugin/tool";
+import type { ToolContext, ToolResult } from "@opencode-ai/plugin/tool";
 import type { createOpencodeClient } from "@opencode-ai/sdk";
 
 // Avoids exposing zod types in declaration files.
@@ -11,7 +11,7 @@ import type { createOpencodeClient } from "@opencode-ai/sdk";
 export interface OcttoTool {
   description: string;
   args: unknown;
-  execute: (args: never, context: ToolContext) => Promise<string>;
+  execute: (args: never, context: ToolContext) => Promise<ToolResult>;
 }
 
 export type OcttoTools = Record<string, OcttoTool>;

@@ -37,7 +37,7 @@ describe("pty_kill tool", () => {
   });
 
   it("should throw error for unknown session", async () => {
-    await expect(pty_kill.execute({ id: "pty_nonexistent" }, {} as any)).rejects.toThrow("not found");
+    await expect(pty_kill.execute({ id: "pty_nonexistent" }, {})).rejects.toThrow("not found");
   });
 
   it("should kill a running session", async () => {
@@ -50,11 +50,11 @@ describe("pty_kill tool", () => {
     const id = idMatch?.[1];
     expect(id).toBeDefined();
 
-    const result = await pty_kill.execute({ id: id! }, {} as any);
+    const result = await pty_kill.execute({ id: id! }, {});
 
     expect(result).toContain("<pty_killed>");
     expect(result).toContain("Killed:");
-    expect(result).toContain(id!);
+    expect(result).toContain(id);
     expect(result).toContain("Sleeper");
     expect(result).toContain("</pty_killed>");
   });
@@ -68,7 +68,7 @@ describe("pty_kill tool", () => {
     const idMatch = spawnResult.match(/ID: (pty_[a-f0-9]+)/);
     const id = idMatch?.[1];
 
-    await pty_kill.execute({ id: id!, cleanup: true }, {} as any);
+    await pty_kill.execute({ id: id!, cleanup: true }, {});
 
     const sessions = manager.list();
     expect(sessions).toHaveLength(0);
@@ -83,7 +83,7 @@ describe("pty_kill tool", () => {
     const idMatch = spawnResult.match(/ID: (pty_[a-f0-9]+)/);
     const id = idMatch?.[1];
 
-    await pty_kill.execute({ id: id!, cleanup: false }, {} as any);
+    await pty_kill.execute({ id: id!, cleanup: false }, {});
 
     const sessions = manager.list();
     expect(sessions).toHaveLength(1);
