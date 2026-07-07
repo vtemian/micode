@@ -2,6 +2,36 @@
 import { describe, expect, it } from "bun:test";
 import { readFile } from "node:fs/promises";
 
+import { mergePluginAgents } from "../src/index";
+
+describe("mergePluginAgents", () => {
+  it("preserves user iteration limits from existing OpenCode agent config", () => {
+    const merged = mergePluginAgents(
+      {
+        planner: {
+          model: "user/model",
+          mode: "primary",
+          steps: 15,
+          maxSteps: 20,
+        },
+      },
+      {
+        planner: {
+          model: "plugin/model",
+          mode: "subagent",
+          prompt: "Planner prompt",
+        },
+      },
+    );
+
+    expect(merged.planner.model).toBe("plugin/model");
+    expect(merged.planner.mode).toBe("subagent");
+    expect(merged.planner.prompt).toBe("Planner prompt");
+    expect(merged.planner.steps).toBe(15);
+    expect(merged.planner.maxSteps).toBe(20);
+  });
+});
+
 describe("index.ts constraint-reviewer integration", () => {
   it("should import createConstraintReviewerHook", async () => {
     const source = await readFile("src/index.ts", "utf-8");

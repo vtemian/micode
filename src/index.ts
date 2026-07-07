@@ -1,5 +1,5 @@
 import type { Plugin } from "@opencode-ai/plugin";
-import type { McpLocalConfig } from "@opencode-ai/sdk";
+import type { AgentConfig, McpLocalConfig } from "@opencode-ai/sdk";
 
 import { agents, PRIMARY_AGENT_NAME } from "@/agents";
 import { loadMicodeConfig, loadModelContextLimits, mergeAgentConfigs } from "@/config-loader";
@@ -105,6 +105,22 @@ function extractTextFromParts(parts: Array<{ type: string; text?: string }>): st
     .filter((p) => p.type === "text" && "text" in p)
     .map((p) => (p as { text: string }).text)
     .join("");
+}
+
+export function mergePluginAgentConfig(existingAgent: AgentConfig | undefined, pluginAgent: AgentConfig): AgentConfig {
+  return {
+    ...existingAgent,
+    ...pluginAgent,
+  };
+}
+
+export function mergePluginAgents(
+  existingAgents: Record<string, AgentConfig | undefined> | undefined,
+  pluginAgents: Record<string, AgentConfig>,
+): Record<string, AgentConfig> {
+  return Object.fromEntries(
+    Object.entries(pluginAgents).map(([name, agent]) => [name, mergePluginAgentConfig(existingAgents?.[name], agent)]),
+  ) as Record<string, AgentConfig>;
 }
 
 // eslint-disable-next-line max-lines-per-function
@@ -299,6 +315,7 @@ const OpenCodeConfigPlugin: Plugin = async (ctx) => {
 
       // Merge user config overrides into plugin agents
       const mergedAgents = mergeAgentConfigs(agents, userConfig);
+      const pluginAgents = mergePluginAgents(config.agent, mergedAgents);
 
       // Add our agents - our agents override OpenCode defaults, demote built-in build/plan to subagent
       config.agent = {
@@ -307,9 +324,9 @@ const OpenCodeConfigPlugin: Plugin = async (ctx) => {
         plan: { ...config.agent?.plan, mode: "subagent" },
         triage: { ...config.agent?.triage, mode: "subagent" },
         docs: { ...config.agent?.docs, mode: "subagent" },
-        // Our agents override - spread these LAST so they take precedence
-        ...Object.fromEntries(Object.entries(mergedAgents).filter(([k]) => k !== PRIMARY_AGENT_NAME)),
-        [PRIMARY_AGENT_NAME]: mergedAgents[PRIMARY_AGENT_NAME],
+        // Our agents override OpenCode defaults while preserving user fields like steps/maxSteps.
+        ...Object.fromEntries(Object.entries(pluginAgents).filter(([k]) => k !== PRIMARY_AGENT_NAME)),
+        [PRIMARY_AGENT_NAME]: pluginAgents[PRIMARY_AGENT_NAME],
       };
 
       // Add MCP servers (plugin servers override defaults)

@@ -13,6 +13,8 @@ const AgentOverrideSchema = v.object({
   model: v.optional(v.string()),
   temperature: v.optional(v.number()),
   maxTokens: v.optional(v.number()),
+  steps: v.optional(v.number()),
+  maxSteps: v.optional(v.number()),
   thinking: v.optional(ThinkingSchema),
 });
 
@@ -38,7 +40,7 @@ export const RawMicodeConfigSchema = v.object({
 });
 
 // Safe properties that users can override in agent configs
-const SAFE_AGENT_PROPERTIES = ["model", "temperature", "maxTokens", "thinking"] as const;
+const SAFE_AGENT_PROPERTIES = ["model", "temperature", "maxTokens", "steps", "maxSteps", "thinking"] as const;
 
 /**
  * Validate and sanitize an individual agent override.
