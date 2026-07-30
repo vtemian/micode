@@ -177,7 +177,7 @@ function buildMicodeConfig(raw: unknown): MicodeConfig {
   }
 
   if (config.features && typeof config.features === "object") {
-    micodeConfig.features = sanitizeFeatures(config.features as Record<string, unknown>);
+    micodeConfig.features = sanitizeFeatures(config.features);
   }
 
   const threshold = sanitizeCompactionThreshold(config.compactionThreshold);

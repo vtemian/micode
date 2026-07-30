@@ -143,7 +143,7 @@ function extractJsonStructure(content: string): string {
     if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
       return "## JSON (non-object top-level value)";
     }
-    const keys = Object.keys(parsed as Record<string, unknown>);
+    const keys = Object.keys(parsed);
     return `## Top-level keys (${keys.length})\n\n${keys.slice(0, MAX_JSON_KEYS_SHOWN).join(", ")}${keys.length > MAX_JSON_KEYS_SHOWN ? "..." : ""}`;
   } catch {
     return "## Invalid JSON";
