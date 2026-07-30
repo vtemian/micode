@@ -5,15 +5,19 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { loadExamples, loadMindmodel } from "../../src/mindmodel/loader";
+import { captureLogs, type LogCapture } from "../helpers/log-capture";
 
 describe("mindmodel loader", () => {
   let testDir: string;
+  let logs: LogCapture;
 
   beforeEach(() => {
     testDir = mkdtempSync(join(tmpdir(), "mindmodel-loader-test-"));
+    logs = captureLogs();
   });
 
   afterEach(() => {
+    logs.restore();
     rmSync(testDir, { recursive: true, force: true });
   });
 
@@ -94,6 +98,9 @@ categories: []
 
     const mindmodel = await loadMindmodel(testDir);
     expect(mindmodel).toBeNull();
+    expect(logs.warn).toEqual([
+      '[mindmodel] Failed to load manifest: Invalid key: Expected "version" but received undefined',
+    ]);
   });
 
   it("should skip gracefully when loading examples with non-existent category path", async () => {
@@ -122,5 +129,6 @@ categories:
     // Should only return the existing file, skipping the missing one
     expect(examples).toHaveLength(1);
     expect(examples[0].path).toBe("components/button.md");
+    expect(logs.warn).toEqual(["[mindmodel] Failed to load example: components/missing.md"]);
   });
 });

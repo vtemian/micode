@@ -4,14 +4,19 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { captureLogs, type LogCapture } from "../helpers/log-capture";
+
 describe("createConstraintReviewerHook", () => {
   let testDir: string;
+  let logs: LogCapture;
 
   beforeEach(() => {
     testDir = mkdtempSync(join(tmpdir(), "constraint-reviewer-test-"));
+    logs = captureLogs();
   });
 
   afterEach(() => {
+    logs.restore();
     rmSync(testDir, { recursive: true, force: true });
   });
 
@@ -303,6 +308,7 @@ categories:
     // Review should have been skipped due to override
     expect(reviewCalled).toBe(false);
     expect(output.output).toBe("bad code that would normally be blocked");
+    expect(logs.info).toEqual(["[mindmodel] Override activated: testing exception case"]);
   });
 
   it("should reset override after one use", async () => {
@@ -348,6 +354,7 @@ categories:
     );
 
     expect(reviewCallCount).toBe(1);
+    expect(logs.info).toEqual(["[mindmodel] Override activated: one-time exception"]);
   });
 
   it("should skip review when args has no file_path", async () => {
@@ -395,6 +402,7 @@ categories:
 
     // Output should be unchanged (graceful degradation)
     expect(output.output).toBe("some code");
+    expect(logs.warn).toEqual(["[mindmodel] Review failed: Review service unavailable"]);
   });
 
   it("should track retry count per file, not per session", async () => {

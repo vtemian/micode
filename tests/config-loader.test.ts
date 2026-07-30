@@ -14,6 +14,7 @@ import {
   validateAgentModels,
 } from "../src/config-loader";
 import { DEFAULT_MODEL } from "../src/utils/config";
+import { captureLogs, type LogCapture } from "./helpers/log-capture";
 
 describe("config-loader", () => {
   let testConfigDir: string;
@@ -882,6 +883,16 @@ describe("JSONC parsing support", () => {
 });
 
 describe("validateAgentModels", () => {
+  let logs: LogCapture;
+
+  beforeEach(() => {
+    logs = captureLogs();
+  });
+
+  afterEach(() => {
+    logs.restore();
+  });
+
   function createProvider(id: string, modelIds: string[]): ProviderInfo {
     const models: Record<string, unknown> = {};
     for (const modelId of modelIds) {
@@ -889,6 +900,9 @@ describe("validateAgentModels", () => {
     }
     return { id, models };
   }
+
+  const notFound = (model: string, agent: string): string =>
+    `[config-loader] Model "${model}" not found for agent "${agent}". Using default model.`;
 
   it("returns config unchanged when all models are valid", () => {
     const userConfig = {
@@ -921,6 +935,7 @@ describe("validateAgentModels", () => {
     const result = validateAgentModels(userConfig, providers);
 
     expect(result.agents?.commander?.model).toBeUndefined();
+    expect(logs.warn).toEqual([notFound("nonexistent/gpt-4", "commander")]);
   });
 
   it("removes model override when model does not exist in provider", () => {
@@ -935,6 +950,7 @@ describe("validateAgentModels", () => {
     const result = validateAgentModels(userConfig, providers);
 
     expect(result.agents?.commander?.model).toBeUndefined();
+    expect(logs.warn).toEqual([notFound("openai/nonexistent-model", "commander")]);
   });
 
   it("preserves other properties when model is invalid", () => {
@@ -955,6 +971,7 @@ describe("validateAgentModels", () => {
     expect(result.agents?.commander?.model).toBeUndefined();
     expect(result.agents?.commander?.temperature).toBe(0.7);
     expect(result.agents?.commander?.maxTokens).toBe(4000);
+    expect(logs.warn).toEqual([notFound("nonexistent/model", "commander")]);
   });
 
   it("handles config with no agents", () => {
@@ -1031,6 +1048,7 @@ describe("validateAgentModels", () => {
     expect(result.agents?.brainstormer?.model).toBeUndefined();
     expect(result.agents?.planner?.model).toBeUndefined();
     expect(result.agents?.reviewer?.model).toBe("anthropic/claude-3");
+    expect(logs.warn).toEqual([notFound("fake/model", "brainstormer"), notFound("openai/fake-model", "planner")]);
   });
 
   it("removes empty string model", () => {
@@ -1046,6 +1064,7 @@ describe("validateAgentModels", () => {
 
     expect(result.agents?.commander?.model).toBeUndefined();
     expect(result.agents?.commander?.temperature).toBe(0.5);
+    expect(logs.warn).toEqual(['[config-loader] Empty model for agent "commander". Using default model.']);
   });
 
   it("removes model string without slash (malformed)", () => {
@@ -1060,6 +1079,7 @@ describe("validateAgentModels", () => {
     const result = validateAgentModels(userConfig, providers);
 
     expect(result.agents?.commander?.model).toBeUndefined();
+    expect(logs.warn).toEqual([notFound("gpt-4-no-provider", "commander")]);
   });
 
   it("handles model with multiple slashes in model ID", () => {
@@ -1088,5 +1108,6 @@ describe("validateAgentModels", () => {
     const result = validateAgentModels(userConfig, providers);
 
     expect(result).toEqual({ agents: {} });
+    expect(logs.warn).toEqual([notFound("invalid/model", "commander")]);
   });
 });
