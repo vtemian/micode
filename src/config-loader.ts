@@ -129,6 +129,8 @@ export interface AgentOverride {
   readonly model?: string;
   readonly temperature?: number;
   readonly maxTokens?: number;
+  readonly steps?: number;
+  readonly maxSteps?: number;
   readonly thinking?: {
     readonly type: string;
     readonly budgetTokens: number;

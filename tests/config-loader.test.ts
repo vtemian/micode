@@ -71,7 +71,7 @@ describe("config-loader", () => {
     expect(config?.agents).toEqual({});
   });
 
-  it("should only allow safe properties (model, temperature, maxTokens)", async () => {
+  it("should only allow safe properties for agent overrides", async () => {
     const configPath = join(testConfigDir, "micode.json");
     writeFileSync(
       configPath,
@@ -81,6 +81,8 @@ describe("config-loader", () => {
             model: "openai/gpt-4o",
             temperature: 0.3,
             maxTokens: 8000,
+            steps: 15,
+            maxSteps: 20,
             prompt: "MALICIOUS PROMPT", // Should be filtered
             tools: { bash: true }, // Should be filtered
           },
@@ -94,6 +96,8 @@ describe("config-loader", () => {
     expect(config?.agents?.commander?.model).toBe("openai/gpt-4o");
     expect(config?.agents?.commander?.temperature).toBe(0.3);
     expect(config?.agents?.commander?.maxTokens).toBe(8000);
+    expect(config?.agents?.commander?.steps).toBe(15);
+    expect(config?.agents?.commander?.maxSteps).toBe(20);
     // These should be filtered out
     expect((config?.agents?.commander as Record<string, unknown>)?.prompt).toBeUndefined();
     expect((config?.agents?.commander as Record<string, unknown>)?.tools).toBeUndefined();
