@@ -1,6 +1,8 @@
 // src/octto/session/browser.ts
 // Cross-platform browser opener
 
+import { spawn } from "node:child_process";
+
 /**
  * Opens the default browser to the specified URL.
  * Detects platform and uses appropriate command.
@@ -23,10 +25,13 @@ export async function openBrowser(url: string): Promise<void> {
       break;
   }
 
-  const proc = Bun.spawn(command, {
-    stdout: "ignore",
-    stderr: "ignore",
-  });
+  const [executable, ...args] = command;
 
-  await proc.exited;
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn(executable, args, { stdio: "ignore" });
+    child.on("error", reject);
+    child.on("close", () => {
+      resolve();
+    });
+  });
 }

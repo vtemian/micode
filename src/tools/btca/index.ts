@@ -1,14 +1,14 @@
 import { tool } from "@opencode-ai/plugin/tool";
-import { spawn, which } from "bun";
 import { config } from "@/utils/config";
 import { extractErrorMessage } from "@/utils/errors";
+import { findExecutable, runCommand } from "@/utils/process";
 
 /**
  * Check if btca CLI is available on the system.
  * Returns installation instructions if not found.
  */
 export async function checkBtcaAvailable(): Promise<{ available: boolean; message?: string }> {
-  const btcaPath = which("btca");
+  const btcaPath = findExecutable("btca");
   if (btcaPath) {
     return { available: true };
   }
@@ -23,24 +23,7 @@ export async function checkBtcaAvailable(): Promise<{ available: boolean; messag
 
 async function runBtca(args: string[]): Promise<{ output: string; error?: string }> {
   try {
-    const proc = spawn(["btca", ...args], {
-      stdout: "pipe",
-      stderr: "pipe",
-    });
-
-    // Create timeout promise
-    const timeoutPromise = new Promise<never>((_, reject) => {
-      setTimeout(() => {
-        proc.kill();
-        reject(new Error("btca command timed out after 2 minutes"));
-      }, config.timeouts.btcaMs);
-    });
-
-    // Race between process completion and timeout
-    const [stdout, stderr, exitCode] = await Promise.race([
-      Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text(), proc.exited]),
-      timeoutPromise,
-    ]);
+    const { stdout, stderr, exitCode } = await runCommand("btca", args, { timeoutMs: config.timeouts.btcaMs });
 
     if (exitCode !== 0) {
       const errorMsg = stderr.trim() || `Exit code ${exitCode}`;

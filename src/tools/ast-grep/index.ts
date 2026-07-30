@@ -1,13 +1,13 @@
 import { tool } from "@opencode-ai/plugin/tool";
-import { spawn, which } from "bun";
 import * as v from "valibot";
+import { findExecutable, runCommand } from "@/utils/process";
 
 /**
  * Check if ast-grep CLI (sg) is available on the system.
  * Returns installation instructions if not found.
  */
 export async function checkAstGrepAvailable(): Promise<{ available: boolean; message?: string }> {
-  const sgPath = which("sg");
+  const sgPath = findExecutable("sg");
   if (sgPath) {
     return { available: true };
   }
@@ -96,16 +96,7 @@ function parseMatchOutput(stdout: string): SgResult {
 
 async function runSg(args: string[]): Promise<SgResult> {
   try {
-    const proc = spawn(["sg", ...args], {
-      stdout: "pipe",
-      stderr: "pipe",
-    });
-
-    const [stdout, stderr, exitCode] = await Promise.all([
-      new Response(proc.stdout).text(),
-      new Response(proc.stderr).text(),
-      proc.exited,
-    ]);
+    const { stdout, stderr, exitCode } = await runCommand("sg", args);
 
     const isNoFilesFound = exitCode !== 0 && !stdout.trim() && stderr.includes("No files found");
     if (isNoFilesFound) {
