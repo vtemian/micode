@@ -120,7 +120,7 @@ export function mergePluginAgents(
 ): Record<string, AgentConfig> {
   return Object.fromEntries(
     Object.entries(pluginAgents).map(([name, agent]) => [name, mergePluginAgentConfig(existingAgents?.[name], agent)]),
-  ) as Record<string, AgentConfig>;
+  );
 }
 
 // eslint-disable-next-line max-lines-per-function
