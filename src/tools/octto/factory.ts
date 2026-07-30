@@ -60,15 +60,50 @@ const QUESTION_TYPE_ENUM = [
   "emoji_react",
 ] as const;
 
+/** All config properties as .any().optional() so looseObject passes them through Zod parsing. */
+const pushQuestionConfigSchema = tool.schema
+  .looseObject({
+    question: tool.schema.string().optional(),
+    context: tool.schema.string().optional(),
+    options: tool.schema.any().optional(),
+    min: tool.schema.any().optional(),
+    max: tool.schema.any().optional(),
+    step: tool.schema.any().optional(),
+    recommended: tool.schema.any().optional(),
+    allowOther: tool.schema.any().optional(),
+    allowFeedback: tool.schema.any().optional(),
+    allowCancel: tool.schema.any().optional(),
+    defaultValue: tool.schema.any().optional(),
+    labels: tool.schema.any().optional(),
+    emojis: tool.schema.any().optional(),
+    yesLabel: tool.schema.any().optional(),
+    noLabel: tool.schema.any().optional(),
+    before: tool.schema.any().optional(),
+    after: tool.schema.any().optional(),
+    filePath: tool.schema.any().optional(),
+    language: tool.schema.any().optional(),
+    content: tool.schema.any().optional(),
+    sections: tool.schema.any().optional(),
+    markdown: tool.schema.any().optional(),
+    placeholder: tool.schema.any().optional(),
+    multiline: tool.schema.any().optional(),
+    minLength: tool.schema.any().optional(),
+    maxLength: tool.schema.any().optional(),
+    accept: tool.schema.any().optional(),
+    multiple: tool.schema.any().optional(),
+    maxImages: tool.schema.any().optional(),
+    maxFiles: tool.schema.any().optional(),
+    maxSize: tool.schema.any().optional(),
+  })
+  .describe("Question configuration (varies by type)");
+
 function executePushQuestion(
   sessions: SessionStore,
   args: { session_id: string; type: QuestionType; config: BaseConfig },
 ): string {
   try {
     const pushed = sessions.pushQuestion(args.session_id, args.type, args.config);
-    return `Question pushed: ${pushed.question_id}
-Type: ${args.type}
-Use get_next_answer(session_id, block=true) to wait for the user's response.`;
+    return `Question pushed: ${pushed.question_id}\nType: ${args.type}\nUse get_next_answer(session_id, block=true) to wait for the user's response.`;
   } catch (error) {
     return `Failed to push question: ${extractErrorMessage(error)}`;
   }
@@ -81,12 +116,7 @@ The question will appear in the browser for the user to answer.`,
     args: {
       session_id: tool.schema.string().describe("Session ID from start_session"),
       type: tool.schema.enum(QUESTION_TYPE_ENUM).describe("Question type"),
-      config: tool.schema
-        .looseObject({
-          question: tool.schema.string().optional(),
-          context: tool.schema.string().optional(),
-        })
-        .describe("Question configuration (varies by type)"),
+      config: pushQuestionConfigSchema,
     },
     execute: async (args) => executePushQuestion(sessions, args),
   });
