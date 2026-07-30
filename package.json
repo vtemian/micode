@@ -53,7 +53,7 @@
     "@biomejs/biome": "^2.3.10",
     "@eslint/js": "^10.0.1",
     "bun-types": "latest",
-    "eslint": "^10.0.3",
+    "eslint": "^10.8.0",
     "eslint-plugin-sonarjs": "^4.0.2",
     "eslint-plugin-unicorn": "^72.0.0",
     "lefthook": "^2.0.13",
