@@ -1,12 +1,16 @@
 // src/tools/artifact-index/index.ts
-import { Database } from "bun:sqlite";
+
+import type { Database } from "bun:sqlite";
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+import { extractErrorMessage } from "@/utils/errors";
 
 const DEFAULT_DB_DIR = join(homedir(), ".config", "opencode", "artifact-index");
 const DB_NAME = "context.db";
 const ERR_DB_NOT_INITIALIZED = "Database not initialized";
+const ERR_SQLITE_UNAVAILABLE =
+  "Artifact index requires Bun's sqlite, which this runtime does not provide. Plans and ledgers will not be indexed or searchable";
 const DEFAULT_SEARCH_LIMIT = 10;
 
 export interface PlanRecord {
@@ -316,13 +320,26 @@ export interface ArtifactIndex {
   close(): Promise<void>;
 }
 
-function initializeDb(dbPath: string): Database {
+// Imported at call time so the `bun:` specifier never becomes a static import.
+// Node and Electron ESM loaders reject that scheme while resolving the module
+// graph, which would take the whole plugin down before it can register.
+async function loadSqlite(): Promise<typeof import("bun:sqlite").Database> {
+  try {
+    const sqlite = await import("bun:sqlite");
+    return sqlite.Database;
+  } catch (error) {
+    throw new Error(`${ERR_SQLITE_UNAVAILABLE}: ${extractErrorMessage(error)}`, { cause: error });
+  }
+}
+
+async function initializeDb(dbPath: string): Promise<Database> {
   const dir = dirname(dbPath);
   if (!existsSync(dir)) {
     mkdirSync(dir, { recursive: true });
   }
 
-  const database = new Database(dbPath);
+  const Sqlite = await loadSqlite();
+  const database = new Sqlite(dbPath);
   const schemaPath = join(dirname(import.meta.path), "schema.sql");
   let schema: string;
   try {
@@ -347,7 +364,7 @@ export function createArtifactIndex(dbDir: string = DEFAULT_DB_DIR): ArtifactInd
 
   return {
     async initialize(): Promise<void> {
-      db = initializeDb(dbPath);
+      db = await initializeDb(dbPath);
     },
     async indexPlan(record: PlanRecord): Promise<void> {
       indexPlanInDb(requireDb(db), record);
@@ -386,9 +403,12 @@ export function createArtifactIndex(dbDir: string = DEFAULT_DB_DIR): ArtifactInd
 let globalIndex: ArtifactIndex | null = null;
 
 export async function getArtifactIndex(): Promise<ArtifactIndex> {
-  if (!globalIndex) {
-    globalIndex = createArtifactIndex();
-    await globalIndex.initialize();
-  }
+  if (globalIndex) return globalIndex;
+
+  const index = createArtifactIndex();
+  // Only cache once initialization succeeds, otherwise every later call gets a
+  // half-built index reporting "not initialized" instead of the real failure.
+  await index.initialize();
+  globalIndex = index;
   return globalIndex;
 }
