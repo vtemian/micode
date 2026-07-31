@@ -340,11 +340,14 @@ async function initializeDb(dbPath: string): Promise<Database> {
 
   const Sqlite = await loadSqlite();
   const database = new Sqlite(dbPath);
-  const schemaPath = join(dirname(import.meta.path), "schema.sql");
+  // import.meta.dirname is the portable spelling; import.meta.dir and .path are
+  // Bun-only and read as undefined under Node.
+  const schemaPath = join(import.meta.dirname, "schema.sql");
   let schema: string;
   try {
     schema = readFileSync(schemaPath, "utf-8");
   } catch {
+    // Bundled builds ship no sibling schema.sql; fall back to the inline copy.
     schema = getInlineSchema();
   }
   database.exec(schema);

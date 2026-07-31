@@ -6,17 +6,33 @@ import { delimiter, join } from "node:path";
 
 import { findExecutable, runCommand } from "../../src/utils/process";
 
+// Generous next to the 50ms timeouts under test, but far below the 30s sleeps
+// a stalled rejection would wait for.
+const SETTLE_BUDGET_MS = 2000;
+
 describe("findExecutable", () => {
   let binDir: string;
   let originalPath: string | undefined;
+  let scratchDirs: string[];
+
+  const makeDir = (prefix: string): string => {
+    const dir = mkdtempSync(join(tmpdir(), prefix));
+    scratchDirs.push(dir);
+    return dir;
+  };
 
   beforeEach(() => {
-    binDir = mkdtempSync(join(tmpdir(), "process-util-test-"));
+    scratchDirs = [];
+    binDir = makeDir("process-util-test-");
     originalPath = process.env.PATH;
   });
 
+  // Cleanup runs here rather than inline, so a failing assertion cannot leak
+  // a temp directory.
   afterEach(() => {
-    rmSync(binDir, { recursive: true, force: true });
+    for (const dir of scratchDirs) {
+      rmSync(dir, { recursive: true, force: true });
+    }
     if (originalPath === undefined) {
       delete process.env.PATH;
     } else {
@@ -48,14 +64,13 @@ describe("findExecutable", () => {
   });
 
   it("searches every PATH entry in order", () => {
-    const second = mkdtempSync(join(tmpdir(), "process-util-second-"));
+    const second = makeDir("process-util-second-");
     const binary = join(second, "later-tool");
     writeFileSync(binary, "#!/bin/sh\nexit 0\n");
     chmodSync(binary, 0o755);
     process.env.PATH = [binDir, second].join(delimiter);
 
     expect(findExecutable("later-tool")).toBe(binary);
-    rmSync(second, { recursive: true, force: true });
   });
 
   it("returns null when PATH is unset", () => {
@@ -81,12 +96,22 @@ describe("runCommand", () => {
     await expect(runCommand("definitely-not-installed", [])).rejects.toThrow();
   });
 
+  // `sh -c "sleep 30"` is not good enough here: the shell execs into sleep, so
+  // there is no grandchild and the pipes close the instant it is signalled.
+  // Backgrounding keeps the shell alive with a child holding stdout and stderr,
+  // which is the shape that must not stall the rejection.
   it("rejects as soon as the timeout elapses, not when the command would end", async () => {
     const started = Date.now();
-    await expect(runCommand("sh", ["-c", "sleep 30"], { timeoutMs: 50 })).rejects.toThrow(/timed out after 50ms/);
-    // Guards the regression where a grandchild held the pipes open and the
-    // rejection waited for the full sleep.
-    expect(Date.now() - started).toBeLessThan(2000);
+    await expect(runCommand("sh", ["-c", "sleep 30 & wait"], { timeoutMs: 50 })).rejects.toThrow(
+      /timed out after 50ms/,
+    );
+    expect(Date.now() - started).toBeLessThan(SETTLE_BUDGET_MS);
+  });
+
+  it("reports a signal death as a non-zero exit rather than success", async () => {
+    const result = await runCommand("sh", ["-c", "kill -TERM $$"]);
+    expect(result.exitCode).not.toBe(0);
+    expect(result.signal).toBe("SIGTERM");
   });
 
   it("does not apply a timeout when none is given", async () => {

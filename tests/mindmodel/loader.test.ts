@@ -17,7 +17,9 @@ describe("mindmodel loader", () => {
   });
 
   afterEach(() => {
+    const stray = logs.unread();
     logs.restore();
+    expect(stray).toEqual([]);
     rmSync(testDir, { recursive: true, force: true });
   });
 

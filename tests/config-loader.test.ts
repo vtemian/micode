@@ -890,7 +890,9 @@ describe("validateAgentModels", () => {
   });
 
   afterEach(() => {
+    const stray = logs.unread();
     logs.restore();
+    expect(stray).toEqual([]);
   });
 
   function createProvider(id: string, modelIds: string[]): ProviderInfo {

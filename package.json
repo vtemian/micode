@@ -13,7 +13,7 @@
   ],
   "scripts": {
     "prepare": "lefthook install",
-    "build": "bun build src/index.ts --outdir dist --target node --external bun-pty --external jsonc-parser",
+    "build": "bun build src/index.ts --outdir dist --target node --external bun-pty --external jsonc-parser --external ws",
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "bun run check && bun run build",
     "test": "bun test",

@@ -195,6 +195,16 @@ export interface SessionSocket {
   send: (data: string) => void;
 }
 
+/**
+ * The slice of the session store the transport drives. Narrower than
+ * SessionStore so the server depends only on what it actually calls.
+ */
+export interface SocketRouter {
+  handleWsConnect: (sessionId: string, socket: SessionSocket) => void;
+  handleWsDisconnect: (sessionId: string) => void;
+  handleWsMessage: (sessionId: string, message: WsClientMessage) => void;
+}
+
 /** The HTTP server surface octto needs, independent of runtime. */
 export interface SessionServer {
   readonly port: number;

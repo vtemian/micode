@@ -5,16 +5,28 @@
 
 import { spawn } from "node:child_process";
 import { accessSync, constants } from "node:fs";
+import { constants as osConstants } from "node:os";
 import { delimiter, join } from "node:path";
 import type { Readable } from "node:stream";
 
 const WINDOWS_DEFAULT_EXTENSIONS = ".COM;.EXE;.BAT;.CMD";
 const TIMEOUT_SIGNAL = "SIGTERM";
 
+// Shells report a signal death as 128 + signal number; mirror that so callers
+// branching on exitCode cannot read a killed command as a clean exit.
+const SIGNAL_EXIT_BASE = 128;
+const UNKNOWN_SIGNAL_EXIT = 1;
+
+export interface CommandOptions {
+  readonly timeoutMs?: number;
+}
+
 export interface CommandResult {
   readonly stdout: string;
   readonly stderr: string;
   readonly exitCode: number;
+  /** Set when the command was terminated by a signal rather than exiting. */
+  readonly signal?: NodeJS.Signals;
 }
 
 function isExecutable(candidate: string): boolean {
@@ -58,6 +70,14 @@ function collect(stream: Readable, append: (chunk: string) => void): void {
   stream.on("data", append);
 }
 
+// A signal death arrives as code null. Collapsing that to 0 would let callers
+// that branch on exitCode read a killed command as a successful empty run.
+function exitCodeFor(code: number | null, signal: NodeJS.Signals | null): number {
+  if (code !== null) return code;
+  if (signal === null) return UNKNOWN_SIGNAL_EXIT;
+  return SIGNAL_EXIT_BASE + (osConstants.signals[signal] ?? UNKNOWN_SIGNAL_EXIT);
+}
+
 /**
  * Run a command to completion, collecting stdout and stderr.
  *
@@ -68,13 +88,13 @@ function collect(stream: Readable, append: (chunk: string) => void): void {
  */
 export function runCommand(
   command: string,
-  args: string[],
-  options: { timeoutMs?: number } = {},
+  args: readonly string[],
+  options: CommandOptions = {},
 ): Promise<CommandResult> {
   const { timeoutMs } = options;
 
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, { stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn(command, [...args], { stdio: ["ignore", "pipe", "pipe"] });
 
     let stdout = "";
     let stderr = "";
@@ -82,13 +102,16 @@ export function runCommand(
 
     // Settle from the timer rather than waiting for "close": a killed shell can
     // leave a grandchild holding the stdio pipes open, which delays that event
-    // for as long as the original command would have run.
+    // for as long as the original command would have run. Drop the pipes too,
+    // so nothing keeps appending to strings no caller can still reach.
     const timer =
       timeoutMs === undefined
         ? undefined
         : setTimeout(() => {
             timedOut = true;
             child.kill(TIMEOUT_SIGNAL);
+            child.stdout.destroy();
+            child.stderr.destroy();
             reject(new Error(`${command} timed out after ${timeoutMs}ms`));
           }, timeoutMs);
 
@@ -103,10 +126,10 @@ export function runCommand(
       clearTimeout(timer);
       reject(error);
     });
-    child.on("close", (code) => {
+    child.on("close", (code, signal) => {
       clearTimeout(timer);
       if (timedOut) return;
-      resolve({ stdout, stderr, exitCode: code ?? 0 });
+      resolve({ stdout, stderr, exitCode: exitCodeFor(code, signal), ...(signal ? { signal } : {}) });
     });
   });
 }

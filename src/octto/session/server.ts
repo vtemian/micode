@@ -8,8 +8,7 @@ import { config } from "@/utils/config";
 import { extractErrorMessage } from "@/utils/errors";
 import { log } from "@/utils/logger";
 import { WsClientMessageSchema } from "./schemas";
-import type { SessionStore } from "./sessions";
-import type { SessionServer, SessionSocket, WsClientMessage } from "./types";
+import type { SessionServer, SessionSocket, SocketRouter, WsClientMessage } from "./types";
 
 const WS_PATH = "/ws";
 const HTML_PATHS = new Set(["/", "/index.html"]);
@@ -36,7 +35,7 @@ function sendError(socket: SessionSocket, error: string, details: string): void 
   socket.send(JSON.stringify({ type: "error", error, details }));
 }
 
-function handleWsMessage(socket: SessionSocket, sessionId: string, raw: string, store: SessionStore): void {
+function handleWsMessage(socket: SessionSocket, sessionId: string, raw: string, store: SocketRouter): void {
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
@@ -56,7 +55,7 @@ function handleWsMessage(socket: SessionSocket, sessionId: string, raw: string, 
   store.handleWsMessage(sessionId, result.output as WsClientMessage);
 }
 
-function attachWebSockets(wss: WebSocketServer, sessionId: string, store: SessionStore): void {
+function attachWebSockets(wss: WebSocketServer, sessionId: string, store: SocketRouter): void {
   wss.on("connection", (socket: WebSocket) => {
     store.handleWsConnect(sessionId, socket);
 
@@ -72,16 +71,37 @@ function attachWebSockets(wss: WebSocketServer, sessionId: string, store: Sessio
   });
 }
 
-function listen(http: Server, hostname: string): Promise<number> {
+// ws attaches its own listener to the HTTP server and re-emits its errors on
+// itself, so the only handler that sees a bind failure is one registered here.
+// Without it an unhandled 'error' propagates out and takes the host process
+// down with the session.
+function listen(http: Server, wss: WebSocketServer, hostname: string): Promise<number> {
   return new Promise((resolve, reject) => {
-    http.once("error", reject);
+    let settled = false;
+    const settle = (finish: () => void): void => {
+      if (settled) return;
+      settled = true;
+      finish();
+    };
+
+    wss.on("error", (error) => {
+      log.error(LOG_MODULE, "WebSocket server error", error);
+      settle(() => {
+        reject(error);
+      });
+    });
+
     http.listen(0, hostname, () => {
       const address = http.address();
       if (address === null || typeof address === "string") {
-        reject(new Error(ERR_NO_PORT));
+        settle(() => {
+          reject(new Error(ERR_NO_PORT));
+        });
         return;
       }
-      resolve(address.port);
+      settle(() => {
+        resolve(address.port);
+      });
     });
   });
 }
@@ -93,7 +113,9 @@ function stop(http: Server, wss: WebSocketServer): Promise<void> {
       client.terminate();
     }
     wss.close(() => {
-      http.closeAllConnections();
+      // Absent before Node 18.2, which older Electron builds still ship. An
+      // unguarded call throws inside ws's close callback and strands stop().
+      http.closeAllConnections?.();
       http.close(() => {
         resolve();
       });
@@ -103,7 +125,7 @@ function stop(http: Server, wss: WebSocketServer): Promise<void> {
 
 export async function createServer(
   sessionId: string,
-  store: SessionStore,
+  store: SocketRouter,
 ): Promise<{ server: SessionServer; port: number }> {
   const htmlBundle = getHtmlBundle();
   const hostname = config.octto.allowRemoteBind ? config.octto.bindAddress : LOOPBACK;
@@ -111,10 +133,10 @@ export async function createServer(
   const http = createHttpServer((req, res) => {
     serveHttp(req, res, htmlBundle);
   });
-  const wss = new WebSocketServer({ server: http, path: WS_PATH });
+  const wss = new WebSocketServer({ server: http, path: WS_PATH, maxPayload: config.octto.maxFrameBytes });
   attachWebSockets(wss, sessionId, store);
 
-  const port = await listen(http, hostname);
+  const port = await listen(http, wss, hostname);
 
   return {
     port,
