@@ -81,8 +81,12 @@ describe("runCommand", () => {
     await expect(runCommand("definitely-not-installed", [])).rejects.toThrow();
   });
 
-  it("rejects when the command outlives its timeout", async () => {
-    await expect(runCommand("sh", ["-c", "sleep 5"], { timeoutMs: 50 })).rejects.toThrow(/timed out after 50ms/);
+  it("rejects as soon as the timeout elapses, not when the command would end", async () => {
+    const started = Date.now();
+    await expect(runCommand("sh", ["-c", "sleep 30"], { timeoutMs: 50 })).rejects.toThrow(/timed out after 50ms/);
+    // Guards the regression where a grandchild held the pipes open and the
+    // rejection waited for the full sleep.
+    expect(Date.now() - started).toBeLessThan(2000);
   });
 
   it("does not apply a timeout when none is given", async () => {

@@ -80,12 +80,16 @@ export function runCommand(
     let stderr = "";
     let timedOut = false;
 
+    // Settle from the timer rather than waiting for "close": a killed shell can
+    // leave a grandchild holding the stdio pipes open, which delays that event
+    // for as long as the original command would have run.
     const timer =
       timeoutMs === undefined
         ? undefined
         : setTimeout(() => {
             timedOut = true;
             child.kill(TIMEOUT_SIGNAL);
+            reject(new Error(`${command} timed out after ${timeoutMs}ms`));
           }, timeoutMs);
 
     collect(child.stdout, (chunk) => {
@@ -101,10 +105,7 @@ export function runCommand(
     });
     child.on("close", (code) => {
       clearTimeout(timer);
-      if (timedOut) {
-        reject(new Error(`${command} timed out after ${timeoutMs}ms`));
-        return;
-      }
+      if (timedOut) return;
       resolve({ stdout, stderr, exitCode: code ?? 0 });
     });
   });
