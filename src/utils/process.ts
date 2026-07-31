@@ -6,6 +6,7 @@
 import { spawn } from "node:child_process";
 import { accessSync, constants } from "node:fs";
 import { delimiter, join } from "node:path";
+import type { Readable } from "node:stream";
 
 const WINDOWS_DEFAULT_EXTENSIONS = ".COM;.EXE;.BAT;.CMD";
 const TIMEOUT_SIGNAL = "SIGTERM";
@@ -52,37 +53,56 @@ export function findExecutable(name: string): string | null {
   return null;
 }
 
+function collect(stream: Readable, append: (chunk: string) => void): void {
+  stream.setEncoding("utf8");
+  stream.on("data", append);
+}
+
 /**
  * Run a command to completion, collecting stdout and stderr.
  *
  * Rejects if the binary cannot be spawned, or if timeoutMs elapses first.
+ *
+ * The timeout is enforced with an explicit timer rather than the spawn option
+ * of the same name, which Bun and Node do not honour identically.
  */
 export function runCommand(
   command: string,
   args: string[],
   options: { timeoutMs?: number } = {},
 ): Promise<CommandResult> {
+  const { timeoutMs } = options;
+
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, {
-      stdio: ["ignore", "pipe", "pipe"],
-      ...(options.timeoutMs === undefined ? {} : { timeout: options.timeoutMs, killSignal: TIMEOUT_SIGNAL }),
-    });
+    const child = spawn(command, args, { stdio: ["ignore", "pipe", "pipe"] });
 
     let stdout = "";
     let stderr = "";
-    child.stdout.setEncoding("utf8");
-    child.stderr.setEncoding("utf8");
-    child.stdout.on("data", (chunk: string) => {
+    let timedOut = false;
+
+    const timer =
+      timeoutMs === undefined
+        ? undefined
+        : setTimeout(() => {
+            timedOut = true;
+            child.kill(TIMEOUT_SIGNAL);
+          }, timeoutMs);
+
+    collect(child.stdout, (chunk) => {
       stdout += chunk;
     });
-    child.stderr.on("data", (chunk: string) => {
+    collect(child.stderr, (chunk) => {
       stderr += chunk;
     });
 
-    child.on("error", reject);
-    child.on("close", (code, signal) => {
-      if (signal === TIMEOUT_SIGNAL && options.timeoutMs !== undefined) {
-        reject(new Error(`${command} timed out after ${options.timeoutMs}ms`));
+    child.on("error", (error) => {
+      clearTimeout(timer);
+      reject(error);
+    });
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      if (timedOut) {
+        reject(new Error(`${command} timed out after ${timeoutMs}ms`));
         return;
       }
       resolve({ stdout, stderr, exitCode: code ?? 0 });
