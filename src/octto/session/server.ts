@@ -1,125 +1,123 @@
 // src/octto/session/server.ts
 
-import type { Server, ServerWebSocket } from "bun";
+import { createServer as createHttpServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import * as v from "valibot";
+import { type WebSocket, WebSocketServer } from "ws";
 import { getHtmlBundle } from "@/octto/ui";
 import { config } from "@/utils/config";
 import { extractErrorMessage } from "@/utils/errors";
 import { log } from "@/utils/logger";
 import { WsClientMessageSchema } from "./schemas";
 import type { SessionStore } from "./sessions";
-import type { WsClientMessage } from "./types";
+import type { SessionServer, SessionSocket, WsClientMessage } from "./types";
 
-interface WsData {
-  sessionId: string;
+const WS_PATH = "/ws";
+const HTML_PATHS = new Set(["/", "/index.html"]);
+const LOOPBACK = "127.0.0.1";
+const LOG_MODULE = "octto";
+const ERR_NO_PORT = "Failed to get server port";
+const STATUS_OK = 200;
+const STATUS_NOT_FOUND = 404;
+
+function serveHttp(req: IncomingMessage, res: ServerResponse, htmlBundle: string): void {
+  const path = (req.url ?? "").split("?")[0];
+
+  if (HTML_PATHS.has(path)) {
+    res.writeHead(STATUS_OK, { "Content-Type": "text/html; charset=utf-8" });
+    res.end(htmlBundle);
+    return;
+  }
+
+  res.writeHead(STATUS_NOT_FOUND, { "Content-Type": "text/plain; charset=utf-8" });
+  res.end("Not Found");
+}
+
+function sendError(socket: SessionSocket, error: string, details: string): void {
+  socket.send(JSON.stringify({ type: "error", error, details }));
+}
+
+function handleWsMessage(socket: SessionSocket, sessionId: string, raw: string, store: SessionStore): void {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (error) {
+    log.error(LOG_MODULE, "Failed to parse WebSocket message", error);
+    sendError(socket, "Invalid message format", extractErrorMessage(error));
+    return;
+  }
+
+  const result = v.safeParse(WsClientMessageSchema, parsed);
+  if (!result.success) {
+    log.error(LOG_MODULE, "Invalid WebSocket message schema", result.issues);
+    sendError(socket, "Invalid message schema", result.issues.map((issue) => issue.message).join("; "));
+    return;
+  }
+
+  store.handleWsMessage(sessionId, result.output as WsClientMessage);
+}
+
+function attachWebSockets(wss: WebSocketServer, sessionId: string, store: SessionStore): void {
+  wss.on("connection", (socket: WebSocket) => {
+    store.handleWsConnect(sessionId, socket);
+
+    socket.on("message", (data: Buffer | string) => {
+      handleWsMessage(socket, sessionId, data.toString(), store);
+    });
+    socket.on("close", () => {
+      store.handleWsDisconnect(sessionId);
+    });
+    socket.on("error", (error: unknown) => {
+      log.error(LOG_MODULE, "WebSocket connection error", error);
+    });
+  });
+}
+
+function listen(http: Server, hostname: string): Promise<number> {
+  return new Promise((resolve, reject) => {
+    http.once("error", reject);
+    http.listen(0, hostname, () => {
+      const address = http.address();
+      if (address === null || typeof address === "string") {
+        reject(new Error(ERR_NO_PORT));
+        return;
+      }
+      resolve(address.port);
+    });
+  });
+}
+
+// Live sockets keep node:http from closing, so drop them before waiting.
+function stop(http: Server, wss: WebSocketServer): Promise<void> {
+  return new Promise((resolve) => {
+    for (const client of wss.clients) {
+      client.terminate();
+    }
+    wss.close(() => {
+      http.closeAllConnections();
+      http.close(() => {
+        resolve();
+      });
+    });
+  });
 }
 
 export async function createServer(
   sessionId: string,
   store: SessionStore,
-): Promise<{ server: Server<WsData>; port: number }> {
+): Promise<{ server: SessionServer; port: number }> {
   const htmlBundle = getHtmlBundle();
+  const hostname = config.octto.allowRemoteBind ? config.octto.bindAddress : LOOPBACK;
 
-  const server = Bun.serve<WsData>({
-    port: 0, // Random available port
-    hostname: config.octto.allowRemoteBind ? config.octto.bindAddress : "127.0.0.1",
-    fetch(req, server) {
-      return handleFetch(req, server, sessionId, htmlBundle);
-    },
-    websocket: createWebSocketHandlers(store),
+  const http = createHttpServer((req, res) => {
+    serveHttp(req, res, htmlBundle);
   });
+  const wss = new WebSocketServer({ server: http, path: WS_PATH });
+  attachWebSockets(wss, sessionId, store);
 
-  // Port is always defined when using port: 0
-  const port = server.port;
-  if (port === undefined) {
-    throw new Error("Failed to get server port");
-  }
+  const port = await listen(http, hostname);
 
   return {
-    server,
     port,
+    server: { port, hostname, stop: () => stop(http, wss) },
   };
-}
-
-function handleFetch(
-  req: Request,
-  server: Server<WsData>,
-  sessionId: string,
-  htmlBundle: string,
-): Response | undefined {
-  const url = new URL(req.url);
-
-  // WebSocket upgrade
-  if (url.pathname === "/ws") {
-    const success = server.upgrade(req, {
-      data: { sessionId },
-    });
-    if (success) {
-      return undefined;
-    }
-    return new Response("WebSocket upgrade failed", { status: 400 });
-  }
-
-  // Serve the bundled HTML app
-  if (url.pathname === "/" || url.pathname === "/index.html") {
-    return new Response(htmlBundle, {
-      headers: {
-        "Content-Type": "text/html; charset=utf-8",
-      },
-    });
-  }
-
-  return new Response("Not Found", { status: 404 });
-}
-
-function createWebSocketHandlers(store: SessionStore): {
-  open: (ws: ServerWebSocket<WsData>) => void;
-  close: (ws: ServerWebSocket<WsData>) => void;
-  message: (ws: ServerWebSocket<WsData>, message: string | Buffer) => void;
-} {
-  return {
-    open(ws: ServerWebSocket<WsData>) {
-      store.handleWsConnect(ws.data.sessionId, ws);
-    },
-    close(ws: ServerWebSocket<WsData>) {
-      store.handleWsDisconnect(ws.data.sessionId);
-    },
-    message(ws: ServerWebSocket<WsData>, message: string | Buffer) {
-      handleWsMessage(ws, message, store);
-    },
-  };
-}
-
-function handleWsMessage(ws: ServerWebSocket<WsData>, message: string | Buffer, store: SessionStore): void {
-  const { sessionId } = ws.data;
-
-  let raw: unknown;
-  try {
-    raw = JSON.parse(message.toString());
-  } catch (error) {
-    log.error("octto", "Failed to parse WebSocket message", error);
-    ws.send(
-      JSON.stringify({
-        type: "error",
-        error: "Invalid message format",
-        details: extractErrorMessage(error),
-      }),
-    );
-    return;
-  }
-
-  const result = v.safeParse(WsClientMessageSchema, raw);
-  if (!result.success) {
-    log.error("octto", "Invalid WebSocket message schema", result.issues);
-    ws.send(
-      JSON.stringify({
-        type: "error",
-        error: "Invalid message schema",
-        details: result.issues.map((i) => i.message).join("; "),
-      }),
-    );
-    return;
-  }
-
-  store.handleWsMessage(sessionId, result.output as WsClientMessage);
 }

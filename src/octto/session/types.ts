@@ -1,6 +1,5 @@
 // src/octto/session/types.ts
 // Session and Question types for the octto module
-import type { ServerWebSocket } from "bun";
 
 import type {
   AskCodeConfig,
@@ -188,6 +187,21 @@ export type BaseConfig =
       [key: string]: unknown;
     };
 
+/**
+ * The websocket surface octto needs from whichever server runtime is hosting
+ * it. Kept minimal so the implementation can be Bun's or Node's.
+ */
+export interface SessionSocket {
+  send: (data: string) => void;
+}
+
+/** The HTTP server surface octto needs, independent of runtime. */
+export interface SessionServer {
+  readonly port: number;
+  readonly hostname: string;
+  stop: () => Promise<void>;
+}
+
 export interface Session {
   readonly id: string;
   readonly title?: string;
@@ -196,8 +210,8 @@ export interface Session {
   readonly createdAt: Date;
   readonly questions: Map<string, Question>;
   wsConnected: boolean;
-  readonly server?: ReturnType<typeof Bun.serve>;
-  wsClient?: ServerWebSocket<unknown>;
+  readonly server?: SessionServer;
+  wsClient?: SessionSocket;
 }
 
 export interface InitialQuestion {
