@@ -4,6 +4,10 @@
 
 const BYTES_PER_KB = 1024;
 const LARGE_FILE_KB = 100;
+// Matches Bun.serve's default so the Node-hosted server accepts the same
+// frames the Bun-hosted one did.
+const MAX_FRAME_MB = 16;
+const MAX_FRAME_KB = MAX_FRAME_MB * BYTES_PER_KB;
 const MS_PER_SECOND = 1000;
 const SECONDS_PER_MINUTE = 60;
 const ANSWER_TIMEOUT_MINUTES = 5;
@@ -132,6 +136,8 @@ export const config = {
     bindAddress: "127.0.0.1",
     /** Allow overriding bind address for remote access */
     allowRemoteBind: false,
+    /** Largest accepted WebSocket frame (bytes) */
+    maxFrameBytes: MAX_FRAME_KB * BYTES_PER_KB,
   },
 
   /**

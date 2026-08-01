@@ -1,5 +1,6 @@
 // src/octto/state/persistence.ts
 import { existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
+import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import * as v from "valibot";
 
@@ -54,7 +55,7 @@ export function createStatePersistence(baseDir = STATE_DIR): StatePersistence {
       ensureDir();
       const filePath = getFilePath(state.session_id);
       state.updated_at = Date.now();
-      await Bun.write(filePath, JSON.stringify(state, null, 2));
+      await writeFile(filePath, JSON.stringify(state, null, 2), "utf8");
     },
 
     async load(sessionId: string): Promise<BrainstormState | null> {
@@ -62,7 +63,7 @@ export function createStatePersistence(baseDir = STATE_DIR): StatePersistence {
       if (!existsSync(filePath)) {
         return null;
       }
-      const content = await Bun.file(filePath).text();
+      const content = await readFile(filePath, "utf8");
       return deserializeState(content, filePath);
     },
 

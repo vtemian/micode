@@ -13,7 +13,7 @@
   ],
   "scripts": {
     "prepare": "lefthook install",
-    "build": "bun build src/index.ts --outdir dist --target bun --external bun-pty",
+    "build": "bun build src/index.ts --outdir dist --target node --external bun-pty --external jsonc-parser --external ws",
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "bun run check && bun run build",
     "test": "bun test",
@@ -47,11 +47,13 @@
     "bun-pty": "^0.4.5",
     "jsonc-parser": "^3.3.1",
     "valibot": "^1.2.0",
+    "ws": "^8.21.1",
     "yaml": "^2.8.2"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.3.10",
     "@eslint/js": "^10.0.1",
+    "@types/ws": "^8.18.1",
     "bun-types": "latest",
     "eslint": "^10.8.0",
     "eslint-plugin-sonarjs": "^4.0.2",

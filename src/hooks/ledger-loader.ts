@@ -1,6 +1,6 @@
 // src/hooks/ledger-loader.ts
 
-import { readdir, readFile } from "node:fs/promises";
+import { readdir, readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import type { PluginInput } from "@opencode-ai/plugin";
 import { config } from "@/utils/config";
@@ -13,8 +13,8 @@ export interface LedgerInfo {
 
 async function getFileMtime(filePath: string): Promise<number> {
   try {
-    const stat = await Bun.file(filePath).stat();
-    return stat ? stat.mtime.getTime() : 0;
+    const stats = await stat(filePath);
+    return stats.mtime.getTime();
   } catch {
     return 0;
   }
