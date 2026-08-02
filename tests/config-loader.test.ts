@@ -716,6 +716,14 @@ describe("JSONC parsing support", () => {
       expect(config?.features?.mindmodelInjection).toBe(true);
       expect(config?.compactionThreshold).toBe(0.4);
     });
+
+    it("should carry features.context7 through to the loaded config", async () => {
+      writeFileSync(join(testConfigDir, "micode.json"), JSON.stringify({ features: { context7: false } }));
+
+      const config = await loadMicodeConfig(testConfigDir);
+
+      expect(config?.features?.context7).toBe(false);
+    });
   });
 
   describe("loadModelContextLimits with JSONC", () => {

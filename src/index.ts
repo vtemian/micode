@@ -2,7 +2,7 @@ import type { Plugin } from "@opencode-ai/plugin";
 import type { AgentConfig, McpLocalConfig } from "@opencode-ai/sdk";
 
 import { agents, PRIMARY_AGENT_NAME } from "@/agents";
-import { loadMicodeConfig, loadModelContextLimits, mergeAgentConfigs } from "@/config-loader";
+import { loadMicodeConfig, loadModelContextLimits, type MicodeFeatures, mergeAgentConfigs } from "@/config-loader";
 import {
   createArtifactAutoIndexHook,
   createAutoCompactHook,
@@ -54,27 +54,47 @@ function detectThinkKeyword(text: string): boolean {
   return THINK_KEYWORDS.some((pattern) => pattern.test(text));
 }
 
-// MCP server configurations
-const MCP_SERVERS: Record<string, McpLocalConfig> = {
-  context7: {
-    type: "local",
-    command: ["npx", "-y", "@upstash/context7-mcp@latest"],
-  },
-};
+/**
+ * MCP servers the plugin offers. Every one is opt-out: context7 through
+ * features.context7, the research servers through their API keys. Callers
+ * spread the result *under* the host config so a user's own entry always wins.
+ */
+export function buildMcpServers(features?: MicodeFeatures): Record<string, McpLocalConfig> {
+  const servers: Record<string, McpLocalConfig> = {};
 
-// Environment-gated research MCP servers
-if (process.env.PERPLEXITY_API_KEY) {
-  MCP_SERVERS.perplexity = {
-    type: "local",
-    command: ["npx", "-y", "@anthropic/mcp-perplexity"],
-  };
+  if (features?.context7 !== false) {
+    servers.context7 = {
+      type: "local",
+      command: ["npx", "-y", "@upstash/context7-mcp@latest"],
+    };
+  }
+
+  if (process.env.PERPLEXITY_API_KEY) {
+    servers.perplexity = {
+      type: "local",
+      command: ["npx", "-y", "@anthropic/mcp-perplexity"],
+    };
+  }
+
+  if (process.env.FIRECRAWL_API_KEY) {
+    servers.firecrawl = {
+      type: "local",
+      command: ["npx", "-y", "firecrawl-mcp"],
+    };
+  }
+
+  return servers;
 }
 
-if (process.env.FIRECRAWL_API_KEY) {
-  MCP_SERVERS.firecrawl = {
-    type: "local",
-    command: ["npx", "-y", "firecrawl-mcp"],
-  };
+/**
+ * Layer the plugin's MCP servers beneath whatever the host already declares,
+ * so a user entry of the same name replaces the bundled one outright.
+ */
+export function mergeMcpServers<T>(
+  hostServers: Record<string, T> | undefined,
+  features?: MicodeFeatures,
+): Record<string, T | McpLocalConfig> {
+  return { ...buildMcpServers(features), ...hostServers };
 }
 
 const PLUGIN_COMMANDS = {
@@ -329,11 +349,7 @@ const OpenCodeConfigPlugin: Plugin = async (ctx) => {
         [PRIMARY_AGENT_NAME]: pluginAgents[PRIMARY_AGENT_NAME],
       };
 
-      // Add MCP servers (plugin servers override defaults)
-      config.mcp = {
-        ...config.mcp,
-        ...MCP_SERVERS,
-      };
+      config.mcp = mergeMcpServers(config.mcp, userConfig?.features);
 
       // Add commands
       config.command = { ...config.command, ...PLUGIN_COMMANDS };
