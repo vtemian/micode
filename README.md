@@ -117,7 +117,8 @@ Create `~/.config/opencode/micode.json` for micode-specific settings:
     }
   },
   "features": {
-    "mindmodelInjection": true
+    "mindmodelInjection": true,
+    "context7": false
   },
   "compactionThreshold": 0.5,
   "fragments": {
@@ -134,7 +135,8 @@ Create `~/.config/opencode/micode.json` for micode-specific settings:
 |--------|------|-------------|
 | `agents` | object | Per-agent overrides (model, temperature, maxTokens, thinking) |
 | `features.mindmodelInjection` | boolean | Enable mindmodel context injection |
-| `compactionThreshold` | number | Context usage threshold (0-1) for auto-compaction. Default: 0.5 |
+| `features.context7` | boolean | Register the bundled context7 MCP server. Set `false` when it already comes from another tool or proxy. Default: `true` |
+| `compactionThreshold` | number | Context usage threshold (0-1) for auto-compaction. Default: 0.7 |
 | `fragments` | object | Additional prompt fragments per agent |
 
 #### Model Resolution Priority

@@ -20,6 +20,8 @@ const AgentOverrideSchema = v.object({
 
 const MicodeFeaturesSchema = v.object({
   mindmodelInjection: v.optional(v.boolean()),
+  /** Set false when context7 is already provided by another tool or proxy. */
+  context7: v.optional(v.boolean()),
 });
 
 /**

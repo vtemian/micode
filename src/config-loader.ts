@@ -139,6 +139,8 @@ export interface AgentOverride {
 
 export interface MicodeFeatures {
   readonly mindmodelInjection?: boolean;
+  /** Set false when context7 is already provided by another tool or proxy. */
+  readonly context7?: boolean;
 }
 
 export interface MicodeConfig {
