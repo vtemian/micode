@@ -102,16 +102,19 @@ name: [project-name]
 version: 2
 categories:
   - path: stack/frontend.md
-    description: Frontend frameworks and libraries
+    description: "Frontend frameworks and libraries"
     group: stack
   - path: patterns/error-handling.md
-    description: Error handling patterns and best practices
+    description: "parseX(raw: unknown): X | null at the boundary"
     group: patterns
   # ... more categories
 \`\`\`
 </manifest-format>
 
 <rules>
+- Always wrap each description in double quotes. An unquoted description
+  containing a colon, such as parseX(raw: unknown), is invalid YAML and makes
+  the whole manifest unreadable
 - Only create files for categories that have content
 - Skip empty categories (e.g., no frontend = no stack/frontend.md)
 - Keep each file focused and concise

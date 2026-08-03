@@ -1,7 +1,7 @@
 // tests/e2e/harness.ts
 // Drives a real opencode session against a real model. Everything is real:
 // the runtime, the built plugin, the model, and the fixture on disk.
-import { cpSync, existsSync, mkdtempSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -69,7 +69,16 @@ export function createHome(): string {
   return mkdtempSync(join(tmpdir(), "micode-e2e-home-"));
 }
 
-export function writeConfig(projectDir: string, model: string): void {
+/**
+ * Written into the isolated HOME rather than the project, because micode
+ * resolves its agents' model through loadDefaultModel(), which reads only the
+ * global config dir. A project-level opencode.json is enough for opencode
+ * itself but leaves micode's agents on their hardcoded default.
+ */
+export function writeConfig(homeDir: string, model: string): void {
+  const configDir = join(homeDir, ".config", "opencode");
+  mkdirSync(configDir, { recursive: true });
+
   const config = {
     $schema: "https://opencode.ai/config.json",
     model,
@@ -78,7 +87,7 @@ export function writeConfig(projectDir: string, model: string): void {
     share: "disabled",
     compaction: { auto: false },
   };
-  writeFileSync(join(projectDir, "opencode.json"), JSON.stringify(config, null, 2));
+  writeFileSync(join(configDir, "opencode.json"), JSON.stringify(config, null, 2));
 }
 
 /**
@@ -127,7 +136,7 @@ export async function runCommand(
 ): Promise<Run> {
   const homeDir = createHome();
   const model = e2eModel();
-  writeConfig(projectDir, model);
+  writeConfig(homeDir, model);
 
   const proc = Bun.spawn(opencodeArgs(command, message, model), {
     cwd: projectDir,
