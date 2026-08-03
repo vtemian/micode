@@ -98,20 +98,26 @@ bad code here
 
 <manifest-format>
 \`\`\`yaml
-name: [project-name]
+name: "billing-service"
 version: 2
 categories:
-  - path: stack/frontend.md
-    description: Frontend frameworks and libraries
+  - path: stack/backend.md
+    description: "Runtime, framework and build tooling"
     group: stack
   - path: patterns/error-handling.md
-    description: Error handling patterns and best practices
+    description: "parseX(raw: unknown): X | null at the boundary"
     group: patterns
   # ... more categories
 \`\`\`
 </manifest-format>
 
 <rules>
+- Wrap every string value in manifest.yaml in double quotes, including name.
+  An unquoted value containing a colon, such as parseX(raw: unknown), parses as
+  a nested mapping and makes the whole manifest unreadable
+- Write name as a plain quoted string. Square brackets are a YAML array, so
+  name: [my-project] is rejected as an array where a string is required
+- Escape any double quote inside a value as \\", or the value ends early
 - Only create files for categories that have content
 - Skip empty categories (e.g., no frontend = no stack/frontend.md)
 - Keep each file focused and concise

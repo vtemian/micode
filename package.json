@@ -17,6 +17,7 @@
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "bun run check && bun run build",
     "test": "bun test",
+    "test:e2e": "bun run build && bun test ./tests/e2e/*.e2e.ts --timeout 1560000",
     "test:watch": "bun test --watch",
     "format": "biome format --write .",
     "lint": "biome lint . && eslint .",
