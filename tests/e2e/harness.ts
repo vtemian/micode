@@ -128,12 +128,10 @@ function opencodeArgs(command: string, message: string, model: string): string[]
   ];
 }
 
-export async function runCommand(
-  projectDir: string,
-  command: string,
-  message: string,
-  timeoutMs: number,
-): Promise<Run> {
+export async function runCommand(command: string, message: string, timeoutMs: number): Promise<Run> {
+  // Both directories are created here so a throw below cannot strand them:
+  // a caller that mkdtemps its own project has nobody to clean up after it.
+  const projectDir = createProject();
   const homeDir = createHome();
   const model = e2eModel();
   writeConfig(homeDir, model);
@@ -148,27 +146,41 @@ export async function runCommand(
     stderr: "pipe",
   });
 
-  let timedOut = false;
+  let killedByTimer = false;
   const timer = setTimeout(() => {
-    timedOut = true;
+    killedByTimer = true;
     proc.kill();
   }, timeoutMs);
 
   // Both streams are drained to completion instead of being stopped at a marker:
   // opencode exits on its own, and the artifacts under test are written late, so
   // an early kill would truncate exactly what the specs assert on.
-  const [stdout, stderr, exitCode] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ]);
-  clearTimeout(timer);
+  // Drained in a finally: a rejected read would otherwise leave a multi-minute
+  // timer armed, which later kills an unrelated dead handle.
+  let drained: [string, string, number];
+  try {
+    drained = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text(), proc.exited]);
+  } finally {
+    clearTimeout(timer);
+  }
+  const [stdout, stderr, exitCode] = drained;
+
+  // The timer can fire while a healthy process is already exiting, so a clean
+  // exit outranks it: only a kill that actually stopped the run counts.
+  const timedOut = killedByTimer && exitCode !== 0;
 
   return { stdout, stderr, exitCode, projectDir, homeDir, timedOut };
 }
 
-/** Total cost across every step_finish event. Zero proves the run stayed free. */
-export function totalCost(run: Run): number {
+/**
+ * Cost of the primary session only.
+ *
+ * spawn_agent creates each subagent as its own top-level session, and the CLI
+ * drops events whose sessionID is not the primary one, so a /mindmodel run's
+ * ten analysis subagents never reach this stream. Treat a zero here as "the
+ * orchestrator turn was free", not as a whole-run guarantee.
+ */
+export function primarySessionCost(run: Run): number {
   let cost = 0;
   for (const line of run.stdout.split("\n")) {
     if (!line.trim()) continue;

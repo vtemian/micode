@@ -2,9 +2,12 @@ pre-commit:
   commands:
     biome:
       glob: "**/*.{ts,tsx,js,jsx,json}"
-      run: bunx biome check --write --staged {staged_files}
+      # Fixture files are excluded in biome.json, so a fixture-only commit
+      # leaves biome with nothing to process; that is not a failure.
+      run: bunx biome check --write --staged --no-errors-on-unmatched {staged_files}
       stage_fixed: true
     eslint:
       glob: "**/*.{ts,tsx}"
-      run: bunx eslint --fix {staged_files}
+      # Same for eslint, which ignores the fixture via eslint.config.js.
+      run: bunx eslint --fix --no-warn-ignored {staged_files}
       stage_fixed: true

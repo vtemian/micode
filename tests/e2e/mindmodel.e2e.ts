@@ -11,22 +11,12 @@ import { join } from "node:path";
 
 import { loadExamples, loadMindmodel } from "../../src/mindmodel";
 import { captureLogs, type LogCapture } from "../helpers/log-capture";
-import {
-  createProject,
-  describeRun,
-  e2eModel,
-  ensureBuilt,
-  type Run,
-  runCommand,
-  totalCost,
-  waitUntil,
-} from "./harness";
+import { describeRun, e2eModel, ensureBuilt, primarySessionCost, type Run, runCommand } from "./harness";
 
 // Observed 382s, 397s and 715s across four live runs on the free tier, so
 // the budget is generous: a slow model must not read as a product failure.
 const RUN_TIMEOUT_MS = 1_500_000;
 const SPEC_TIMEOUT_MS = RUN_TIMEOUT_MS + 60_000;
-const ARTIFACT_TIMEOUT_MS = 30_000;
 const MIN_CATEGORIES = 3;
 const MANIFEST = "manifest.yaml";
 
@@ -49,8 +39,12 @@ describe("micode /mindmodel against a live model", () => {
   });
 
   afterEach(() => {
+    // A clean load is silent, so anything captured and never inspected is a
+    // degraded path the spec did not account for.
+    const stray = logs?.unread() ?? [];
     logs?.restore();
     logs = undefined;
+    expect(stray).toEqual([]);
     // opencode installs @opencode-ai/plugin into the per-run HOME on cold
     // start, so leaving it behind leaks tens of MB per spec.
     if (run) {
@@ -63,7 +57,7 @@ describe("micode /mindmodel against a live model", () => {
   it(
     "generates a schema-valid mindmodel whose constraint files are all markdown",
     async () => {
-      run = await runCommand(createProject(), "mindmodel", "Generate mindmodel for this project.", RUN_TIMEOUT_MS);
+      run = await runCommand("mindmodel", "Generate mindmodel for this project.", RUN_TIMEOUT_MS);
 
       expect(run.timedOut, describeRun(run)).toBe(false);
 
@@ -71,12 +65,15 @@ describe("micode /mindmodel against a live model", () => {
       // code alone proves nothing about whether micode was even active.
       expect(run.stderr, describeRun(run)).not.toContain("failed to load plugin");
 
-      // The empty-subagent failure behind issue #44 surfaces as these literals.
-      expect(run.stdout, describeRun(run)).not.toContain("(No response from agent)");
-      expect(run.stdout, describeRun(run)).not.toContain("Failed to create session");
+      // spawn_agent's own failure strings cannot be asserted on: /mindmodel runs
+      // as a subtask in a child session and the CLI drops events whose sessionID
+      // is not the primary one, so only the orchestrator's final text crosses.
+      // Exit status and the error event are what actually surface.
+      expect(run.exitCode, describeRun(run)).toBe(0);
+      expect(run.stdout, describeRun(run)).not.toContain('"type":"error"');
 
       const mindmodelDir = join(run.projectDir, ".mindmodel");
-      await waitUntil(() => existsSync(join(mindmodelDir, MANIFEST)), MANIFEST, ARTIFACT_TIMEOUT_MS);
+      expect(existsSync(join(mindmodelDir, MANIFEST)), describeRun(run)).toBe(true);
 
       // Assert through the production loader: if this returns null, the
       // generated manifest would not work for a real user either.
@@ -120,12 +117,9 @@ describe("micode /mindmodel against a live model", () => {
       // The fixture has no frontend, so "skip empty categories" must hold.
       expect(categories.map((category) => category.path)).not.toContain("stack/frontend.md");
 
-      // Drain the remaining channels so capturing cannot become suppression.
-      expect(logs.warn.filter((line) => line.includes("Constraint files must end in .md"))).toEqual([]);
-      expect(logs.error).toBeInstanceOf(Array);
-      expect(logs.info).toBeInstanceOf(Array);
-
-      if (e2eModel().endsWith("-free")) expect(totalCost(run)).toBe(0);
+      // Only covers the orchestrator's own turn; subagent sessions are invisible
+      // to the event stream. A regression to a paid primary model still trips it.
+      if (e2eModel().endsWith("-free")) expect(primarySessionCost(run)).toBe(0);
     },
     SPEC_TIMEOUT_MS,
   );
