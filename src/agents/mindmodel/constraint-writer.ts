@@ -112,11 +112,13 @@ categories:
 </manifest-format>
 
 <rules>
+- manifest.yaml is the ONLY YAML file. Every constraint file is Markdown and MUST end in .md
+- Never write a constraint file as stack/frontend.yaml or patterns/logging.yaml; those are .md
 - Only create files for categories that have content
 - Skip empty categories (e.g., no frontend = no stack/frontend.md)
 - Keep each file focused and concise
 - Include 2-3 examples and 1-2 anti-patterns per file
-- Ensure manifest.yaml lists all created files
+- Ensure manifest.yaml lists all created files, each path ending in .md
 </rules>`;
 
 export const constraintWriterAgent: AgentConfig = {

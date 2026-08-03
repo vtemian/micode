@@ -7,6 +7,8 @@ import { extractErrorMessage } from "@/utils/errors";
 import { log } from "@/utils/logger";
 import { type MindmodelManifest, parseManifest } from "./types";
 
+const MARKDOWN_EXTENSION = ".md";
+
 export interface LoadedMindmodel {
   readonly directory: string;
   readonly manifest: MindmodelManifest;
@@ -16,6 +18,17 @@ export interface LoadedExample {
   readonly path: string;
   readonly description: string;
   readonly content: string;
+}
+
+// Constraint files are Markdown; manifest.yaml is the only YAML in .mindmodel.
+// Weaker models sometimes emit stack/frontend.yaml and friends, which loads but
+// leaves the directory inconsistent, so say so rather than failing the manifest.
+function warnNonMarkdownCategories(manifest: MindmodelManifest): void {
+  const wrongExtension = manifest.categories.map((c) => c.path).filter((path) => !path.endsWith(MARKDOWN_EXTENSION));
+
+  if (wrongExtension.length > 0) {
+    log.warn("mindmodel", `Constraint files must end in ${MARKDOWN_EXTENSION}: ${wrongExtension.join(", ")}`);
+  }
 }
 
 export async function loadMindmodel(projectDir: string): Promise<LoadedMindmodel | null> {
@@ -32,6 +45,7 @@ export async function loadMindmodel(projectDir: string): Promise<LoadedMindmodel
   try {
     const manifestContent = await readFile(manifestPath, "utf-8");
     const manifest = parseManifest(manifestContent);
+    warnNonMarkdownCategories(manifest);
 
     return {
       directory: mindmodelDir,
