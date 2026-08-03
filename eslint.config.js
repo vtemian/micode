@@ -17,6 +17,10 @@ export default [
       "*.config.js",
       "thoughts/**",
       "docs/**",
+      // A self-contained sample project, not repo source: it has its own
+      // tsconfig whose @/* alias points at its own src, and it deliberately
+      // contains a rule-violating file for the anti-pattern detector to find.
+      "tests/e2e/fixture/**",
     ],
   },
   js.configs.recommended,
