@@ -128,9 +128,16 @@ function extractTextFromParts(parts: Array<{ type: string; text?: string }>): st
 }
 
 export function mergePluginAgentConfig(existingAgent: AgentConfig | undefined, pluginAgent: AgentConfig): AgentConfig {
+  // Deep-merge permission so user-configured per-agent permission keys
+  // take precedence over plugin defaults rather than being overwritten.
+  const mergedPermission = existingAgent?.permission && pluginAgent.permission
+    ? { ...pluginAgent.permission, ...existingAgent.permission }
+    : pluginAgent.permission ?? existingAgent?.permission;
+
   return {
     ...existingAgent,
     ...pluginAgent,
+    ...(mergedPermission ? { permission: mergedPermission } : {}),
   };
 }
 

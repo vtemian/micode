@@ -36,14 +36,14 @@ import { reviewerAgent } from "./reviewer";
 // tool restrictions already set in the individual agent files.
 // See https://github.com/vtemian/micode/issues/52
 const AGENT_PERMISSIONS = {
-  // Read-only agents: locate files, analyze code, find patterns
-  readOnly: {
-    edit: "deny",
-  } as const,
+  // Read-only agents: locate files, analyze code, find patterns.
+  // No explicit edit/bash deny needed — the agents' own `tools` config
+  // already disables those tools, and omitting them here lets the global
+  // permission config (edit: "allow", bash: "allow") apply.
+  readOnly: {} as const,
 
   // Research agents: read-only + web access
   research: {
-    edit: "deny",
     webfetch: "allow",
   } as const,
 
