@@ -32,18 +32,21 @@ import { reviewerAgent } from "./reviewer";
 
 // Sensible default permissions so agents work out-of-the-box regardless of
 // root-level permission denies in the user's opencode.json.  Each agent
-// declares only the permissions it actually needs; values here match the
-// tool restrictions already set in the individual agent files.
+// declares only the permissions it actually needs.
 // See https://github.com/vtemian/micode/issues/52
 const AGENT_PERMISSIONS = {
-  // Read-only agents: locate files, analyze code, find patterns.
-  // No explicit edit/bash deny needed — the agents' own `tools` config
-  // already disables those tools, and omitting them here lets the global
-  // permission config (edit: "allow", bash: "allow") apply.
-  readOnly: {} as const,
+  // Read-only agents: some disable edit via tools config (codebase-locator,
+  // codebase-analyzer, pattern-finder, reviewer, artifact-searcher, mm-*)
+  // but others like probe don't — so we set edit: "deny" here to cover all.
+  readOnly: {
+    edit: "deny",
+  } as const,
 
-  // Research agents: read-only + web access
+  // Research agents: same as readOnly + web access for documentation lookups.
+  // probe, planner, bootstrapper don't disable edit in their tools config,
+  // so the deny here is necessary to prevent unintended file modifications.
   research: {
+    edit: "deny",
     webfetch: "allow",
   } as const,
 
