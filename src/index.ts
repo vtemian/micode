@@ -20,6 +20,7 @@ import {
   getFileOps,
   warnUnknownAgents,
 } from "@/hooks";
+import { deleteSessionModel, setSessionModel } from "@/session-model";
 import {
   artifact_search,
   ast_grep_replace,
@@ -291,6 +292,7 @@ const OpenCodeConfigPlugin: Plugin = async (ctx) => {
 
     const sessionId = props.info.id;
     thinkModeState.delete(sessionId);
+    deleteSessionModel(sessionId);
     ptyManager.cleanupBySession(sessionId);
     constraintReviewerHook.cleanupSession(sessionId);
     fetchTrackerHook.cleanupSession(sessionId);
@@ -356,6 +358,11 @@ const OpenCodeConfigPlugin: Plugin = async (ctx) => {
     },
 
     "chat.message": async (input, output) => {
+      // Capture the model in use so spawned subagents follow it
+      if (input.model) {
+        setSessionModel(input.sessionID, input.model);
+      }
+
       // Extract text from user message
       const text = output.parts
         .filter((p) => p.type === "text" && "text" in p)

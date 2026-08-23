@@ -1,5 +1,6 @@
 import type { PluginInput, ToolDefinition } from "@opencode-ai/plugin";
 import { type ToolContext, tool } from "@opencode-ai/plugin/tool";
+import { getSessionModel, type SessionModel, setSessionModel } from "@/session-model";
 import { extractErrorMessage } from "@/utils/errors";
 
 // Extended context with metadata (available but not typed in plugin API)
@@ -47,7 +48,7 @@ function updateProgress(
   }
 }
 
-async function executeAgentSession(ctx: PluginInput, task: AgentTask): Promise<string> {
+async function executeAgentSession(ctx: PluginInput, task: AgentTask, model?: SessionModel): Promise<string> {
   const sessionResp = (await ctx.client.session.create({
     body: {},
     query: { directory: ctx.directory },
@@ -58,14 +59,19 @@ async function executeAgentSession(ctx: PluginInput, task: AgentTask): Promise<s
     return `## ${task.description}\n\n**Agent**: ${task.agent}\n**Error**: Failed to create session`;
   }
 
+  // Follow the parent session's model (set via /models) instead of the startup-baked model.
   await ctx.client.session.prompt({
     path: { id: sessionID },
     body: {
       parts: [{ type: "text", text: task.prompt }],
       agent: task.agent,
+      ...(model ? { model } : {}),
     },
     query: { directory: ctx.directory },
   });
+
+  // Propagate the model so nested spawns (e.g. executor -> implementer) keep following it.
+  if (model) setSessionModel(sessionID, model);
 
   const messagesResp = (await ctx.client.session.messages({
     path: { id: sessionID },
@@ -99,7 +105,7 @@ async function runAgent(
   updateProgress(toolCtx, progressState, `Running ${task.agent}...`);
 
   try {
-    const agentOutput = await executeAgentSession(ctx, task);
+    const agentOutput = await executeAgentSession(ctx, task, getSessionModel(toolCtx.sessionID));
     const agentTime = ((Date.now() - agentStartTime) / MS_PER_SECOND).toFixed(1);
     return `## ${task.description} (${agentTime}s)\n\n**Agent**: ${task.agent}\n\n### Result\n\n${agentOutput}`;
   } catch (error) {
