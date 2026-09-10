@@ -133,4 +133,52 @@ categories:
     expect(examples[0].path).toBe("components/button.md");
     expect(logs.warn).toEqual(["[mindmodel] Failed to load example: components/missing.md"]);
   });
+
+  it("names the constraint files that are not markdown", async () => {
+    const mindmodelDir = join(testDir, ".mindmodel");
+    mkdirSync(join(mindmodelDir, "stack"), { recursive: true });
+
+    writeFileSync(
+      join(mindmodelDir, "manifest.yaml"),
+      `
+name: test
+version: 1
+categories:
+  - path: stack/frontend.yaml
+    description: Frontend patterns
+  - path: stack/backend.md
+    description: Backend patterns
+  - path: patterns/logging.yml
+    description: Logging patterns
+`,
+    );
+
+    const mindmodel = await loadMindmodel(testDir);
+
+    // A wrong extension is worth reporting but must not discard the manifest.
+    expect(mindmodel).not.toBeNull();
+    expect(mindmodel?.manifest.categories).toHaveLength(3);
+    expect(logs.warn).toEqual([
+      "[mindmodel] Constraint files must end in .md: stack/frontend.yaml, patterns/logging.yml",
+    ]);
+  });
+
+  it("stays quiet when every constraint file is markdown", async () => {
+    const mindmodelDir = join(testDir, ".mindmodel");
+    mkdirSync(join(mindmodelDir, "stack"), { recursive: true });
+
+    writeFileSync(
+      join(mindmodelDir, "manifest.yaml"),
+      `
+name: test
+version: 1
+categories:
+  - path: stack/frontend.md
+    description: Frontend patterns
+`,
+    );
+
+    expect(await loadMindmodel(testDir)).not.toBeNull();
+    expect(logs.warn).toEqual([]);
+  });
 });

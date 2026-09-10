@@ -112,6 +112,8 @@ categories:
 </manifest-format>
 
 <rules>
+- manifest.yaml is the ONLY YAML file. Every constraint file is Markdown and MUST end in .md
+- Never write a constraint file as stack/frontend.yaml or patterns/logging.yaml; those are .md
 - Wrap every string value in manifest.yaml in double quotes, including name.
   An unquoted value containing a colon, such as parseX(raw: unknown), parses as
   a nested mapping and makes the whole manifest unreadable
@@ -122,7 +124,7 @@ categories:
 - Skip empty categories (e.g., no frontend = no stack/frontend.md)
 - Keep each file focused and concise
 - Include 2-3 examples and 1-2 anti-patterns per file
-- Ensure manifest.yaml lists all created files
+- Ensure manifest.yaml lists all created files, each path ending in .md
 </rules>`;
 
 export const constraintWriterAgent: AgentConfig = {
