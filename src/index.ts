@@ -1,8 +1,7 @@
 import type { Plugin } from "@opencode-ai/plugin";
-import type { AgentConfig, McpLocalConfig } from "@opencode-ai/sdk";
 
 import { agents, PRIMARY_AGENT_NAME } from "@/agents";
-import { loadMicodeConfig, loadModelContextLimits, type MicodeFeatures, mergeAgentConfigs } from "@/config-loader";
+import { loadMicodeConfig, loadModelContextLimits, mergeAgentConfigs } from "@/config-loader";
 import {
   createArtifactAutoIndexHook,
   createAutoCompactHook,
@@ -20,6 +19,7 @@ import {
   getFileOps,
   warnUnknownAgents,
 } from "@/hooks";
+import { mergeMcpServers, mergePluginAgents } from "@/plugin-config";
 import {
   artifact_search,
   ast_grep_replace,
@@ -54,49 +54,6 @@ function detectThinkKeyword(text: string): boolean {
   return THINK_KEYWORDS.some((pattern) => pattern.test(text));
 }
 
-/**
- * MCP servers the plugin offers. Every one is opt-out: context7 through
- * features.context7, the research servers through their API keys. Callers
- * spread the result *under* the host config so a user's own entry always wins.
- */
-export function buildMcpServers(features?: MicodeFeatures): Record<string, McpLocalConfig> {
-  const servers: Record<string, McpLocalConfig> = {};
-
-  if (features?.context7 !== false) {
-    servers.context7 = {
-      type: "local",
-      command: ["npx", "-y", "@upstash/context7-mcp@latest"],
-    };
-  }
-
-  if (process.env.PERPLEXITY_API_KEY) {
-    servers.perplexity = {
-      type: "local",
-      command: ["npx", "-y", "@anthropic/mcp-perplexity"],
-    };
-  }
-
-  if (process.env.FIRECRAWL_API_KEY) {
-    servers.firecrawl = {
-      type: "local",
-      command: ["npx", "-y", "firecrawl-mcp"],
-    };
-  }
-
-  return servers;
-}
-
-/**
- * Layer the plugin's MCP servers beneath whatever the host already declares,
- * so a user entry of the same name replaces the bundled one outright.
- */
-export function mergeMcpServers<T>(
-  hostServers: Record<string, T> | undefined,
-  features?: MicodeFeatures,
-): Record<string, T | McpLocalConfig> {
-  return { ...buildMcpServers(features), ...hostServers };
-}
-
 const PLUGIN_COMMANDS = {
   init: {
     description: "Initialize project with ARCHITECTURE.md and CODE_STYLE.md",
@@ -125,22 +82,6 @@ function extractTextFromParts(parts: Array<{ type: string; text?: string }>): st
     .filter((p) => p.type === "text" && "text" in p)
     .map((p) => (p as { text: string }).text)
     .join("");
-}
-
-export function mergePluginAgentConfig(existingAgent: AgentConfig | undefined, pluginAgent: AgentConfig): AgentConfig {
-  return {
-    ...existingAgent,
-    ...pluginAgent,
-  };
-}
-
-export function mergePluginAgents(
-  existingAgents: Record<string, AgentConfig | undefined> | undefined,
-  pluginAgents: Record<string, AgentConfig>,
-): Record<string, AgentConfig> {
-  return Object.fromEntries(
-    Object.entries(pluginAgents).map(([name, agent]) => [name, mergePluginAgentConfig(existingAgents?.[name], agent)]),
-  );
 }
 
 // eslint-disable-next-line max-lines-per-function
