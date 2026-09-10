@@ -30,35 +30,178 @@ import { probeAgent } from "./probe";
 import { projectInitializerAgent } from "./project-initializer";
 import { reviewerAgent } from "./reviewer";
 
+// Sensible default permissions so agents work out-of-the-box regardless of
+// root-level permission denies in the user's opencode.json.  Each agent
+// declares only the permissions it actually needs.
+// See https://github.com/vtemian/micode/issues/52
+const AGENT_PERMISSIONS = {
+  // Read-only agents: some disable edit via tools config (codebase-locator,
+  // codebase-analyzer, pattern-finder, artifact-searcher, mm-*)
+  // but others like probe don't — so we set edit: "deny" here to cover all.
+  readOnly: {
+    edit: "deny",
+  } as const,
+
+  // Research agents: same as readOnly + web access for documentation lookups.
+  // probe, planner, bootstrapper don't disable edit in their tools config,
+  // so the deny here is necessary to prevent unintended file modifications.
+  research: {
+    edit: "deny",
+    webfetch: "allow",
+  } as const,
+
+  // Write agents: edit allowed
+  write: {
+    edit: "allow",
+  } as const,
+
+  // Build agents: edit + bash for tests
+  build: {
+    edit: "allow",
+    bash: "allow",
+  } as const,
+
+  // Orchestration agents: full access including bash + web
+  orchestration: {
+    edit: "allow",
+    bash: "allow",
+    webfetch: "allow",
+  } as const,
+} as const;
+
 export const agents: Record<string, AgentConfig> = {
-  [PRIMARY_AGENT_NAME]: { ...primaryAgent, model: DEFAULT_MODEL },
-  brainstormer: { ...brainstormerAgent, model: DEFAULT_MODEL },
-  bootstrapper: { ...bootstrapperAgent, model: DEFAULT_MODEL },
-  "codebase-locator": { ...codebaseLocatorAgent, model: DEFAULT_MODEL },
-  "codebase-analyzer": { ...codebaseAnalyzerAgent, model: DEFAULT_MODEL },
-  "pattern-finder": { ...patternFinderAgent, model: DEFAULT_MODEL },
-  planner: { ...plannerAgent, model: DEFAULT_MODEL },
-  implementer: { ...implementerAgent, model: DEFAULT_MODEL },
-  reviewer: { ...reviewerAgent, model: DEFAULT_MODEL },
-  executor: { ...executorAgent, model: DEFAULT_MODEL },
-  "ledger-creator": { ...ledgerCreatorAgent, model: DEFAULT_MODEL },
-  "artifact-searcher": { ...artifactSearcherAgent, model: DEFAULT_MODEL },
-  "project-initializer": { ...projectInitializerAgent, model: DEFAULT_MODEL },
-  octto: { ...octtoAgent, model: DEFAULT_MODEL },
-  probe: { ...probeAgent, model: DEFAULT_MODEL },
-  // Mindmodel generation agents
-  "mm-stack-detector": { ...stackDetectorAgent, model: DEFAULT_MODEL },
-  "mm-pattern-discoverer": { ...mindmodelPatternDiscovererAgent, model: DEFAULT_MODEL },
-  "mm-example-extractor": { ...exampleExtractorAgent, model: DEFAULT_MODEL },
-  "mm-orchestrator": { ...mindmodelOrchestratorAgent, model: DEFAULT_MODEL },
+  [PRIMARY_AGENT_NAME]: {
+    ...primaryAgent,
+    model: DEFAULT_MODEL,
+    permission: AGENT_PERMISSIONS.orchestration,
+  },
+  brainstormer: {
+    ...brainstormerAgent,
+    model: DEFAULT_MODEL,
+    permission: AGENT_PERMISSIONS.orchestration,
+  },
+  bootstrapper: {
+    ...bootstrapperAgent,
+    model: DEFAULT_MODEL,
+    permission: AGENT_PERMISSIONS.research,
+  },
+  "codebase-locator": {
+    ...codebaseLocatorAgent,
+    model: DEFAULT_MODEL,
+    permission: AGENT_PERMISSIONS.readOnly,
+  },
+  "codebase-analyzer": {
+    ...codebaseAnalyzerAgent,
+    model: DEFAULT_MODEL,
+    permission: AGENT_PERMISSIONS.readOnly,
+  },
+  "pattern-finder": {
+    ...patternFinderAgent,
+    model: DEFAULT_MODEL,
+    permission: AGENT_PERMISSIONS.readOnly,
+  },
+  planner: {
+    ...plannerAgent,
+    model: DEFAULT_MODEL,
+    permission: AGENT_PERMISSIONS.research,
+  },
+  implementer: {
+    ...implementerAgent,
+    model: DEFAULT_MODEL,
+    permission: AGENT_PERMISSIONS.build,
+  },
+  reviewer: {
+    ...reviewerAgent,
+    model: DEFAULT_MODEL,
+    permission: AGENT_PERMISSIONS.build,
+  },
+  executor: {
+    ...executorAgent,
+    model: DEFAULT_MODEL,
+    permission: AGENT_PERMISSIONS.orchestration,
+  },
+  "ledger-creator": {
+    ...ledgerCreatorAgent,
+    model: DEFAULT_MODEL,
+    permission: AGENT_PERMISSIONS.write,
+  },
+  "artifact-searcher": {
+    ...artifactSearcherAgent,
+    model: DEFAULT_MODEL,
+    permission: AGENT_PERMISSIONS.readOnly,
+  },
+  "project-initializer": {
+    ...projectInitializerAgent,
+    model: DEFAULT_MODEL,
+    permission: AGENT_PERMISSIONS.orchestration,
+  },
+  octto: {
+    ...octtoAgent,
+    model: DEFAULT_MODEL,
+    permission: AGENT_PERMISSIONS.orchestration,
+  },
+  probe: {
+    ...probeAgent,
+    model: DEFAULT_MODEL,
+    permission: AGENT_PERMISSIONS.readOnly,
+  },
+  // Mindmodel generation agents (all read-only)
+  "mm-stack-detector": {
+    ...stackDetectorAgent,
+    model: DEFAULT_MODEL,
+    permission: AGENT_PERMISSIONS.readOnly,
+  },
+  "mm-pattern-discoverer": {
+    ...mindmodelPatternDiscovererAgent,
+    model: DEFAULT_MODEL,
+    permission: AGENT_PERMISSIONS.readOnly,
+  },
+  "mm-example-extractor": {
+    ...exampleExtractorAgent,
+    model: DEFAULT_MODEL,
+    permission: AGENT_PERMISSIONS.readOnly,
+  },
+  "mm-orchestrator": {
+    ...mindmodelOrchestratorAgent,
+    model: DEFAULT_MODEL,
+    permission: AGENT_PERMISSIONS.readOnly,
+  },
   // Mindmodel v2 analysis agents
-  "mm-dependency-mapper": { ...dependencyMapperAgent, model: DEFAULT_MODEL },
-  "mm-convention-extractor": { ...conventionExtractorAgent, model: DEFAULT_MODEL },
-  "mm-domain-extractor": { ...domainExtractorAgent, model: DEFAULT_MODEL },
-  "mm-code-clusterer": { ...codeClustererAgent, model: DEFAULT_MODEL },
-  "mm-anti-pattern-detector": { ...antiPatternDetectorAgent, model: DEFAULT_MODEL },
-  "mm-constraint-writer": { ...constraintWriterAgent, model: DEFAULT_MODEL },
-  "mm-constraint-reviewer": { ...constraintReviewerAgent, model: DEFAULT_MODEL },
+  "mm-dependency-mapper": {
+    ...dependencyMapperAgent,
+    model: DEFAULT_MODEL,
+    permission: AGENT_PERMISSIONS.readOnly,
+  },
+  "mm-convention-extractor": {
+    ...conventionExtractorAgent,
+    model: DEFAULT_MODEL,
+    permission: AGENT_PERMISSIONS.readOnly,
+  },
+  "mm-domain-extractor": {
+    ...domainExtractorAgent,
+    model: DEFAULT_MODEL,
+    permission: AGENT_PERMISSIONS.readOnly,
+  },
+  "mm-code-clusterer": {
+    ...codeClustererAgent,
+    model: DEFAULT_MODEL,
+    permission: AGENT_PERMISSIONS.readOnly,
+  },
+  "mm-anti-pattern-detector": {
+    ...antiPatternDetectorAgent,
+    model: DEFAULT_MODEL,
+    permission: AGENT_PERMISSIONS.readOnly,
+  },
+  "mm-constraint-writer": {
+    ...constraintWriterAgent,
+    model: DEFAULT_MODEL,
+    permission: AGENT_PERMISSIONS.write,
+  },
+  "mm-constraint-reviewer": {
+    ...constraintReviewerAgent,
+    model: DEFAULT_MODEL,
+    permission: AGENT_PERMISSIONS.readOnly,
+  },
 };
 
 export {

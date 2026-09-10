@@ -30,6 +30,38 @@ describe("mergePluginAgents", () => {
     expect(merged.planner.steps).toBe(15);
     expect(merged.planner.maxSteps).toBe(20);
   });
+
+  it("merges permissions per key so user overrides win over plugin defaults", () => {
+    const merged = mergePluginAgents(
+      {
+        implementer: {
+          permission: { bash: "deny" },
+        },
+      },
+      {
+        implementer: {
+          prompt: "Implementer prompt",
+          permission: { edit: "allow", bash: "allow" },
+        },
+      },
+    );
+
+    expect(merged.implementer.permission).toEqual({ edit: "allow", bash: "deny" });
+  });
+
+  it("keeps plugin default permissions when the user configures none", () => {
+    const merged = mergePluginAgents(
+      {},
+      {
+        reviewer: {
+          prompt: "Reviewer prompt",
+          permission: { edit: "allow", bash: "allow" },
+        },
+      },
+    );
+
+    expect(merged.reviewer.permission).toEqual({ edit: "allow", bash: "allow" });
+  });
 });
 
 describe("index.ts constraint-reviewer integration", () => {
