@@ -1,0 +1,7 @@
+{
+  "name": "billing-fixture",
+  "type": "module",
+  "private": true,
+  "dependencies": { "valibot": "^1.4.2" },
+  "scripts": { "test": "bun test ./tests/*.tests.ts" }
+}

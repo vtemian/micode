@@ -1,7 +1,7 @@
 // tests/mcp-servers.test.ts
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 
-import { buildMcpServers, mergeMcpServers } from "../src/index";
+import { buildMcpServers, mergeMcpServers } from "../src/plugin-config";
 
 const RESEARCH_KEYS = ["PERPLEXITY_API_KEY", "FIRECRAWL_API_KEY"] as const;
 
