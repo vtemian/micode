@@ -17,6 +17,7 @@
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "bun run check && bun run build",
     "test": "bun test",
+    "test:e2e": "bun run build && bun test ./tests/e2e/*.e2e.ts --timeout 1560000",
     "test:watch": "bun test --watch",
     "format": "biome format --write .",
     "lint": "biome lint . && eslint .",
@@ -43,7 +44,7 @@
     "url": "https://github.com/vtemian/micode/issues"
   },
   "dependencies": {
-    "@opencode-ai/plugin": "1.18.9",
+    "@opencode-ai/plugin": "1.18.27",
     "bun-pty": "^0.4.5",
     "jsonc-parser": "^3.3.1",
     "valibot": "^1.2.0",
@@ -57,7 +58,7 @@
     "bun-types": "latest",
     "eslint": "^10.8.0",
     "eslint-plugin-sonarjs": "^4.0.2",
-    "eslint-plugin-unicorn": "^72.0.0",
+    "eslint-plugin-unicorn": "^74.0.0",
     "lefthook": "^2.0.13",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.57.0"

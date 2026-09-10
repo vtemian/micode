@@ -36,7 +36,7 @@ import { reviewerAgent } from "./reviewer";
 // See https://github.com/vtemian/micode/issues/52
 const AGENT_PERMISSIONS = {
   // Read-only agents: some disable edit via tools config (codebase-locator,
-  // codebase-analyzer, pattern-finder, reviewer, artifact-searcher, mm-*)
+  // codebase-analyzer, pattern-finder, artifact-searcher, mm-*)
   // but others like probe don't — so we set edit: "deny" here to cover all.
   readOnly: {
     edit: "deny",
