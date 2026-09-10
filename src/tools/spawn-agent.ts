@@ -1,6 +1,6 @@
 import type { PluginInput, ToolDefinition } from "@opencode-ai/plugin";
 import { type ToolContext, tool } from "@opencode-ai/plugin/tool";
-import { getSessionModel, type SessionModel, setSessionModel } from "@/session-model";
+import { resolveSpawnModel, type SessionModel, setSessionModel } from "@/session-model";
 import { extractErrorMessage } from "@/utils/errors";
 
 // Extended context with metadata (available but not typed in plugin API)
@@ -100,12 +100,17 @@ async function runAgent(
   task: AgentTask,
   toolCtx: ExtendedContext,
   progressState?: { completed: number; total: number; startTime: number },
+  agentModelOverrides?: ReadonlySet<string>,
 ): Promise<string> {
   const agentStartTime = Date.now();
   updateProgress(toolCtx, progressState, `Running ${task.agent}...`);
 
   try {
-    const agentOutput = await executeAgentSession(ctx, task, getSessionModel(toolCtx.sessionID));
+    const agentOutput = await executeAgentSession(
+      ctx,
+      task,
+      resolveSpawnModel(toolCtx.sessionID, task.agent, agentModelOverrides),
+    );
     const agentTime = ((Date.now() - agentStartTime) / MS_PER_SECOND).toFixed(1);
     return `## ${task.description} (${agentTime}s)\n\n**Agent**: ${task.agent}\n\n### Result\n\n${agentOutput}`;
   } catch (error) {
@@ -114,14 +119,19 @@ async function runAgent(
   }
 }
 
-async function runParallelAgents(ctx: PluginInput, agents: AgentTask[], extCtx: ExtendedContext): Promise<string> {
+async function runParallelAgents(
+  ctx: PluginInput,
+  agents: AgentTask[],
+  extCtx: ExtendedContext,
+  agentModelOverrides?: ReadonlySet<string>,
+): Promise<string> {
   const startTime = Date.now();
   const progressState = { completed: 0, total: agents.length, startTime };
 
   extCtx.metadata?.({ title: `Running ${agents.length} agents in parallel...` });
 
   const runWithProgress = async (task: AgentTask): Promise<string> => {
-    const agentOutput = await runAgent(ctx, task, extCtx, progressState);
+    const agentOutput = await runAgent(ctx, task, extCtx, progressState, agentModelOverrides);
     progressState.completed++;
     const elapsed = ((Date.now() - startTime) / MS_PER_SECOND).toFixed(0);
     extCtx.metadata?.({
@@ -138,7 +148,7 @@ async function runParallelAgents(ctx: PluginInput, agents: AgentTask[], extCtx: 
   return `# ${agents.length} agents completed in ${totalTime}s (parallel)\n\n${results.join("\n\n---\n\n")}`;
 }
 
-export function createSpawnAgentTool(ctx: PluginInput): ToolDefinition {
+export function createSpawnAgentTool(ctx: PluginInput, agentModelOverrides?: ReadonlySet<string>): ToolDefinition {
   return tool({
     description: `Spawn subagents to execute tasks in PARALLEL.
 All agents in the array run concurrently via Promise.all.
@@ -169,10 +179,10 @@ spawn_agent({
 
       if (agents.length === 1) {
         extCtx.metadata?.({ title: `Running ${agents[0].agent}...` });
-        return runAgent(ctx, agents[0], extCtx);
+        return runAgent(ctx, agents[0], extCtx, undefined, agentModelOverrides);
       }
 
-      return runParallelAgents(ctx, agents, extCtx);
+      return runParallelAgents(ctx, agents, extCtx, agentModelOverrides);
     },
   });
 }

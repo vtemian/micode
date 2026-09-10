@@ -29,3 +29,17 @@ export function setSessionModel(sessionID: string, model: SessionModel): void {
 export function deleteSessionModel(sessionID: string): void {
   sessionModels.delete(sessionID);
 }
+
+/**
+ * The model a spawned agent should run with: the parent session's live model,
+ * unless the agent has an explicit model override in micode.json — a
+ * deliberate per-agent choice always wins over "follow the parent".
+ */
+export function resolveSpawnModel(
+  sessionID: string,
+  agent: string,
+  agentModelOverrides?: ReadonlySet<string>,
+): SessionModel | undefined {
+  if (agentModelOverrides?.has(agent)) return undefined;
+  return getSessionModel(sessionID);
+}
