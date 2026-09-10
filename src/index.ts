@@ -20,6 +20,7 @@ import {
   warnUnknownAgents,
 } from "@/hooks";
 import { mergeMcpServers, mergePluginAgents } from "@/plugin-config";
+import { deleteSessionModel, setSessionModel } from "@/session-model";
 import {
   artifact_search,
   ast_grep_replace,
@@ -199,7 +200,14 @@ const OpenCodeConfigPlugin: Plugin = async (ctx) => {
   const ptyTools = ptyManager.available ? createPtyTools(ptyManager) : {};
 
   // Spawn agent tool (for subagents to spawn other subagents)
-  const spawn_agent = createSpawnAgentTool(ctx);
+  // Agents with an explicit model in micode.json keep it: a deliberate
+  // per-agent choice wins over following the parent session's live model.
+  const agentModelOverrides = new Set(
+    Object.entries(userConfig?.agents ?? {})
+      .filter(([, override]) => override.model)
+      .map(([name]) => name),
+  );
+  const spawn_agent = createSpawnAgentTool(ctx, agentModelOverrides);
 
   // Batch read tool (for parallel file reads)
   const batch_read = createBatchReadTool(ctx);
@@ -232,6 +240,7 @@ const OpenCodeConfigPlugin: Plugin = async (ctx) => {
 
     const sessionId = props.info.id;
     thinkModeState.delete(sessionId);
+    deleteSessionModel(sessionId);
     ptyManager.cleanupBySession(sessionId);
     constraintReviewerHook.cleanupSession(sessionId);
     fetchTrackerHook.cleanupSession(sessionId);
@@ -297,6 +306,11 @@ const OpenCodeConfigPlugin: Plugin = async (ctx) => {
     },
 
     "chat.message": async (input, output) => {
+      // Capture the model in use so spawned subagents follow it
+      if (input.model) {
+        setSessionModel(input.sessionID, input.model);
+      }
+
       // Extract text from user message
       const text = output.parts
         .filter((p) => p.type === "text" && "text" in p)
