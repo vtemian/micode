@@ -1,6 +1,6 @@
 import type { PluginInput, ToolDefinition } from "@opencode-ai/plugin";
 import { type ToolContext, tool } from "@opencode-ai/plugin/tool";
-import { resolveSpawnModel, type SessionModel, setSessionModel } from "@/session-model";
+import { deleteSessionModel, resolveSpawnModel, type SessionModel, setSessionModel } from "@/session-model";
 import { extractErrorMessage } from "@/utils/errors";
 
 // Extended context with metadata (available but not typed in plugin API)
@@ -48,9 +48,26 @@ function updateProgress(
   }
 }
 
-async function executeAgentSession(ctx: PluginInput, task: AgentTask, model?: SessionModel): Promise<string> {
+function lastAssistantText(messages: readonly SessionMessage[]): string {
+  const lastAssistant = messages.filter((m) => m.info?.role === "assistant").pop();
+  return (
+    lastAssistant?.parts
+      ?.filter((p) => p.type === "text" && p.text)
+      .map((p) => p.text)
+      .join("\n") || "(No response from agent)"
+  );
+}
+
+async function executeAgentSession(
+  ctx: PluginInput,
+  task: AgentTask,
+  model?: SessionModel,
+  parentID?: string,
+): Promise<string> {
+  // parentID links the session under its spawner in opencode's session tree;
+  // without it subagent work is invisible in the UI (#59).
   const sessionResp = (await ctx.client.session.create({
-    body: {},
+    body: parentID ? { parentID } : {},
     query: { directory: ctx.directory },
   })) as SessionCreateResponse;
 
@@ -73,26 +90,19 @@ async function executeAgentSession(ctx: PluginInput, task: AgentTask, model?: Se
   // Propagate the model so nested spawns (e.g. executor -> implementer) keep following it.
   if (model) setSessionModel(sessionID, model);
 
-  const messagesResp = (await ctx.client.session.messages({
-    path: { id: sessionID },
-    query: { directory: ctx.directory },
-  })) as SessionMessagesResponse;
+  try {
+    const messagesResp = (await ctx.client.session.messages({
+      path: { id: sessionID },
+      query: { directory: ctx.directory },
+    })) as SessionMessagesResponse;
 
-  const messages = messagesResp.data || [];
-  const lastAssistant = messages.filter((m) => m.info?.role === "assistant").pop();
-  const agentResponse =
-    lastAssistant?.parts
-      ?.filter((p) => p.type === "text" && p.text)
-      .map((p) => p.text)
-      .join("\n") || "(No response from agent)";
-
-  await ctx.client.session
-    .delete({ path: { id: sessionID }, query: { directory: ctx.directory } })
-    .catch((_e: unknown) => {
-      /* fire-and-forget */
-    });
-
-  return agentResponse;
+    return lastAssistantText(messagesResp.data || []);
+  } finally {
+    // The session itself must stay in the store: deleting it is what made
+    // subagent work impossible to inspect after the fact (#59). Only the
+    // follow-model entry is transient.
+    deleteSessionModel(sessionID);
+  }
 }
 
 async function runAgent(
@@ -110,6 +120,7 @@ async function runAgent(
       ctx,
       task,
       resolveSpawnModel(toolCtx.sessionID, task.agent, agentModelOverrides),
+      toolCtx.sessionID,
     );
     const agentTime = ((Date.now() - agentStartTime) / MS_PER_SECOND).toFixed(1);
     return `## ${task.description} (${agentTime}s)\n\n**Agent**: ${task.agent}\n\n### Result\n\n${agentOutput}`;
