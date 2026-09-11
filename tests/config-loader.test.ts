@@ -890,6 +890,47 @@ describe("JSONC parsing support", () => {
   });
 });
 
+describe("mergeAgentConfigs model validation against configured providers (#48)", () => {
+  const pluginAgents = {
+    brainstormer: { description: "Design agent", model: "plugin/default" },
+  };
+
+  it("accepts an undeclared model when its provider is configured", () => {
+    const merged = mergeAgentConfigs(
+      pluginAgents,
+      { agents: { brainstormer: { model: "openai/gpt-5.1" } } },
+      new Set(["openai/gpt-5"]), // declared in the config file
+      null,
+      new Set(["openai"]), // configured, registry-backed
+    );
+
+    expect(merged.brainstormer.model).toBe("openai/gpt-5.1");
+  });
+
+  it("still rejects a model whose provider is not configured", () => {
+    const merged = mergeAgentConfigs(
+      pluginAgents,
+      { agents: { brainstormer: { model: "anthropic/claude-x" } } },
+      new Set(["openai/gpt-5"]),
+      null,
+      new Set(["openai"]),
+    );
+
+    expect(merged.brainstormer.model).toBe("plugin/default");
+  });
+
+  it("keeps exact-list validation when no providers are injected", () => {
+    const merged = mergeAgentConfigs(
+      pluginAgents,
+      { agents: { brainstormer: { model: "openai/gpt-5.1" } } },
+      new Set(["openai/gpt-5"]),
+      null,
+    );
+
+    expect(merged.brainstormer.model).toBe("plugin/default");
+  });
+});
+
 describe("validateAgentModels", () => {
   let logs: LogCapture;
 

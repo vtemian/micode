@@ -155,6 +155,14 @@ export function extractProviderModels(providerRaw: Record<string, unknown>): Set
 }
 
 /**
+ * Provider ids configured in opencode.json, whether or not they declare
+ * models: a configured provider can serve its whole runtime registry.
+ */
+export function extractProviderIds(providerRaw: Record<string, unknown>): Set<string> {
+  return new Set(Object.keys(providerRaw));
+}
+
+/**
  * Extract context limit from a single model config entry
  */
 function extractModelContextLimit(modelRaw: unknown): number | null {

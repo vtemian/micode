@@ -9,6 +9,7 @@ import { type ParseError, parse as parseJsonc } from "jsonc-parser";
 import * as v from "valibot";
 import {
   extractContextLimits,
+  extractProviderIds,
   extractProviderModels,
   OpencodeConfigSchema,
   RawMicodeConfigSchema,
@@ -122,6 +123,17 @@ export function loadDefaultModel(configDir?: string): string | null {
   return config?.model ?? null;
 }
 
+/**
+ * Provider ids configured in opencode.json, with or without declared models.
+ * A configured provider serves its whole runtime registry (openai,
+ * github-copilot, ...), not just the models the file happens to list.
+ */
+export function loadConfiguredProviders(configDir?: string): Set<string> {
+  const config = loadOpencodeConfig(configDir);
+  if (!config?.provider) return new Set<string>();
+  return extractProviderIds(config.provider);
+}
+
 // Built-in OpenCode models that don't require validation (always available)
 const BUILTIN_MODELS = new Set(["opencode/big-pickle"]);
 
@@ -221,15 +233,23 @@ export function mergeAgentConfigs(
   userConfig: MicodeConfig | null,
   availableModels?: Set<string>,
   defaultModel?: string | null,
+  configuredProviders?: Set<string>,
 ): Record<string, AgentConfig> {
   const models = availableModels ?? loadAvailableModels();
-  const shouldValidateModels = models.size > 0;
+  // Injected models without injected providers means a test pinning the exact
+  // model list; production loads both from the same config file.
+  const providers = configuredProviders ?? (availableModels ? new Set<string>() : loadConfiguredProviders());
+  const shouldValidateModels = models.size > 0 || providers.size > 0;
   const opencodeDefaultModel = defaultModel !== undefined ? defaultModel : loadDefaultModel();
 
   const isValidModel = (model: string): boolean => {
     if (BUILTIN_MODELS.has(model)) return true;
     if (!shouldValidateModels) return true;
-    return models.has(model);
+    if (models.has(model)) return true;
+    // Registry-backed providers serve more models than the config file
+    // declares; a configured provider can resolve the rest at runtime (#48).
+    const providerId = model.slice(0, model.indexOf("/"));
+    return model.includes("/") && providers.has(providerId);
   };
 
   const merged: Record<string, AgentConfig> = {};

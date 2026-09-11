@@ -219,6 +219,9 @@ export function createStubProvider(scriptPath: string, port: number): ReturnType
       }
 
       if (!url.pathname.endsWith("/chat/completions")) {
+        // Routed here by a provider package the stub does not emulate (e.g.
+        // the Responses API): log it or the failure is invisible in spec output.
+        console.log(`[stub] unhandled ${request.method} ${url.pathname}`);
         return new Response("not found", { status: 404 });
       }
 

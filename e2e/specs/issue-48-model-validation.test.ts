@@ -16,16 +16,20 @@ import { afterAll, describe, expect, it } from "bun:test";
 import { rmSync } from "node:fs";
 import { join } from "node:path";
 
-import { describeRun, ensureBuilt, type Run, runPrompt, type StubHandle, startStub, stubPort } from "./harness";
+import { describeRun, ensureBuilt, type Run, runAgent, type StubHandle, startStub, stubPort } from "./harness";
 
 const RUN_TIMEOUT_MS = 240_000;
 const SPEC_TIMEOUT_MS = RUN_TIMEOUT_MS + 60_000;
 const SCRIPT = join(import.meta.dirname, "..", "scripts", "issue-48-models.json");
 
-// gpt-5 is declared in the config file; gpt-5.1 exists only in opencode's
-// runtime registry. The bug fires exactly in that gap.
-const DECLARED_MODEL = "gpt-5";
-const OVERRIDE_MODEL = "gpt-5.1";
+// One model is declared in the config file; the override exists only in
+// opencode's runtime registry. The bug fires exactly in that gap. The provider
+// id is "deepseek" because the registry maps it to an OpenAI-compatible npm
+// package, so registry-expanded models still speak chat-completions to the
+// stub (openai's registry entry would switch to the Responses API instead).
+const DECLARED_MODEL = "deepseek-v4-flash";
+const OVERRIDE_MODEL = "deepseek-v4-pro";
+const REGISTRY_PROVIDER = "deepseek";
 
 describe("issue #48: per-agent model override survives validation", () => {
   let stub: StubHandle | undefined;
@@ -45,12 +49,12 @@ describe("issue #48: per-agent model override survives validation", () => {
       ensureBuilt();
       stub = await startStub(SCRIPT);
 
-      run = await runPrompt("Say hello.", RUN_TIMEOUT_MS, {
-        model: `openai/${DECLARED_MODEL}`,
+      // --agent pins the session agent: which agent is opencode's default
+      // primary is a moving target across plugin versions, the override is not.
+      run = await runAgent("brainstormer", "Say hello.", RUN_TIMEOUT_MS, {
+        model: `${REGISTRY_PROVIDER}/${DECLARED_MODEL}`,
         provider: {
-          openai: {
-            // chat-completions wire format, but the provider id stays "openai"
-            // so the runtime registry keeps its model list.
+          [REGISTRY_PROVIDER]: {
             npm: "@ai-sdk/openai-compatible",
             options: { baseURL: `http://127.0.0.1:${stubPort()}/v1`, apiKey: "stub-key" },
             models: { [DECLARED_MODEL]: { name: "Declared model" } },
@@ -58,8 +62,8 @@ describe("issue #48: per-agent model override survives validation", () => {
         },
         micode: {
           agents: {
-            brainstormer: { model: `openai/${OVERRIDE_MODEL}` },
-            commander: { model: `openai/${OVERRIDE_MODEL}` },
+            brainstormer: { model: `${REGISTRY_PROVIDER}/${OVERRIDE_MODEL}` },
+            commander: { model: `${REGISTRY_PROVIDER}/${OVERRIDE_MODEL}` },
           },
         },
       });
