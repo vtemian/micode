@@ -1,0 +1,22 @@
+{
+  "conversations": [
+    {
+      "match": "Turn ideas into fully formed designs",
+      "turns": [
+        {
+          "tool": "task",
+          "args": {
+            "subagent_type": "codebase-locator",
+            "prompt": "Locate the invoice repository file in this project.",
+            "description": "Find invoice repo"
+          }
+        },
+        { "text": "E2E_TASK_DONE" }
+      ]
+    },
+    {
+      "match": "finding file locations in the codebase",
+      "turns": [{ "text": "LOCATOR_FOUND: src/repository/invoice-repo.ts" }]
+    }
+  ]
+}

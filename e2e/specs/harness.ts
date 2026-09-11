@@ -87,34 +87,45 @@ export function createHome(): string {
   return mkdtempSync(join(tmpdir(), "micode-e2e-home-"));
 }
 
+export interface StubConfigOptions {
+  /** Replaces the default stub provider block, e.g. to pose as a registry-backed provider. */
+  readonly provider?: Record<string, unknown>;
+  /** Replaces the default "stub/stub-model" session model. */
+  readonly model?: string;
+  /** Extra keys merged into micode.json, e.g. per-agent overrides. */
+  readonly micode?: Record<string, unknown>;
+}
+
 /**
  * The stub provider replaces the model; the plugin array loads the built
  * plugin by absolute path. micode.json disables the bundled context7 server:
  * it would npx-download on every cold HOME for no benefit under a stub.
  */
-export function writeStubConfig(home: string): void {
+export function writeStubConfig(home: string, options: StubConfigOptions = {}): void {
   const configDir = join(home, ".config", "opencode");
   mkdirSync(configDir, { recursive: true });
 
+  const provider = options.provider ?? {
+    stub: {
+      npm: "@ai-sdk/openai-compatible",
+      name: "Stub Provider",
+      options: { baseURL: `http://127.0.0.1:${stubPort()}/v1`, apiKey: "stub-key" },
+      models: { "stub-model": { name: "Stub Model" } },
+    },
+  };
+
   const config = {
     $schema: "https://opencode.ai/config.json",
-    model: "stub/stub-model",
-    small_model: "stub/stub-model",
-    provider: {
-      stub: {
-        npm: "@ai-sdk/openai-compatible",
-        name: "Stub Provider",
-        options: { baseURL: `http://127.0.0.1:${stubPort()}/v1`, apiKey: "stub-key" },
-        models: { "stub-model": { name: "Stub Model" } },
-      },
-    },
+    model: options.model ?? "stub/stub-model",
+    small_model: options.model ?? "stub/stub-model",
+    provider,
     plugin: [PLUGIN_PATH],
     share: "disabled",
     compaction: { auto: false },
   };
   writeFileSync(join(configDir, "opencode.json"), JSON.stringify(config, null, 2));
 
-  const micodeConfig = { features: { context7: false } };
+  const micodeConfig = { features: { context7: false }, ...options.micode };
   writeFileSync(join(configDir, "micode.json"), JSON.stringify(micodeConfig, null, 2));
 }
 
@@ -140,25 +151,42 @@ function isolatedEnv(home: string): Record<string, string> {
  * artifacts written late. stdin is ignored: opencode blocks reading stdin to
  * EOF when it is not a TTY and the run would hang before the stub answers.
  */
-export async function runCommand(command: string, message: string, timeoutMs: number): Promise<Run> {
+export async function runCommand(
+  command: string,
+  message: string,
+  timeoutMs: number,
+  options: StubConfigOptions = {},
+): Promise<Run> {
+  return run(["--command", command], message, timeoutMs, options);
+}
+
+/** A plain prompt run: the default primary agent (commander) answers. */
+export async function runPrompt(message: string, timeoutMs: number, options: StubConfigOptions = {}): Promise<Run> {
+  return run([], message, timeoutMs, options);
+}
+
+/** Runs with an explicit --agent. Note: subagent-mode agents silently fall back to the primary one. */
+export async function runAgent(
+  agent: string,
+  message: string,
+  timeoutMs: number,
+  options: StubConfigOptions = {},
+): Promise<Run> {
+  return run(["--agent", agent], message, timeoutMs, options);
+}
+
+async function run(
+  modeArgs: readonly string[],
+  message: string,
+  timeoutMs: number,
+  options: StubConfigOptions,
+): Promise<Run> {
   const projectDir = createProject();
   const homeDir = createHome();
-  writeStubConfig(homeDir);
+  writeStubConfig(homeDir, options);
 
   const proc = Bun.spawn(
-    [
-      "opencode",
-      "run",
-      "--command",
-      command,
-      "--format",
-      "json",
-      "--print-logs",
-      "--log-level",
-      "DEBUG",
-      "--auto",
-      message,
-    ],
+    ["opencode", "run", ...modeArgs, "--format", "json", "--print-logs", "--log-level", "DEBUG", "--auto", message],
     { cwd: projectDir, env: isolatedEnv(homeDir), stdin: "ignore", stdout: "pipe", stderr: "pipe" },
   );
 

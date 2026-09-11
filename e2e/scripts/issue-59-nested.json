@@ -1,0 +1,34 @@
+{
+  "conversations": [
+    {
+      "match": "ORCHESTRATOR for mindmodel v2 generation",
+      "turns": [
+        {
+          "tool": "spawn_agent",
+          "args": {
+            "agents": [{ "agent": "mm-stack-detector", "prompt": "Detect the stack.", "description": "Detect stack" }]
+          }
+        },
+        { "text": "E2E_NESTED_DONE" }
+      ]
+    },
+    {
+      "match": "detecting project tech stack",
+      "turns": [
+        {
+          "tool": "spawn_agent",
+          "args": {
+            "agents": [
+              { "agent": "mm-domain-extractor", "prompt": "Extract domain terms.", "description": "Extract domain" }
+            ]
+          }
+        },
+        { "text": "Bun/TypeScript, plus nested domain analysis." }
+      ]
+    },
+    {
+      "match": "extracting business domain terminology",
+      "turns": [{ "text": "Domain terms: invoice, customer, payment." }]
+    }
+  ]
+}

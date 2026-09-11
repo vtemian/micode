@@ -24,6 +24,13 @@ The scripted tier cannot catch prompt-adherence bugs (a script always
 - `e2e/scripts/*.json` — conversation scripts
 - `e2e/Dockerfile` — bun + opencode CLI; `bun run test:e2e` builds and runs it
 
+## Regression specs
+
+Specs named `issue-NN-*.test.ts` reproduce a reported bug end to end, with the
+bug anatomy in the file header. They assert the FIXED behavior, so they fail
+while the bug is open and become regression guards once it lands. Do not merge
+them red: replicate on a branch, fix, then merge green.
+
 ## Scripts
 
 A script is `{ "conversations": [...] }`. micode's flows fan out into parallel

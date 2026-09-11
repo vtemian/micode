@@ -233,9 +233,8 @@ export function createStubProvider(scriptPath: string, port: number): ReturnType
       const args = isToolTurn(turn) ? resolveArgs(turn.args, body.messages ?? []) : {};
 
       const who = conversation?.match ?? "default";
-      console.log(
-        `[stub] ${who} turn ${index}: ${isToolTurn(turn) ? `tool ${turn.tool} ${JSON.stringify(args)}` : "text"}`,
-      );
+      const what = isToolTurn(turn) ? `tool ${turn.tool} ${JSON.stringify(args)}` : "text";
+      console.log(`[stub] ${who} turn ${index} (${model}): ${what}`);
 
       if (body.stream === false) return Response.json(completionBody(model, turn, args));
 
