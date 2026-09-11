@@ -160,12 +160,7 @@ export async function runCommand(
   return run(["--command", command], message, timeoutMs, options);
 }
 
-/** A plain prompt run: the default primary agent (commander) answers. */
-export async function runPrompt(message: string, timeoutMs: number, options: StubConfigOptions = {}): Promise<Run> {
-  return run([], message, timeoutMs, options);
-}
-
-/** Runs with an explicit --agent. Note: subagent-mode agents silently fall back to the primary one. */
+/** Runs with an explicit --agent. Note: subagent-mode agents silently fall back to the default agent. */
 export async function runAgent(
   agent: string,
   message: string,

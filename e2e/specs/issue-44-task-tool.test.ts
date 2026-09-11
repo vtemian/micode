@@ -14,7 +14,7 @@ import { afterAll, describe, expect, it } from "bun:test";
 import { rmSync } from "node:fs";
 import { join } from "node:path";
 
-import { describeRun, ensureBuilt, type Run, runPrompt, type StubHandle, startStub } from "./harness";
+import { describeRun, ensureBuilt, type Run, runAgent, type StubHandle, startStub } from "./harness";
 
 const RUN_TIMEOUT_MS = 240_000;
 const SPEC_TIMEOUT_MS = RUN_TIMEOUT_MS + 60_000;
@@ -38,7 +38,9 @@ describe("issue #44: the primary agent can call the task tool", () => {
       ensureBuilt();
       stub = await startStub(SCRIPT);
 
-      run = await runPrompt("Find where invoices are stored.", RUN_TIMEOUT_MS);
+      // The reporter hit this in brainstormer; pinning --agent keeps the spec
+      // independent of which agent opencode happens to default to.
+      run = await runAgent("brainstormer", "Find where invoices are stored.", RUN_TIMEOUT_MS);
 
       expect(run.timedOut, describeRun(run)).toBe(false);
       expect(run.exitCode, describeRun(run)).toBe(0);

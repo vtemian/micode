@@ -287,17 +287,20 @@ const OpenCodeConfigPlugin: Plugin = async (ctx) => {
       const mergedAgents = mergeAgentConfigs(agents, userConfig);
       const pluginAgents = mergePluginAgents(config.agent, mergedAgents);
 
-      // Add our agents - our agents override OpenCode defaults, demote built-in build/plan to subagent
+      // Add our agents - our agents override OpenCode defaults.
+      // Native agents keep their mode: demoting build/plan to subagent removed
+      // them from opencode's agent picker and broke `run --agent build` (#41).
       config.agent = {
         ...config.agent, // OpenCode defaults first
-        build: { ...config.agent?.build, mode: "subagent" },
-        plan: { ...config.agent?.plan, mode: "subagent" },
-        triage: { ...config.agent?.triage, mode: "subagent" },
-        docs: { ...config.agent?.docs, mode: "subagent" },
         // Our agents override OpenCode defaults while preserving user fields like steps/maxSteps.
         ...Object.fromEntries(Object.entries(pluginAgents).filter(([k]) => k !== PRIMARY_AGENT_NAME)),
         [PRIMARY_AGENT_NAME]: pluginAgents[PRIMARY_AGENT_NAME],
       };
+
+      // Keep the plugin's workflow as the entry point now that native agents
+      // stay primary (#41); an explicit user default_agent always wins.
+      // The SDK's Config type lags the server on this field.
+      (config as { default_agent?: string }).default_agent ??= PRIMARY_AGENT_NAME;
 
       config.mcp = mergeMcpServers(config.mcp, userConfig?.features);
 
