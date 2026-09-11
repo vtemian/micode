@@ -16,14 +16,15 @@
     "build": "bun build src/index.ts --outdir dist --target node --external bun-pty --external jsonc-parser --external ws",
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "bun run check && bun run build",
-    "test": "bun test",
-    "test:e2e": "bun run build && bun test ./tests/e2e/*.e2e.ts --timeout 1560000",
+    "test": "bun test tests",
+    "test:e2e": "docker build -f e2e/Dockerfile -t micode-e2e . && docker run --rm micode-e2e",
+    "test:e2e:live": "bun run build && bun test ./tests/e2e/*.e2e.ts --timeout 1560000",
     "test:watch": "bun test --watch",
     "format": "biome format --write .",
     "lint": "biome lint . && eslint .",
     "lint:biome": "biome lint .",
     "lint:eslint": "eslint .",
-    "check": "biome check . && eslint . && bun run typecheck && bun test",
+    "check": "biome check . && eslint . && bun run typecheck && bun test tests",
     "clean": "rm -rf dist coverage"
   },
   "keywords": [

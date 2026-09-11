@@ -63,7 +63,7 @@
       }
     },
     {
-      "includes": ["tests/**", "**/*.test.ts"],
+      "includes": ["tests/**", "e2e/**", "**/*.test.ts"],
       "linter": {
         "rules": {
           "suspicious": {

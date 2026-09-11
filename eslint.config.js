@@ -167,7 +167,7 @@ export default [
   },
   {
     // Relax rules for test files
-    files: ["tests/**/*.ts", "src/**/*.test.ts", "**/*.test.ts"],
+    files: ["tests/**/*.ts", "src/**/*.test.ts", "**/*.test.ts", "e2e/**/*.ts"],
     rules: {
       "@typescript-eslint/no-explicit-any": "off",
       "@typescript-eslint/no-magic-numbers": "off",

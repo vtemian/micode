@@ -102,7 +102,14 @@
 
 ## Tooling
 
-- `bun run check` runs the full quality gate: `biome check . && eslint . && bun run typecheck && bun test`
+- `bun run check` runs the full quality gate: `biome check . && eslint . && bun run typecheck && bun test tests`
+- `bun test` is deliberately scoped to `tests/`: `e2e/specs/` holds the scripted end-to-end tier, which needs the stub provider and the opencode CLI
 - Pre-commit hook (lefthook) runs Biome check + ESLint fix on staged files
 - CI runs full `bun run check` on every PR
 - Run `bun run check` after substantive changes. If build/runtime-sensitive code changed, also run `bun run build`
+
+## End-to-end tests
+
+- Two tiers, modeled on octto's e2e suite (see `e2e/README.md`)
+- Scripted tier (`bun run test:e2e`): deterministic, free, runs in Docker, gates every PR. The only fake is the model
+- Live tier (`bun run test:e2e:live`): real free-tier model against `tests/e2e/`, manual CI trigger only

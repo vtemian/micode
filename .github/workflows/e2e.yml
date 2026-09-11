@@ -1,0 +1,54 @@
+name: End-to-end
+
+on:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      live_model:
+        description: "Model for the live tier"
+        required: false
+        default: "opencode/deepseek-v4-flash-free"
+        type: string
+
+jobs:
+  scripted:
+    # The scripted tier is deterministic and free, so it runs on every PR.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build harness
+        run: docker build -f e2e/Dockerfile -t micode-e2e .
+
+      - name: Run scripted tier
+        run: docker run --rm micode-e2e
+
+  live:
+    # A real model costs money (or at least a rate limit), so it is manual
+    # only and skips without credentials rather than failing.
+    if: github.event_name == 'workflow_dispatch' && inputs.live_model != ''
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build harness
+        run: docker build -f e2e/Dockerfile -t micode-e2e .
+
+      # MICODE_E2E_AUTH_CONTENT is the contents of ~/.local/share/opencode/auth.json.
+      # The default model is free, so this costs nothing to run.
+      - name: Run live tier
+        env:
+          MICODE_E2E_AUTH_CONTENT: ${{ secrets.OPENCODE_AUTH_JSON }}
+          MICODE_E2E_MODEL: ${{ inputs.live_model }}
+        run: |
+          if [ -z "${MICODE_E2E_AUTH_CONTENT}" ]; then
+            echo "No OPENCODE_AUTH_JSON secret configured; skipping live tier."
+            exit 0
+          fi
+          docker run --rm \
+            -e MICODE_E2E_AUTH_CONTENT \
+            -e MICODE_E2E_MODEL \
+            micode-e2e bun test tests/e2e --timeout 1560000
