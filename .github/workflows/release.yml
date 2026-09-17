@@ -23,7 +23,8 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          node-version: "20"
+          # npm@latest (installed below) needs >=22.22.2 since npm 12
+          node-version: "24"
           registry-url: "https://registry.npmjs.org"
 
       - name: Update npm
