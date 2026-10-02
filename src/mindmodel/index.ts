@@ -1,6 +1,6 @@
 export { buildClassifierPrompt, parseClassifierResponse } from "./classifier";
 export { formatExamplesForInjection } from "./formatter";
-export { type LoadedExample, type LoadedMindmodel, loadExamples, loadMindmodel } from "./loader";
+export { headingsOf, type LoadedExample, type LoadedMindmodel, loadExamples, loadMindmodel } from "./loader";
 export {
   formatViolationsForRetry,
   formatViolationsForUser,

@@ -112,7 +112,7 @@ When design is silent on implementation details, make confident decisions:
     DON'T USE for: Reading an example file you already identified (use Read instead).
   </subagent>
   <rule>MAX 3-5 subagent calls total. If you need more, you're over-researching.</rule>
-  <rule>If multiple needed, call in ONE message for parallel execution.</rule>
+  <rule>If multiple needed, pass them all in ONE spawn_agent call using the "agents" array.</rule>
 </available-subagents>
 
 <inputs>
@@ -152,7 +152,7 @@ When design is silent on implementation details, make confident decisions:
   </direct-tools>
   <subagents description="ONLY if direct tools aren't enough">
     - MAX 3-5 calls total
-    - Call all needed subagents in ONE message (parallel)
+    - Pass all needed subagents in ONE spawn_agent call using the "agents" array
     - If you're spawning more than 5, STOP and reconsider
   </subagents>
   <rule>ONE round of research only - no iterative refinement</rule>
@@ -295,16 +295,16 @@ Write(file_path="thoughts/shared/plans/2026-01-16-feature.md", content="...")
 
 <bad-example description="Over-researching - DON'T DO THIS">
 // WRONG: 18 subagent calls for a simple plan
-spawn_agent(agent="codebase-analyzer", prompt="Read src/hooks/...")  // Just use Read!
-spawn_agent(agent="codebase-locator", prompt="Find existing files under thoughts/...")  // Just use Glob!
-spawn_agent(agent="codebase-analyzer", prompt="Read thoughts/shared/designs/...")  // Just use Read!
+spawn_agent({agents: [{agent: "codebase-analyzer", prompt: "Read src/hooks/...", description: "Read hooks"}]})  // Just use Read!
+spawn_agent({agents: [{agent: "codebase-locator", prompt: "Find existing files under thoughts/...", description: "Find files"}]})  // Just use Glob!
+spawn_agent({agents: [{agent: "codebase-analyzer", prompt: "Read thoughts/shared/designs/...", description: "Read designs"}]})  // Just use Read!
 // ... 15 more unnecessary subagent calls
 </bad-example>
 
 <when-subagents-ok description="Rare cases where subagents add value">
 // Complex pattern discovery across unfamiliar codebase:
-spawn_agent(agent="pattern-finder", prompt="Find auth middleware patterns", description="Find auth patterns")
-// That's it - ONE subagent call, not 18
+spawn_agent({agents: [{agent: "pattern-finder", prompt: "Find auth middleware patterns", description: "Find auth patterns"}]})
+// That's it - ONE subagent, not 18
 </when-subagents-ok>
 </execution-example>
 

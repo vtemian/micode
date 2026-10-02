@@ -4,7 +4,13 @@ import { join } from "node:path";
 
 import type { PluginInput } from "@opencode-ai/plugin";
 
-import { formatExamplesForInjection, type LoadedMindmodel, loadExamples, loadMindmodel } from "@/mindmodel";
+import {
+  formatExamplesForInjection,
+  type LoadedExample,
+  type LoadedMindmodel,
+  loadExamples,
+  loadMindmodel,
+} from "@/mindmodel";
 import { matchCategories } from "@/tools/mindmodel-lookup";
 import { config } from "@/utils/config";
 
@@ -94,13 +100,21 @@ async function resolveInjection(
     return injection || null;
   }
 
-  const categories = matchCategories(task, mindmodel.manifest);
+  const all = await loadExamples(
+    mindmodel,
+    mindmodel.manifest.categories.map((category) => category.path),
+  );
+  const byPath = new Map(all.map((example) => [example.path, example]));
+
+  const categories = matchCategories(task, mindmodel.manifest, byPath);
   if (categories.length === 0) {
     matchedTasks.set(taskHash, "");
     return null;
   }
 
-  const examples = await loadExamples(mindmodel, categories);
+  const examples = categories
+    .map((path) => byPath.get(path))
+    .filter((example): example is LoadedExample => example !== undefined);
   if (examples.length === 0) {
     matchedTasks.set(taskHash, "");
     return null;

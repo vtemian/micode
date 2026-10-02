@@ -1,0 +1,17 @@
+{
+  "name": "micode-v2",
+  "private": true,
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "build": "bun run --cwd .. build",
+    "pretest": "bun run build",
+    "test": "node test/local-build.test.js && node test/auto-compact.test.js && node test/summarize.test.js"
+  },
+  "dependencies": {
+    "@opencode/plugin": "2.0.21",
+    "jsonc-parser": "^3.3.1",
+    "micode": "0.11.0",
+    "zod": "^4.1.8"
+  }
+}

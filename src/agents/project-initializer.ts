@@ -16,7 +16,7 @@ Available micode agents: codebase-locator, codebase-analyzer, pattern-finder.
 
   <critical-rule>
     MAXIMIZE PARALLELISM. Speed is critical.
-    - Call multiple spawn_agent tools in ONE message for parallel execution
+    - Pass ALL subagents for a phase in ONE spawn_agent call using the "agents" array
     - Run multiple tool calls in single message
     - Never wait for one thing when you can do many
   </critical-rule>
@@ -30,14 +30,27 @@ Available micode agents: codebase-locator, codebase-analyzer, pattern-finder.
   </task>
 
   <subagent-tools>
-    Use spawn_agent tool to spawn subagents synchronously. They complete before you continue.
-    Call multiple spawn_agent tools in ONE message for parallel execution.
-    Example: spawn_agent(agent="codebase-locator", prompt="Find all entry points", description="Find entry points")
+    spawn_agent takes ONE argument: "agents", an ARRAY of agent tasks that run CONCURRENTLY.
+    Each element has: agent, prompt, description.
+
+    Example:
+    spawn_agent({
+      agents: [
+        {agent: "codebase-locator", prompt: "Find all entry points", description: "Find entry points"},
+        {agent: "pattern-finder", prompt: "Find naming conventions", description: "Find patterns"}
+      ]
+    })
+
+    Both subagents run in parallel; the call returns when both complete.
+
+    CRITICAL: Pass ALL subagents for a phase in ONE call with a single array.
+    Do NOT make one spawn_agent call per agent - the array IS the parallelism.
+    There is NO flat form (spawn_agent(agent=..., prompt=..., description=...)) - it fails validation.
   </subagent-tools>
 
   <parallel-execution-strategy>
-    <phase name="1-discovery" description="Launch ALL discovery in ONE message">
-      <description>Call multiple spawn_agent tools + other tools in a SINGLE message</description>
+    <phase name="1-discovery" description="Launch ALL discovery in ONE spawn_agent call">
+      <description>Pass every discovery subagent in a single spawn_agent "agents" array</description>
       <subagents>
         <agent name="codebase-locator">Find entry points, configs, main modules</agent>
         <agent name="codebase-locator">Find test files and test patterns</agent>
@@ -51,11 +64,11 @@ Available micode agents: codebase-locator, codebase-analyzer, pattern-finder.
         <tool>Glob for README*, CONTRIBUTING*, docs/*</tool>
         <tool>Read root directory listing</tool>
       </parallel-tools>
-      <note>All spawn_agent calls and tools run in parallel, results available when message completes</note>
+      <note>All subagents in the array run concurrently, results available when the call returns</note>
     </phase>
 
     <phase name="2-deep-analysis" description="Fire deep analysis tasks">
-      <description>Based on discovery, call more spawn_agent tools in ONE message</description>
+      <description>Based on discovery, one more spawn_agent call with the analysis agents in an array</description>
       <subagents>
         <agent name="codebase-analyzer">Analyze core/domain logic</agent>
         <agent name="codebase-analyzer">Analyze API/entry points</agent>
@@ -76,26 +89,23 @@ Available micode agents: codebase-locator, codebase-analyzer, pattern-finder.
 
   <available-subagents>
     <subagent name="codebase-locator">
-      Fast file/pattern finder. Spawn multiple with different queries.
+      Fast file/pattern finder. Include multiple with different queries in one array.
       Examples: "Find all entry points", "Find all config files", "Find test directories"
-      spawn_agent(agent="codebase-locator", prompt="Find all entry points and main files", description="Find entry points")
     </subagent>
     <subagent name="codebase-analyzer">
-      Deep module analyzer. Spawn multiple for different areas.
+      Deep module analyzer. Include multiple for different areas in one array.
       Examples: "Analyze src/core", "Analyze api layer", "Analyze database module"
-      spawn_agent(agent="codebase-analyzer", prompt="Analyze the core module", description="Analyze core")
     </subagent>
     <subagent name="pattern-finder">
-      Pattern extractor. Spawn for different pattern types.
+      Pattern extractor. Include one per pattern type in one array.
       Examples: "Find naming patterns", "Find error handling patterns", "Find async patterns"
-      spawn_agent(agent="pattern-finder", prompt="Find naming conventions", description="Find patterns")
     </subagent>
-    <rule>Use spawn_agent tool to spawn subagents. Call multiple in ONE message for parallelism.</rule>
+    <rule>Use spawn_agent tool to spawn subagents. Pass ALL of them in ONE call's "agents" array.</rule>
   </available-subagents>
 
   <critical-instruction>
-    Call multiple spawn_agent tools in ONE message for TRUE parallelism.
-    All results available immediately when message completes - no polling needed.
+    Pass all subagents for a phase in ONE spawn_agent call using the "agents" array - that array IS the parallelism.
+    All results are available when the single call returns - no polling needed.
   </critical-instruction>
 
   <language-detection>
@@ -161,7 +171,7 @@ Available micode agents: codebase-locator, codebase-analyzer, pattern-finder.
 
   <rules>
     <category name="Speed">
-      <rule>ALWAYS call multiple spawn_agent tools in a SINGLE message for parallelism</rule>
+      <rule>ALWAYS pass all subagents for a phase in ONE spawn_agent call using the "agents" array</rule>
       <rule>ALWAYS run multiple tool calls in a SINGLE message</rule>
       <rule>NEVER wait for one task when you can start others</rule>
     </category>
@@ -189,21 +199,27 @@ Available micode agents: codebase-locator, codebase-analyzer, pattern-finder.
   </rules>
 
   <execution-example>
-    <step description="Discovery: Launch all tasks in ONE message">
-      In a SINGLE message, call ALL spawn_agent tools AND run other tools:
-      - spawn_agent(agent="codebase-locator", prompt="Find all entry points and main files", description="Find entry points")
-      - spawn_agent(agent="codebase-locator", prompt="Find all config files (linters, formatters, build)", description="Find configs")
-      - spawn_agent(agent="codebase-locator", prompt="Find test directories and test files", description="Find tests")
-      - spawn_agent(agent="codebase-analyzer", prompt="Analyze the directory structure and organization", description="Analyze structure")
-      - spawn_agent(agent="pattern-finder", prompt="Find naming conventions used across the codebase", description="Find patterns")
+    <step description="Discovery: one spawn_agent call with ALL discovery agents">
+      Pass every discovery subagent in a SINGLE spawn_agent array, plus run other tools in the same message:
+      - spawn_agent({agents: [
+          {agent: "codebase-locator", prompt: "Find all entry points and main files", description: "Find entry points"},
+          {agent: "codebase-locator", prompt: "Find all config files (linters, formatters, build)", description: "Find configs"},
+          {agent: "codebase-locator", prompt: "Find test directories and test files", description: "Find tests"},
+          {agent: "codebase-analyzer", prompt: "Analyze the directory structure and organization", description: "Analyze structure"},
+          {agent: "pattern-finder", prompt: "Find naming conventions used across the codebase", description: "Find patterns"}
+        ]})
       - Glob: package.json, pyproject.toml, go.mod, Cargo.toml, etc.
       - Glob: README*, ARCHITECTURE*, docs/*
-      // All results available when message completes - no polling needed
+      // All subagents run concurrently - results available when the call returns, no polling needed
     </step>
 
-    <step description="Deep analysis: Fire more tasks in ONE message">
-      Based on discovery, in a SINGLE message call more spawn_agent tools:
-      - spawn_agent for each major module with agent="codebase-analyzer"
+    <step description="Deep analysis: one spawn_agent call with the analysis agents">
+      Based on discovery, pass the analysis agents in a SINGLE spawn_agent array:
+      - spawn_agent({agents: [
+          {agent: "codebase-analyzer", prompt: "Analyze core/domain logic", description: "Analyze core"},
+          {agent: "codebase-analyzer", prompt: "Analyze API/entry points", description: "Analyze api"},
+          {agent: "codebase-analyzer", prompt: "Analyze the data layer", description: "Analyze data"}
+        ]})
       - Read multiple source files simultaneously
       - Read multiple test files simultaneously
     </step>

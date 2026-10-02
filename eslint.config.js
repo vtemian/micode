@@ -21,6 +21,12 @@ export default [
       // tsconfig whose @/* alias points at its own src, and it deliberately
       // contains a rule-violating file for the anti-pattern detector to find.
       "tests/e2e/fixture/**",
+      // A separately published npm package with its own dependencies and its
+      // own `npm test`. It is plain JS built against @opencode/plugin, not the
+      // TypeScript sources these rules are written for, and several rules
+      // conflict with what the v2 plugin API requires (`export default`, a
+      // literal `${ARGUMENTS}` token, imports relative to the package root).
+      "v2-adapter/**",
     ],
   },
   js.configs.recommended,
