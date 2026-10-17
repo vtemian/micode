@@ -15,10 +15,12 @@ import {
   createLedgerLoaderHook,
   createMindmodelInjectorHook,
   createSessionRecoveryHook,
+  createSessionUsage,
   createTokenAwareTruncationHook,
   getFileOps,
   warnUnknownAgents,
 } from "@/hooks";
+import { createV1Host } from "@/host/v1";
 import { mergeMcpServers, mergePluginAgents } from "@/plugin-config";
 import { deleteSessionModel, setSessionModel } from "@/session-model";
 import {
@@ -107,6 +109,9 @@ const OpenCodeConfigPlugin: Plugin = async (ctx) => {
   // Think mode state per session
   const thinkModeState = new Map<string, boolean>();
 
+  const v1Host = createV1Host(ctx.client, ctx.directory);
+  const sessionUsage = createSessionUsage(modelContextLimits);
+
   // Hooks
   const autoCompactHook = createAutoCompactHook(ctx, {
     compactionThreshold: userConfig?.compactionThreshold,
@@ -115,7 +120,7 @@ const OpenCodeConfigPlugin: Plugin = async (ctx) => {
   const contextInjectorHook = createContextInjectorHook(ctx);
   const ledgerLoaderHook = createLedgerLoaderHook(ctx);
   const sessionRecoveryHook = createSessionRecoveryHook(ctx);
-  const tokenAwareTruncationHook = createTokenAwareTruncationHook(ctx);
+  const tokenAwareTruncationHook = createTokenAwareTruncationHook(sessionUsage);
   const contextWindowMonitorHook = createContextWindowMonitorHook(ctx, { modelContextLimits });
   const commentCheckerHook = createCommentCheckerHook(ctx);
   const artifactAutoIndexHook = createArtifactAutoIndexHook(ctx);
@@ -414,7 +419,11 @@ IMPORTANT:
       output: { output?: string },
     ) => {
       // Token-aware truncation
-      await tokenAwareTruncationHook["tool.execute.after"]({ name: input.tool, sessionID: input.sessionID }, output);
+      output.output = await tokenAwareTruncationHook.onToolResult({
+        tool: input.tool,
+        sessionID: input.sessionID,
+        output: output.output ?? "",
+      });
 
       // Comment checker for Edit tool
       await commentCheckerHook["tool.execute.after"]({ tool: input.tool, args: input.args }, output);
@@ -483,10 +492,14 @@ IMPORTANT:
         await cleanupDeletedSession(event);
       }
 
+      const normalized = v1Host.relay(event);
+      if (normalized) {
+        sessionUsage.onEvent(normalized);
+      }
+
       // Run all event hooks
       await autoCompactHook.event({ event });
       await sessionRecoveryHook.event({ event });
-      await tokenAwareTruncationHook.event({ event });
       await contextWindowMonitorHook.event({ event });
 
       // File ops tracker cleanup

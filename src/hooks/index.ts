@@ -35,4 +35,9 @@ export {
 } from "./ledger-loader";
 export { createMindmodelInjectorHook } from "./mindmodel-injector";
 export { createSessionRecoveryHook } from "./session-recovery";
-export { createTokenAwareTruncationHook } from "./token-aware-truncation";
+export { createSessionUsage, type SessionUsage, type SessionUsageTracker } from "./session-usage";
+export {
+  createTokenAwareTruncationHook,
+  type TokenAwareTruncationHook,
+  type ToolResult,
+} from "./token-aware-truncation";

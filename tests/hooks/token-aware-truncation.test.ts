@@ -1,316 +1,100 @@
 import { describe, expect, it } from "bun:test";
 
+import { createSessionUsage, type SessionUsageTracker } from "../../src/hooks/session-usage";
 import { createTokenAwareTruncationHook } from "../../src/hooks/token-aware-truncation";
 
+const MODEL = { providerID: "p", modelID: "m" };
+const LIMIT = 200_000;
+
+function usageAt(input: number): SessionUsageTracker {
+  const usage = createSessionUsage(new Map([["p/m", LIMIT]]));
+  usage.onEvent({ type: "assistant.usage", sessionID: "s1", input, cacheRead: 0, model: MODEL });
+  return usage;
+}
+
+function manyLines(count: number, line: (i: number) => string): string {
+  return Array.from({ length: count }, (_, i) => line(i)).join("\n");
+}
+
 describe("token-aware-truncation", () => {
-  function createMockCtx(overrides?: Record<string, unknown>) {
-    return {
-      directory: "/test",
-      client: {
-        session: {
-          messages: async () => ({
-            data: [
-              {
-                info: {
-                  role: "assistant",
-                  usage: { inputTokens: 50_000, cacheReadInputTokens: 0 },
-                },
-              },
-            ],
-          }),
-        },
-        tui: {
-          showToast: async () => {},
-        },
-      },
-      ...overrides,
-    } as any;
-  }
+  describe("onToolResult", () => {
+    it("truncates grep output when the context window is nearly full", async () => {
+      const hook = createTokenAwareTruncationHook(usageAt(190_000));
+      const output = manyLines(5000, (i) => `line ${i}: some content here that takes up space`);
 
-  describe("createTokenAwareTruncationHook", () => {
-    it("should return a hook with event and tool.execute.after handlers", () => {
-      const hook = createTokenAwareTruncationHook(createMockCtx());
-      expect(hook.event).toBeDefined();
-      expect(hook["tool.execute.after"]).toBeDefined();
-    });
-  });
+      const truncated = await hook.onToolResult({ tool: "grep", sessionID: "s1", output });
 
-  describe("tool.execute.after", () => {
-    it("should truncate output for grep tool", async () => {
-      const ctx = createMockCtx({
-        client: {
-          session: {
-            messages: async () => ({
-              data: [
-                {
-                  info: {
-                    role: "assistant",
-                    usage: { inputTokens: 190_000, cacheReadInputTokens: 0 },
-                  },
-                },
-              ],
-            }),
-          },
-        },
-      });
-
-      const hook = createTokenAwareTruncationHook(ctx);
-
-      // Generate large output (many lines)
-      const lines = Array.from({ length: 5000 }, (_, i) => `line ${i}: some content here that takes up space`);
-      const output = { output: lines.join("\n") };
-
-      await hook["tool.execute.after"]({ name: "grep", sessionID: "s1" }, output);
-
-      // Output should be truncated
-      expect(output.output.length).toBeLessThan(lines.join("\n").length);
-      expect(output.output).toContain("truncated");
+      expect(truncated.length).toBeLessThan(output.length);
+      expect(truncated).toContain("truncated");
     });
 
-    it("should truncate output for Grep tool (capitalized)", async () => {
-      const ctx = createMockCtx({
-        client: {
-          session: {
-            messages: async () => ({
-              data: [
-                {
-                  info: {
-                    role: "assistant",
-                    usage: { inputTokens: 190_000, cacheReadInputTokens: 0 },
-                  },
-                },
-              ],
-            }),
-          },
-        },
-      });
+    it("truncates glob output", async () => {
+      const hook = createTokenAwareTruncationHook(usageAt(190_000));
+      const output = manyLines(5000, (i) => `/path/to/file${i}.ts`);
 
-      const hook = createTokenAwareTruncationHook(ctx);
-      const lines = Array.from({ length: 5000 }, (_, i) => `match ${i}`);
-      const output = { output: lines.join("\n") };
+      const truncated = await hook.onToolResult({ tool: "glob", sessionID: "s1", output });
 
-      await hook["tool.execute.after"]({ name: "Grep", sessionID: "s1" }, output);
-
-      expect(output.output.length).toBeLessThan(lines.join("\n").length);
+      expect(truncated.length).toBeLessThan(output.length);
     });
 
-    it("should truncate output for glob tool", async () => {
-      const ctx = createMockCtx({
-        client: {
-          session: {
-            messages: async () => ({
-              data: [
-                {
-                  info: {
-                    role: "assistant",
-                    usage: { inputTokens: 190_000, cacheReadInputTokens: 0 },
-                  },
-                },
-              ],
-            }),
-          },
-        },
-      });
+    it("truncates ast_grep_search output", async () => {
+      const hook = createTokenAwareTruncationHook(usageAt(190_000));
+      const output = manyLines(5000, (i) => `match ${i}`);
 
-      const hook = createTokenAwareTruncationHook(ctx);
-      const lines = Array.from({ length: 5000 }, (_, i) => `/path/to/file${i}.ts`);
-      const output = { output: lines.join("\n") };
+      const truncated = await hook.onToolResult({ tool: "ast_grep_search", sessionID: "s1", output });
 
-      await hook["tool.execute.after"]({ name: "glob", sessionID: "s1" }, output);
-
-      expect(output.output.length).toBeLessThan(lines.join("\n").length);
+      expect(truncated.length).toBeLessThan(output.length);
     });
 
-    it("should not truncate output for non-truncatable tools", async () => {
-      const hook = createTokenAwareTruncationHook(createMockCtx());
-      const original = "some file content here";
-      const output = { output: original };
-
-      await hook["tool.execute.after"]({ name: "Read", sessionID: "s1" }, output);
-
-      expect(output.output).toBe(original);
+    it("leaves non-truncatable tools alone", async () => {
+      const hook = createTokenAwareTruncationHook(createSessionUsage());
+      expect(await hook.onToolResult({ tool: "read", sessionID: "s1", output: "x" })).toBe("x");
+      expect(await hook.onToolResult({ tool: "edit", sessionID: "s1", output: "Edit applied" })).toBe("Edit applied");
     });
 
-    it("should not truncate output for Edit tool", async () => {
-      const hook = createTokenAwareTruncationHook(createMockCtx());
-      const original = "Edit applied successfully";
-      const output = { output: original };
-
-      await hook["tool.execute.after"]({ name: "Edit", sessionID: "s1" }, output);
-
-      expect(output.output).toBe(original);
+    it("leaves empty output alone", async () => {
+      const hook = createTokenAwareTruncationHook(usageAt(190_000));
+      expect(await hook.onToolResult({ tool: "grep", sessionID: "s1", output: "" })).toBe("");
     });
 
-    it("should skip when output is undefined", async () => {
-      const hook = createTokenAwareTruncationHook(createMockCtx());
-      const output = { output: undefined };
-
-      await hook["tool.execute.after"]({ name: "grep", sessionID: "s1" }, output);
-
-      expect(output.output).toBeUndefined();
+    it("keeps small output unchanged even for truncatable tools", async () => {
+      const hook = createTokenAwareTruncationHook(usageAt(190_000));
+      const output = "file1.ts\nfile2.ts\nfile3.ts";
+      expect(await hook.onToolResult({ tool: "grep", sessionID: "s1", output })).toBe(output);
     });
 
-    it("should not truncate small output even for truncatable tools", async () => {
-      const hook = createTokenAwareTruncationHook(createMockCtx());
-      const smallOutput = "file1.ts\nfile2.ts\nfile3.ts";
-      const output = { output: smallOutput };
+    it("preserves header lines when truncating", async () => {
+      const hook = createTokenAwareTruncationHook(usageAt(190_000));
+      const headers = ["Results from search:", "Pattern: foo", "Directory: /src"];
+      const output = [...headers, manyLines(5000, (i) => `  ${i}: match found in file${i}.ts`)].join("\n");
 
-      await hook["tool.execute.after"]({ name: "grep", sessionID: "s1" }, output);
+      const truncated = await hook.onToolResult({ tool: "grep", sessionID: "s1", output });
 
-      expect(output.output).toBe(smallOutput);
+      for (const header of headers) expect(truncated).toContain(header);
+      expect(truncated.length).toBeLessThan(output.length);
     });
 
-    it("should preserve header lines when truncating", async () => {
-      const ctx = createMockCtx({
-        client: {
-          session: {
-            messages: async () => ({
-              data: [
-                {
-                  info: {
-                    role: "assistant",
-                    usage: { inputTokens: 190_000, cacheReadInputTokens: 0 },
-                  },
-                },
-              ],
-            }),
-          },
-        },
-      });
+    it("suppresses output when the context window is exhausted", async () => {
+      const usage = createSessionUsage(new Map([["p/m", 1000]]));
+      usage.onEvent({ type: "assistant.usage", sessionID: "s1", input: 1000, cacheRead: 0, model: MODEL });
+      const hook = createTokenAwareTruncationHook(usage);
 
-      const hook = createTokenAwareTruncationHook(ctx);
-
-      const headerLine1 = "Results from search:";
-      const headerLine2 = "Pattern: foo";
-      const headerLine3 = "Directory: /src";
-      const contentLines = Array.from({ length: 5000 }, (_, i) => `  ${i}: match found in file${i}.ts`);
-      const fullOutput = [headerLine1, headerLine2, headerLine3, ...contentLines].join("\n");
-      const output = { output: fullOutput };
-
-      await hook["tool.execute.after"]({ name: "grep", sessionID: "s1" }, output);
-
-      // Header lines should be preserved
-      expect(output.output).toContain(headerLine1);
-      expect(output.output).toContain(headerLine2);
-      expect(output.output).toContain(headerLine3);
+      expect(await hook.onToolResult({ tool: "grep", sessionID: "s1", output: "a\nb\nc" })).toContain(
+        "[Output suppressed",
+      );
     });
 
-    it("should suppress output entirely when context is exhausted", async () => {
-      const ctx = createMockCtx({
-        client: {
-          session: {
-            messages: async () => ({
-              data: [
-                {
-                  info: {
-                    role: "assistant",
-                    usage: { inputTokens: 200_000, cacheReadInputTokens: 0 },
-                  },
-                },
-              ],
-            }),
-          },
-        },
-      });
+    it("uses the default output budget for sessions with no recorded usage", async () => {
+      const hook = createTokenAwareTruncationHook(createSessionUsage());
+      const output = manyLines(5000, (i) => `line ${i}: some content here that takes up space`);
 
-      const hook = createTokenAwareTruncationHook(ctx);
-      const output = { output: "some grep results" };
+      const truncated = await hook.onToolResult({ tool: "grep", sessionID: "unknown", output });
 
-      await hook["tool.execute.after"]({ name: "grep", sessionID: "s1" }, output);
-
-      expect(output.output).toContain("context window exhausted");
-    });
-
-    it("should handle ast_grep_search tool", async () => {
-      const hook = createTokenAwareTruncationHook(createMockCtx());
-      const output = { output: "match 1\nmatch 2" };
-
-      await hook["tool.execute.after"]({ name: "ast_grep_search", sessionID: "s1" }, output);
-
-      // Small output should pass through unchanged
-      expect(output.output).toBe("match 1\nmatch 2");
-    });
-  });
-
-  describe("event handler", () => {
-    it("should clean up cache on session.deleted", async () => {
-      const hook = createTokenAwareTruncationHook(createMockCtx());
-
-      // Should not throw
-      await hook.event({
-        event: {
-          type: "session.deleted",
-          properties: { info: { id: "s1" } },
-        },
-      });
-    });
-
-    it("should handle message.updated for assistant messages", async () => {
-      const hook = createTokenAwareTruncationHook(createMockCtx());
-
-      // Should not throw; updates internal cache
-      await hook.event({
-        event: {
-          type: "message.updated",
-          properties: {
-            info: {
-              sessionID: "s1",
-              role: "assistant",
-            },
-          },
-        },
-      });
-    });
-
-    it("should ignore message.updated for non-assistant messages", async () => {
-      const hook = createTokenAwareTruncationHook(createMockCtx());
-
-      // Should not throw
-      await hook.event({
-        event: {
-          type: "message.updated",
-          properties: {
-            info: {
-              sessionID: "s1",
-              role: "user",
-            },
-          },
-        },
-      });
-    });
-
-    it("should handle missing session info on deletion", async () => {
-      const hook = createTokenAwareTruncationHook(createMockCtx());
-
-      await hook.event({
-        event: {
-          type: "session.deleted",
-          properties: {},
-        },
-      });
-    });
-  });
-
-  describe("fallback behavior", () => {
-    it("should use default max tokens when session messages fetch fails", async () => {
-      const ctx = createMockCtx({
-        client: {
-          session: {
-            messages: async () => {
-              throw new Error("API error");
-            },
-          },
-        },
-      });
-
-      const hook = createTokenAwareTruncationHook(ctx);
-      const smallOutput = "a few matches";
-      const output = { output: smallOutput };
-
-      await hook["tool.execute.after"]({ name: "grep", sessionID: "s1" }, output);
-
-      // Small output should still pass through (default limit is generous)
-      expect(output.output).toBe(smallOutput);
+      expect(truncated.length).toBeLessThan(output.length);
+      expect(truncated).toContain("truncated");
+      expect(await hook.onToolResult({ tool: "grep", sessionID: "unknown", output: "a few matches" })).toBe(
+        "a few matches",
+      );
     });
   });
 });
