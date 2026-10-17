@@ -145,7 +145,7 @@ export const config = {
    */
   model: {
     /** Plugin fallback model when no opencode.json or micode.json model is configured */
-    default: "openai/gpt-5.2-codex",
+    default: "openai/gpt-5.3-codex",
   },
 
   /**
