@@ -3,7 +3,11 @@ export { type AutoCompactConfig, createAutoCompactHook } from "./auto-compact";
 export { createCommentCheckerHook } from "./comment-checker";
 export { ConstraintViolationError, createConstraintReviewerHook } from "./constraint-reviewer";
 export { createContextInjectorHook } from "./context-injector";
-export { type ContextWindowMonitorConfig, createContextWindowMonitorHook } from "./context-window-monitor";
+export {
+  type ContextWindowMonitorHook,
+  createContextWindowMonitorHook,
+  type Notify,
+} from "./context-window-monitor";
 export {
   clearSession,
   createFetchTrackerHook,

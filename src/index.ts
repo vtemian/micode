@@ -121,7 +121,7 @@ const OpenCodeConfigPlugin: Plugin = async (ctx) => {
   const ledgerLoaderHook = createLedgerLoaderHook(ctx);
   const sessionRecoveryHook = createSessionRecoveryHook(ctx);
   const tokenAwareTruncationHook = createTokenAwareTruncationHook(sessionUsage);
-  const contextWindowMonitorHook = createContextWindowMonitorHook(ctx, { modelContextLimits });
+  const contextWindowMonitorHook = createContextWindowMonitorHook(sessionUsage, (n) => v1Host.notify(n));
   const commentCheckerHook = createCommentCheckerHook(ctx);
   const artifactAutoIndexHook = createArtifactAutoIndexHook(ctx);
   const fileOpsTrackerHook = createFileOpsTrackerHook(ctx);
@@ -342,9 +342,6 @@ const OpenCodeConfigPlugin: Plugin = async (ctx) => {
       // Inject project context files
       await contextInjectorHook["chat.params"](input, output);
 
-      // Inject context window status
-      await contextWindowMonitorHook["chat.params"](input, output);
-
       // If think mode was requested, increase thinking budget
       if (thinkModeState.get(input.sessionID)) {
         output.options = {
@@ -495,12 +492,12 @@ IMPORTANT:
       const normalized = v1Host.relay(event);
       if (normalized) {
         sessionUsage.onEvent(normalized);
+        await contextWindowMonitorHook.onEvent(normalized);
       }
 
       // Run all event hooks
       await autoCompactHook.event({ event });
       await sessionRecoveryHook.event({ event });
-      await contextWindowMonitorHook.event({ event });
 
       // File ops tracker cleanup
       await fileOpsTrackerHook.event({ event });
