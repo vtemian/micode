@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 
-import { createV1Host, joinTextParts, toV1Tool } from "../../src/host/v1";
+import { createV1Host, joinTextParts, server, toV1Tool } from "../../src/host/v1";
 import { defineTool } from "../../src/tools/define";
 
 type Log = Record<string, unknown[]>;
@@ -294,5 +294,156 @@ describe("v1 host", () => {
   it("joins only text parts", () => {
     expect(joinTextParts([{ type: "text", text: "a" }, { type: "image" }, { type: "text", text: "b" }])).toBe("a\nb");
     expect(joinTextParts(undefined)).toBe("");
+  });
+});
+
+describe("v1 server", () => {
+  async function load(log: Log = {}) {
+    const host = fakeClient(log);
+    const hooks = await server({ client: host, directory: "/work" } as any);
+    return { hooks, host };
+  }
+
+  it("exposes every micode tool through the v1 tool() helper", async () => {
+    const { hooks } = await load();
+    expect(Object.keys(hooks.tool ?? {})).toEqual(
+      expect.arrayContaining(["spawn_agent", "batch_read", "ast_grep_search"]),
+    );
+    expect(hooks.tool?.spawn_agent.description).toBeString();
+    await hooks.dispose?.();
+  });
+
+  describe("config", () => {
+    it("allows the four permission actions without prompting", async () => {
+      const { hooks } = await load();
+      const cfg: any = { permission: { edit: "ask", doom_loop: "ask" } };
+      await hooks.config?.(cfg);
+      expect(cfg.permission).toEqual({
+        edit: "allow",
+        bash: "allow",
+        webfetch: "allow",
+        external_directory: "allow",
+        doom_loop: "ask",
+      });
+      await hooks.dispose?.();
+    });
+
+    it("merges plugin agents over host agents and puts the primary agent last", async () => {
+      const { hooks } = await load();
+      const cfg: any = { agent: { build: { mode: "primary" } } };
+      await hooks.config?.(cfg);
+      expect(cfg.agent.build.mode).toBe("primary");
+      expect(cfg.agent.executor).toBeDefined();
+      expect(cfg.agent.commander.prompt).toBeString();
+      expect(Object.keys(cfg.agent).at(-1)).toBe("commander");
+      await hooks.dispose?.();
+    });
+
+    it("keeps user fields on a host-declared plugin agent", async () => {
+      const { hooks } = await load();
+      const cfg: any = { agent: { commander: { steps: 7 } } };
+      await hooks.config?.(cfg);
+      expect(cfg.agent.commander.steps).toBe(7);
+      expect(cfg.agent.commander.prompt).toBeString();
+      await hooks.dispose?.();
+    });
+
+    it("sets default_agent only when the user has not", async () => {
+      const { hooks } = await load();
+      const unset: any = {};
+      await hooks.config?.(unset);
+      expect(unset.default_agent).toBe("commander");
+      const preset: any = { default_agent: "build" };
+      await hooks.config?.(preset);
+      expect(preset.default_agent).toBe("build");
+      await hooks.dispose?.();
+    });
+
+    it("adds the four plugin commands with their agents", async () => {
+      const { hooks } = await load();
+      const cfg: any = { command: { mine: { template: "x" } } };
+      await hooks.config?.(cfg);
+      expect(Object.keys(cfg.command)).toEqual(["mine", "init", "mindmodel", "ledger", "search"]);
+      expect(cfg.command.init).toEqual({
+        description: expect.any(String),
+        agent: "project-initializer",
+        template: "Initialize this project. $ARGUMENTS",
+      });
+      expect(cfg.command.search.agent).toBe("artifact-searcher");
+      await hooks.dispose?.();
+    });
+
+    it("adds mcp servers without overriding host entries", async () => {
+      const { hooks } = await load();
+      const mine = { type: "local", command: ["my-own-context7"] };
+      const custom = { type: "local", command: ["custom"] };
+      const cfg: any = { mcp: { context7: mine, custom } };
+      await hooks.config?.(cfg);
+      expect(cfg.mcp.context7).toEqual(mine);
+      expect(cfg.mcp.custom).toEqual(custom);
+      await hooks.dispose?.();
+    });
+  });
+
+  it("adds the thinking option to chat.params after a think keyword in chat.message", async () => {
+    const { hooks } = await load();
+    await hooks["chat.message"]?.({ sessionID: "s1" }, {
+      parts: [{ type: "text", text: "let's think about it" }],
+    } as any);
+    const thinking: any = { options: { keep: 1 } };
+    await hooks["chat.params"]?.({ sessionID: "s1" } as any, thinking);
+    expect(thinking.options).toMatchObject({ keep: 1, thinking: { type: "enabled" } });
+
+    await hooks["chat.message"]?.({ sessionID: "s1" }, { parts: [{ type: "text", text: "go" }] } as any);
+    const plain: any = { options: {} };
+    await hooks["chat.params"]?.({ sessionID: "s1" } as any, plain);
+    expect(plain.options).toEqual({});
+    await hooks.dispose?.();
+  });
+
+  it("drops CLAUDE.md and AGENTS.md entries from the system prompt", async () => {
+    const { hooks } = await load();
+    const output = {
+      system: ["base", "Instructions from: /x/CLAUDE.md\nrules", "Instructions from: /x/AGENTS.md\nrules", "other"],
+    };
+    await hooks["experimental.chat.system.transform"]?.({ sessionID: "s1" } as any, output);
+    expect(output.system).toEqual(["base", "other"]);
+    await hooks.dispose?.();
+  });
+
+  it("leaves the system prompt alone when the request carries no session id", async () => {
+    const { hooks } = await load();
+    const output = { system: ["Instructions from: /x/CLAUDE.md\nrules"] };
+    await hooks["experimental.chat.system.transform"]?.({} as any, output);
+    expect(output.system).toEqual(["Instructions from: /x/CLAUDE.md\nrules"]);
+    await hooks.dispose?.();
+  });
+
+  it("replaces the compaction prompt with the structured summary instruction", async () => {
+    const { hooks } = await load();
+    const output: { context: string[]; prompt?: string } = { context: [] };
+    await hooks["experimental.session.compacting"]?.({ sessionID: "s1" }, output);
+    expect(output.prompt).toContain("# Session Summary");
+    await hooks.dispose?.();
+  });
+
+  it("routes tool output through the core pipeline", async () => {
+    const { hooks } = await load();
+    const output: any = { title: "", output: "plain", metadata: {} };
+    await hooks["tool.execute.after"]?.({ tool: "bash", sessionID: "s1", callID: "c", args: {} }, output);
+    expect(output.output).toBe("plain");
+    await hooks.dispose?.();
+  });
+
+  it("relays session.deleted so per-session state is forgotten", async () => {
+    const { hooks } = await load();
+    await hooks["chat.message"]?.({ sessionID: "s1" }, {
+      parts: [{ type: "text", text: "think hard" }],
+    } as any);
+    await hooks.event?.({ event: { type: "session.deleted", properties: { info: { id: "s1" } } } as any });
+    const params: any = { options: {} };
+    await hooks["chat.params"]?.({ sessionID: "s1" } as any, params);
+    expect(params.options).toEqual({});
+    await hooks.dispose?.();
   });
 });
