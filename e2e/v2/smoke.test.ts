@@ -6,7 +6,7 @@ import { join } from "node:path";
 const REPO_ROOT = join(import.meta.dir, "..", "..");
 const PORT = 44199;
 const BOOT_TIMEOUT_MS = 120_000;
-const SETTLE_MS = 3000;
+const READY_TIMEOUT_MS = 30_000;
 const POLL_MS = 200;
 
 interface Server {
@@ -73,7 +73,20 @@ describe("micode on OpenCode 2", () => {
   let server: Server;
   beforeAll(async () => {
     server = await startServer();
-    await new Promise((r) => setTimeout(r, SETTLE_MS));
+    // Poll until the API answers rather than sleeping a fixed interval.
+    await waitFor(
+      () => (server.log.some((l) => /listening|server password/i.test(l)) ? "ready" : undefined),
+      READY_TIMEOUT_MS,
+    );
+    const started = Date.now();
+    for (;;) {
+      const res = await fetch(`http://127.0.0.1:${PORT}/api/agent`, {
+        headers: { Authorization: `Basic ${btoa(`opencode:${server.password}`)}` },
+      }).catch(() => undefined);
+      if (res?.ok) break;
+      if (Date.now() - started > READY_TIMEOUT_MS) throw new Error("server never became ready");
+      await new Promise((r) => setTimeout(r, POLL_MS));
+    }
   });
   afterAll(() => {
     server?.proc.kill();

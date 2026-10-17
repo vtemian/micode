@@ -1,8 +1,8 @@
 // tests/tools/spawn-agent.test.ts
-import { describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it } from "bun:test";
 
 import type { AgentRun, SessionHost } from "../../src/host/port";
-import { getSessionModel, setSessionModel } from "../../src/session-model";
+import { deleteSessionModel, getSessionModel, setSessionModel } from "../../src/session-model";
 import { createSpawnAgentTool } from "../../src/tools/spawn-agent";
 
 /**
@@ -29,6 +29,8 @@ function fakeHost(runs: AgentRun[], reply = "subagent result"): SessionHost {
 }
 
 describe("spawn_agent", () => {
+  afterEach(() => deleteSessionModel("ses_parent"));
+
   const call = { sessionID: "ses_parent" };
 
   it("links the child session under the spawner", async () => {
