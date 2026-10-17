@@ -19,7 +19,7 @@ import {
   getFileOps,
   warnUnknownAgents,
 } from "@/hooks";
-import { toV1Tool } from "@/host/v1";
+import { createV1Host, toV1Tool } from "@/host/v1";
 import { mergeMcpServers, mergePluginAgents } from "@/plugin-config";
 import { deleteSessionModel, setSessionModel } from "@/session-model";
 import {
@@ -89,6 +89,8 @@ function extractTextFromParts(parts: Array<{ type: string; text?: string }>): st
 
 // eslint-disable-next-line max-lines-per-function
 const OpenCodeConfigPlugin: Plugin = async (ctx) => {
+  const v1Host = createV1Host(ctx.client, ctx.directory);
+
   // Validate external tool dependencies at startup
   const astGrepStatus = await checkAstGrepAvailable();
   if (!astGrepStatus.available) {
@@ -209,7 +211,7 @@ const OpenCodeConfigPlugin: Plugin = async (ctx) => {
       .filter(([, override]) => override.model)
       .map(([name]) => name),
   );
-  const spawn_agent = createSpawnAgentTool(ctx, agentModelOverrides);
+  const spawn_agent = createSpawnAgentTool(v1Host, agentModelOverrides);
 
   // Batch read tool (for parallel file reads)
   const batch_read = createBatchReadTool(ctx);
@@ -266,6 +268,7 @@ const OpenCodeConfigPlugin: Plugin = async (ctx) => {
     look_at,
     artifact_search,
     milestone_artifact_search,
+    spawn_agent,
     batch_read,
     ...mindmodelLookupTool,
     ...ptyTools,
@@ -275,7 +278,7 @@ const OpenCodeConfigPlugin: Plugin = async (ctx) => {
 
   return {
     // Tools
-    tool: { ...hostTools, spawn_agent },
+    tool: hostTools,
 
     config: async (config) => {
       // Allow all permissions globally - no prompts
