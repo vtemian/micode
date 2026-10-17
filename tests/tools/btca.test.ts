@@ -43,14 +43,7 @@ describe("btca tool", () => {
   });
 
   describe("btca_ask execution", () => {
-    const mockContext = {
-      sessionID: "test-session",
-      messageID: "test-message",
-      agent: "test-agent",
-      abort: new AbortController().signal,
-      metadata: () => {},
-      ask: async () => {},
-    } as any;
+    const mockContext = { sessionID: "test-session" };
 
     it("should return error message when btca not installed", async () => {
       // This test will pass if btca is not installed (expected in CI)

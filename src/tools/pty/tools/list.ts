@@ -1,6 +1,6 @@
 // src/tools/pty/tools/list.ts
-import type { ToolDefinition } from "@opencode-ai/plugin";
-import { tool } from "@opencode-ai/plugin/tool";
+
+import { defineTool, type MicodeTool } from "@/tools/define";
 import type { PTYManager } from "@/tools/pty/manager";
 
 const DESCRIPTION = `Lists all PTY sessions (active and exited).
@@ -26,8 +26,8 @@ Tips:
 - Sessions remain in the list after exit until explicitly cleaned up with pty_kill
 - This allows you to compare output from multiple sessions`;
 
-export function createPtyListTool(manager: PTYManager): ToolDefinition {
-  return tool({
+export function createPtyListTool(manager: PTYManager): MicodeTool {
+  return defineTool({
     description: DESCRIPTION,
     args: {},
     execute: async () => {

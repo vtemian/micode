@@ -1,8 +1,9 @@
 import { readFileSync, statSync } from "node:fs";
 import { basename, extname } from "node:path";
-import { tool } from "@opencode-ai/plugin/tool";
+import { z } from "zod";
 import { config } from "@/utils/config";
 import { extractErrorMessage } from "@/utils/errors";
+import { defineTool } from "./define";
 
 const BYTES_PER_KB = 1024;
 const MAX_SIGNATURE_LENGTH = 80;
@@ -174,14 +175,14 @@ function extractGenericStructure(lines: string[]): string {
   return `## File Preview (${total} lines)\n\n### First ${MAX_PREVIEW_LINES} lines:\n${preview}\n\n### Last ${-TAIL_PREVIEW_LINES} lines:\n${tail}`;
 }
 
-export const look_at = tool({
+export const look_at = defineTool({
   description: `Extract key information from a file to save context tokens.
 For large files, returns structure/outline instead of full content.
 Use when you need to understand a file without loading all content.
 Ideal for: large files, getting file structure, quick overview.`,
   args: {
-    filePath: tool.schema.string().describe("Path to the file"),
-    extract: tool.schema
+    filePath: z.string().describe("Path to the file"),
+    extract: z
       .string()
       .optional()
       .describe("What to extract: 'structure', 'imports', 'exports', 'all' (default: auto)"),

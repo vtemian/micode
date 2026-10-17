@@ -1,7 +1,8 @@
 // src/tools/artifact-search.ts
-import { tool } from "@opencode-ai/plugin/tool";
+import { z } from "zod";
 import { extractErrorMessage } from "@/utils/errors";
 import { getArtifactIndex } from "./artifact-index";
+import { defineTool } from "./define";
 
 const DEFAULT_SEARCH_LIMIT = 10;
 
@@ -23,7 +24,7 @@ function formatSearchResult(result: {
   return out;
 }
 
-export const artifact_search = tool({
+export const artifact_search = defineTool({
   description: `Search past plans and ledgers for relevant precedent.
 Use this to find:
 - Similar problems you've solved before
@@ -31,9 +32,9 @@ Use this to find:
 - Lessons learned from past sessions
 Returns ranked results with file paths for further reading.`,
   args: {
-    query: tool.schema.string().describe("Search query - describe what you're looking for"),
-    limit: tool.schema.number().optional().describe("Max results to return (default: 10)"),
-    type: tool.schema.enum(["all", "plan", "ledger"]).optional().describe("Filter by artifact type (default: all)"),
+    query: z.string().describe("Search query - describe what you're looking for"),
+    limit: z.number().optional().describe("Max results to return (default: 10)"),
+    type: z.enum(["all", "plan", "ledger"]).optional().describe("Filter by artifact type (default: all)"),
   },
   execute: async (args) => {
     try {

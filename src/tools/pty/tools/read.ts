@@ -1,6 +1,7 @@
 // src/tools/pty/tools/read.ts
-import type { ToolDefinition } from "@opencode-ai/plugin";
-import { tool } from "@opencode-ai/plugin/tool";
+
+import { z } from "zod";
+import { defineTool, type MicodeTool } from "@/tools/define";
 import type { PTYManager } from "@/tools/pty/manager";
 import type { PTYSessionInfo, ReadResult, SearchResult } from "@/tools/pty/types";
 import { config } from "@/utils/config";
@@ -122,15 +123,15 @@ function formatReadOutput(id: string, session: PTYSessionInfo, result: ReadResul
   return output.join("\n");
 }
 
-export function createPtyReadTool(manager: PTYManager): ToolDefinition {
-  return tool({
+export function createPtyReadTool(manager: PTYManager): MicodeTool {
+  return defineTool({
     description: DESCRIPTION,
     args: {
-      id: tool.schema.string().describe("The PTY session ID (e.g., pty_a1b2c3d4)"),
-      offset: tool.schema.number().optional().describe("Line number to start reading from (0-based, defaults to 0)"),
-      limit: tool.schema.number().optional().describe("Number of lines to read (defaults to 500)"),
-      pattern: tool.schema.string().optional().describe("Regex pattern to filter lines"),
-      ignoreCase: tool.schema.boolean().optional().describe("Case-insensitive pattern matching (default: false)"),
+      id: z.string().describe("The PTY session ID (e.g., pty_a1b2c3d4)"),
+      offset: z.number().optional().describe("Line number to start reading from (0-based, defaults to 0)"),
+      limit: z.number().optional().describe("Number of lines to read (defaults to 500)"),
+      pattern: z.string().optional().describe("Regex pattern to filter lines"),
+      ignoreCase: z.boolean().optional().describe("Case-insensitive pattern matching (default: false)"),
     },
     execute: async (args) => {
       const session = manager.get(args.id);

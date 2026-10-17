@@ -1,5 +1,6 @@
-import { tool } from "@opencode-ai/plugin/tool";
 import * as v from "valibot";
+import { z } from "zod";
+import { defineTool } from "@/tools/define";
 import { findExecutable, runCommand } from "@/utils/process";
 
 /**
@@ -150,16 +151,16 @@ function formatMatches(matches: Match[], isDryRun = false): string {
   return lines.join("\n");
 }
 
-export const ast_grep_search = tool({
+export const ast_grep_search = defineTool({
   description:
     "Search code patterns using AST-aware matching. " +
     "Use meta-variables: $VAR (single node), $$$ (multiple nodes). " +
     "Patterns must be complete AST nodes. " +
     "Examples: 'console.log($MSG)', 'def $FUNC($$$):', 'async function $NAME($$$)'",
   args: {
-    pattern: tool.schema.string().describe("AST pattern with meta-variables"),
-    lang: tool.schema.enum(LANGUAGES).describe("Target language"),
-    paths: tool.schema.array(tool.schema.string()).optional().describe("Paths to search"),
+    pattern: z.string().describe("AST pattern with meta-variables"),
+    lang: z.enum(LANGUAGES).describe("Target language"),
+    paths: z.array(z.string()).optional().describe("Paths to search"),
   },
   execute: async (args) => {
     const sgArgs = ["run", "-p", args.pattern, "--lang", args.lang, "--json=compact"];
@@ -175,17 +176,17 @@ export const ast_grep_search = tool({
   },
 });
 
-export const ast_grep_replace = tool({
+export const ast_grep_replace = defineTool({
   description:
     "Replace code patterns with AST-aware rewriting. " +
     "Dry-run by default. Use meta-variables in rewrite to preserve matched content. " +
     "Example: pattern='console.log($MSG)' rewrite='logger.info($MSG)'",
   args: {
-    pattern: tool.schema.string().describe("AST pattern to match"),
-    rewrite: tool.schema.string().describe("Replacement pattern"),
-    lang: tool.schema.enum(LANGUAGES).describe("Target language"),
-    paths: tool.schema.array(tool.schema.string()).optional().describe("Paths to search"),
-    apply: tool.schema.boolean().optional().describe("Apply changes (default: false, dry-run)"),
+    pattern: z.string().describe("AST pattern to match"),
+    rewrite: z.string().describe("Replacement pattern"),
+    lang: z.enum(LANGUAGES).describe("Target language"),
+    paths: z.array(z.string()).optional().describe("Paths to search"),
+    apply: z.boolean().optional().describe("Apply changes (default: false, dry-run)"),
   },
   execute: async (args) => {
     const sgArgs = ["run", "-p", args.pattern, "-r", args.rewrite, "--lang", args.lang, "--json=compact"];

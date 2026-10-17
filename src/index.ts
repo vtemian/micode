@@ -19,6 +19,7 @@ import {
   getFileOps,
   warnUnknownAgents,
 } from "@/hooks";
+import { toV1Tool } from "@/host/v1";
 import { mergeMcpServers, mergePluginAgents } from "@/plugin-config";
 import { deleteSessionModel, setSessionModel } from "@/session-model";
 import {
@@ -39,6 +40,7 @@ import {
   look_at,
   milestone_artifact_search,
 } from "@/tools";
+import type { MicodeTools } from "@/tools/define";
 import { config } from "@/utils/config";
 import { extractErrorMessage } from "@/utils/errors";
 import { log } from "@/utils/logger";
@@ -257,21 +259,23 @@ const OpenCodeConfigPlugin: Plugin = async (ctx) => {
     }
   }
 
+  const coreTools: MicodeTools = {
+    ast_grep_search,
+    ast_grep_replace,
+    btca_ask,
+    look_at,
+    artifact_search,
+    milestone_artifact_search,
+    batch_read,
+    ...mindmodelLookupTool,
+    ...ptyTools,
+    ...octtoTools,
+  };
+  const hostTools = Object.fromEntries(Object.entries(coreTools).map(([name, core]) => [name, toV1Tool(core)]));
+
   return {
     // Tools
-    tool: {
-      ast_grep_search,
-      ast_grep_replace,
-      btca_ask,
-      look_at,
-      artifact_search,
-      milestone_artifact_search,
-      spawn_agent,
-      batch_read,
-      ...mindmodelLookupTool,
-      ...ptyTools,
-      ...octtoTools,
-    },
+    tool: { ...hostTools, spawn_agent },
 
     config: async (config) => {
       // Allow all permissions globally - no prompts
