@@ -1,505 +1,94 @@
-import type { Plugin } from "@opencode-ai/plugin";
+import type { Hooks, Plugin } from "@opencode-ai/plugin";
+import type { ToolDefinition } from "@opencode-ai/plugin/tool";
 
-import { agents, PRIMARY_AGENT_NAME } from "@/agents";
-import { loadMicodeConfig, loadModelContextLimits, mergeAgentConfigs } from "@/config-loader";
-import {
-  clearFileOps,
-  createArtifactAutoIndexHook,
-  createAutoCompactHook,
-  createCommentCheckerHook,
-  createConstraintReviewerHook,
-  createContextInjectorHook,
-  createContextWindowMonitorHook,
-  createFetchTrackerHook,
-  createFileOpsTrackerHook,
-  createFragmentInjectorHook,
-  createLedgerLoaderHook,
-  createMindmodelInjectorHook,
-  createSessionRecoveryHook,
-  createSessionUsage,
-  createTokenAwareTruncationHook,
-  getFileOps,
-  warnUnknownAgents,
-} from "@/hooks";
-import { createV1Host, toV1Tool } from "@/host/v1";
-import { mergeMcpServers, mergePluginAgents } from "@/plugin-config";
-import { deleteSessionModel, setSessionModel } from "@/session-model";
-import {
-  artifact_search,
-  ast_grep_replace,
-  ast_grep_search,
-  btca_ask,
-  checkAstGrepAvailable,
-  checkBtcaAvailable,
-  createBatchReadTool,
-  createMindmodelLookupTool,
-  createOcttoTools,
-  createPTYManager,
-  createPtyTools,
-  createSessionStore,
-  createSpawnAgentTool,
-  loadBunPty,
-  look_at,
-  milestone_artifact_search,
-} from "@/tools";
-import type { MicodeTools } from "@/tools/define";
-import { config } from "@/utils/config";
-import { extractErrorMessage } from "@/utils/errors";
-import { log } from "@/utils/logger";
+import { createV1Host, toV1Tool, type V1Host } from "@/host/v1";
+import { createMicode, type Micode } from "@/micode";
+import { mergePluginAgents } from "@/plugin-config";
 
-// Think mode: detect keywords and enable extended thinking
-const THINK_KEYWORDS = [
-  /\bthink\s*(hard|deeply|carefully|through)\b/i,
-  /\bthink\b.*\b(about|on|through)\b/i,
-  /\b(deeply|carefully)\s*think\b/i,
-  /\blet('s|s)?\s*think\b/i,
-];
+type V1Config = Parameters<NonNullable<Hooks["config"]>>[0];
+type V1Command = NonNullable<V1Config["command"]>[string];
 
-function detectThinkKeyword(text: string): boolean {
-  return THINK_KEYWORDS.some((pattern) => pattern.test(text));
-}
-
-const PLUGIN_COMMANDS = {
-  init: {
-    description: "Initialize project with ARCHITECTURE.md and CODE_STYLE.md",
-    agent: "project-initializer",
-    template: "Initialize this project. $ARGUMENTS",
-  },
-  mindmodel: {
-    description: "Generate .mindmodel/ constraints for this project",
-    agent: "mm-orchestrator",
-    template: "Generate mindmodel for this project. $ARGUMENTS",
-  },
-  ledger: {
-    description: "Create or update continuity ledger for session state",
-    agent: "ledger-creator",
-    template: "Update the continuity ledger. $ARGUMENTS",
-  },
-  search: {
-    description: "Search past handoffs, plans, and ledgers",
-    agent: "artifact-searcher",
-    template: "Search for: $ARGUMENTS",
-  },
-};
-
-function extractTextFromParts(parts: Array<{ type: string; text?: string }>): string {
+function textOf(parts: ReadonlyArray<{ type: string; text?: string }>): string {
   return parts
-    .filter((p) => p.type === "text" && "text" in p)
-    .map((p) => (p as { text: string }).text)
-    .join("");
+    .filter((p) => p.type === "text" && typeof p.text === "string")
+    .map((p) => p.text ?? "")
+    .join(" ");
 }
 
-// eslint-disable-next-line max-lines-per-function
-const OpenCodeConfigPlugin: Plugin = async (ctx) => {
-  const v1Host = createV1Host(ctx.client, ctx.directory);
+function recordArgs(args: unknown): Record<string, unknown> | undefined {
+  return typeof args === "object" && args !== null ? (args as Record<string, unknown>) : undefined;
+}
 
-  // Validate external tool dependencies at startup
-  const astGrepStatus = await checkAstGrepAvailable();
-  if (!astGrepStatus.available) {
-    log.warn("micode", astGrepStatus.message ?? "ast-grep unavailable");
-  }
-
-  const btcaStatus = await checkBtcaAvailable();
-  if (!btcaStatus.available) {
-    log.warn("micode", btcaStatus.message ?? "btca unavailable");
-  }
-
-  // Load user config for agent overrides and feature flags
-  const userConfig = await loadMicodeConfig();
-
-  // Load model context limits from opencode.json
-  const modelContextLimits = loadModelContextLimits();
-
-  // Think mode state per session
-  const thinkModeState = new Map<string, boolean>();
-
-  const sessionUsage = createSessionUsage(modelContextLimits);
-
-  // Hooks
-  const autoCompactHook = createAutoCompactHook(ctx, v1Host, sessionUsage, {
-    compactionThreshold: userConfig?.compactionThreshold,
-  });
-  const contextInjectorHook = createContextInjectorHook(ctx);
-  const ledgerLoaderHook = createLedgerLoaderHook(ctx);
-  const sessionRecoveryHook = createSessionRecoveryHook(v1Host);
-  const tokenAwareTruncationHook = createTokenAwareTruncationHook(sessionUsage);
-  const contextWindowMonitorHook = createContextWindowMonitorHook(sessionUsage, (n) => v1Host.notify(n));
-  const commentCheckerHook = createCommentCheckerHook(ctx);
-  const artifactAutoIndexHook = createArtifactAutoIndexHook(ctx);
-  const fileOpsTrackerHook = createFileOpsTrackerHook(ctx);
-  const fetchTrackerHook = createFetchTrackerHook(ctx);
-
-  // Fragment injector hook - injects user-defined prompt fragments
-  const fragmentInjectorHook = createFragmentInjectorHook(ctx, userConfig);
-
-  // Warn about unknown agent names in fragments config
-  if (userConfig?.fragments) {
-    const knownAgentNames = new Set(Object.keys(agents));
-    const fragmentAgentNames = Object.keys(userConfig.fragments);
-    const warnings = warnUnknownAgents(fragmentAgentNames, knownAgentNames);
-    for (const warning of warnings) {
-      log.warn("micode", warning);
-    }
-  }
-
-  // Track internal sessions to prevent hook recursion (used by reviewer)
-  const internalSessions = new Set<string>();
-
-  // Mindmodel injector hook - matches tasks to patterns via keywords and injects them
-  // Feature-flagged: set features.mindmodelInjection=true in micode.json to enable
-  const mindmodelInjectorHook = userConfig?.features?.mindmodelInjection ? createMindmodelInjectorHook(ctx) : null;
-
-  // Mindmodel lookup tool - agents call this when they need coding patterns
-  const mindmodelLookupTool = createMindmodelLookupTool(ctx);
-
-  // Constraint reviewer hook - reviews generated code against .mindmodel/ constraints
-  const constraintReviewerHook = createConstraintReviewerHook(ctx, async (reviewPrompt) => {
-    let sessionId: string | undefined;
-    try {
-      const sessionResult = await ctx.client.session.create({
-        body: { title: "constraint-reviewer" },
-      });
-
-      if (!sessionResult.data?.id) {
-        log.warn("mindmodel", "Failed to create reviewer session");
-        return '{"status": "PASS", "violations": [], "summary": "Review skipped"}';
-      }
-      sessionId = sessionResult.data.id;
-
-      // Mark as internal to prevent hook recursion
-      internalSessions.add(sessionId);
-
-      const promptResult = await ctx.client.session.prompt({
-        path: { id: sessionId },
-        body: {
-          agent: "mm-constraint-reviewer",
-          tools: {},
-          parts: [{ type: "text", text: reviewPrompt }],
-        },
-      });
-
-      if (!promptResult.data?.parts) {
-        return '{"status": "PASS", "violations": [], "summary": "Empty response"}';
-      }
-
-      return extractTextFromParts(promptResult.data.parts);
-    } catch (error) {
-      log.warn("mindmodel", `Reviewer failed: ${extractErrorMessage(error)}`);
-      return '{"status": "PASS", "violations": [], "summary": "Review failed"}';
-    } finally {
-      if (sessionId) {
-        internalSessions.delete(sessionId);
-        await ctx.client.session.delete({ path: { id: sessionId } }).catch((_e: unknown) => {
-          /* fire-and-forget */
-        });
-      }
-    }
-  });
-
-  // PTY System - load bun-pty with graceful degradation
-  // Sets BUN_PTY_LIB env var to fix path resolution in OpenCode plugin environments
-  // See: https://github.com/vtemian/micode/issues/20
-  const ptyManager = createPTYManager();
-  const bunPty = await loadBunPty();
-  if (bunPty) {
-    ptyManager.init(bunPty.spawn);
-  }
-  const ptyTools = ptyManager.available ? createPtyTools(ptyManager) : {};
-
-  // Spawn agent tool (for subagents to spawn other subagents)
-  // Agents with an explicit model in micode.json keep it: a deliberate
-  // per-agent choice wins over following the parent session's live model.
-  const agentModelOverrides = new Set(
-    Object.entries(userConfig?.agents ?? {})
-      .filter(([, override]) => override.model)
-      .map(([name]) => name),
+function toCommands(micode: Micode): Record<string, V1Command> {
+  return Object.fromEntries(
+    micode.commands.map((c) => [c.name, { description: c.description, agent: c.agent, template: c.template }]),
   );
-  const spawn_agent = createSpawnAgentTool(v1Host, agentModelOverrides);
+}
 
-  // Batch read tool (for parallel file reads)
-  const batch_read = createBatchReadTool(ctx);
+function applyConfig(micode: Micode, cfg: V1Config): void {
+  // Allow all permissions globally - no prompts
+  const allowed: Record<string, "allow"> = Object.fromEntries(micode.allowedActions.map((a) => [a, "allow"]));
+  cfg.permission = { ...cfg.permission, ...allowed };
 
-  // Octto (browser-based brainstorming) tools
-  const octtoSessionStore = createSessionStore();
-
-  // Track octto sessions per opencode session for cleanup
-  const octtoSessions = new Map<string, Set<string>>();
-
-  const octtoTools = createOcttoTools(octtoSessionStore, v1Host, {
-    onCreated: (parentSessionId, octtoSessionId) => {
-      const sessions = octtoSessions.get(parentSessionId) ?? new Set<string>();
-      sessions.add(octtoSessionId);
-      octtoSessions.set(parentSessionId, sessions);
-    },
-    onEnded: (parentSessionId, octtoSessionId) => {
-      const sessions = octtoSessions.get(parentSessionId);
-      if (!sessions) return;
-      sessions.delete(octtoSessionId);
-      if (sessions.size === 0) {
-        octtoSessions.delete(parentSessionId);
-      }
-    },
-  });
-
-  async function cleanupDeletedSession(sessionId: string): Promise<void> {
-    thinkModeState.delete(sessionId);
-    deleteSessionModel(sessionId);
-    ptyManager.cleanupBySession(sessionId);
-    constraintReviewerHook.cleanupSession(sessionId);
-    fetchTrackerHook.cleanupSession(sessionId);
-    clearFileOps(sessionId);
-
-    // Cleanup octto sessions
-    const sessionOcttoIds = octtoSessions.get(sessionId);
-    if (sessionOcttoIds) {
-      for (const octtoSessionId of sessionOcttoIds) {
-        await octtoSessionStore.endSession(octtoSessionId).catch((_e: unknown) => {
-          /* fire-and-forget */
-        });
-      }
-      octtoSessions.delete(sessionId);
-    }
-  }
-
-  const coreTools: MicodeTools = {
-    ast_grep_search,
-    ast_grep_replace,
-    btca_ask,
-    look_at,
-    artifact_search,
-    milestone_artifact_search,
-    spawn_agent,
-    batch_read,
-    ...mindmodelLookupTool,
-    ...ptyTools,
-    ...octtoTools,
+  // Our agents override OpenCode defaults; native agents keep their mode (#41). The primary agent goes last.
+  const pluginAgents = mergePluginAgents(cfg.agent, micode.agents);
+  cfg.agent = {
+    ...cfg.agent,
+    ...Object.fromEntries(Object.entries(pluginAgents).filter(([k]) => k !== micode.defaultAgent)),
+    [micode.defaultAgent]: pluginAgents[micode.defaultAgent],
   };
-  const hostTools = Object.fromEntries(Object.entries(coreTools).map(([name, core]) => [name, toV1Tool(core)]));
+
+  // Keep the plugin's workflow as the entry point; an explicit user default_agent always wins.
+  // The SDK's Config type lags the server on this field.
+  (cfg as { default_agent?: string }).default_agent ??= micode.defaultAgent;
+
+  // A user entry of the same name replaces the bundled server outright.
+  cfg.mcp = { ...micode.mcpServers, ...cfg.mcp };
+  cfg.command = { ...cfg.command, ...toCommands(micode) };
+}
+
+function hooksFor(micode: Micode, host: V1Host): Hooks {
+  const tools: Record<string, ToolDefinition> = Object.fromEntries(
+    Object.entries(micode.tools).map(([name, core]) => [name, toV1Tool(core)]),
+  );
 
   return {
-    // Tools
-    tool: hostTools,
-
-    config: async (config) => {
-      // Allow all permissions globally - no prompts
-      config.permission = {
-        ...config.permission,
-        edit: "allow",
-        bash: "allow",
-        webfetch: "allow",
-        external_directory: "allow",
-      };
-
-      // Merge user config overrides into plugin agents
-      const mergedAgents = mergeAgentConfigs(agents, userConfig);
-      const pluginAgents = mergePluginAgents(config.agent, mergedAgents);
-
-      // Add our agents - our agents override OpenCode defaults.
-      // Native agents keep their mode: demoting build/plan to subagent removed
-      // them from opencode's agent picker and broke `run --agent build` (#41).
-      config.agent = {
-        ...config.agent, // OpenCode defaults first
-        // Our agents override OpenCode defaults while preserving user fields like steps/maxSteps.
-        ...Object.fromEntries(Object.entries(pluginAgents).filter(([k]) => k !== PRIMARY_AGENT_NAME)),
-        [PRIMARY_AGENT_NAME]: pluginAgents[PRIMARY_AGENT_NAME],
-      };
-
-      // Keep the plugin's workflow as the entry point now that native agents
-      // stay primary (#41); an explicit user default_agent always wins.
-      // The SDK's Config type lags the server on this field.
-      (config as { default_agent?: string }).default_agent ??= PRIMARY_AGENT_NAME;
-
-      config.mcp = mergeMcpServers(config.mcp, userConfig?.features);
-
-      // Add commands
-      config.command = { ...config.command, ...PLUGIN_COMMANDS };
-    },
-
+    tool: tools,
+    config: async (cfg) => applyConfig(micode, cfg),
     "chat.message": async (input, output) => {
-      // Capture the model in use so spawned subagents follow it
-      if (input.model) {
-        setSessionModel(input.sessionID, input.model);
-      }
-
-      // Extract text from user message
-      const text = output.parts
-        .filter((p) => p.type === "text" && "text" in p)
-        .map((p) => (p as { text: string }).text)
-        .join(" ");
-
-      // Track if think mode was requested
-      thinkModeState.set(input.sessionID, detectThinkKeyword(text));
-
-      // Check for override command
-      await constraintReviewerHook["chat.message"](input, output);
+      const text = textOf(output.parts);
+      await micode.onPrompt({ sessionID: input.sessionID, text, agent: input.agent, model: input.model });
     },
-
     "chat.params": async (input, output) => {
-      // Inject user-defined fragments FIRST (highest priority, beginning of prompt)
-      await fragmentInjectorHook["chat.params"](input, output);
-
-      // Inject ledger context (high priority)
-      await ledgerLoaderHook["chat.params"](input, output);
-
-      // Inject project context files
-      await contextInjectorHook["chat.params"](input, output);
-
-      // If think mode was requested, increase thinking budget
-      if (thinkModeState.get(input.sessionID)) {
-        output.options = {
-          ...output.options,
-          thinking: {
-            type: "enabled",
-            budgetTokens: config.thinking.budgetTokens,
-          },
-        };
-      }
+      output.options = { ...output.options, ...micode.requestOptions(input.sessionID) };
     },
-
-    // Structured compaction prompt (Factory.ai / pi-mono best practices)
-    "experimental.session.compacting": async (
-      input: { sessionID: string },
-      output: { context: string[]; prompt?: string },
-    ) => {
-      // Get file operations for this session
-      const fileOps = getFileOps(input.sessionID);
-      const readPaths = Array.from(fileOps.read).sort();
-      const modifiedPaths = Array.from(fileOps.modified).sort();
-
-      const fileOpsSection = `
-## File Operations
-### Read
-${readPaths.length > 0 ? readPaths.map((p) => `- \`${p}\``).join("\n") : "- (none)"}
-
-### Modified
-${modifiedPaths.length > 0 ? modifiedPaths.map((p) => `- \`${p}\``).join("\n") : "- (none)"}`;
-
-      output.prompt = `Create a structured summary for continuing this conversation. Use this EXACT format:
-
-# Session Summary
-
-## Goal
-{The core objective being pursued - one sentence describing success criteria}
-
-## Constraints & Preferences
-{Technical requirements, patterns to follow, things to avoid - or "(none)"}
-
-## Progress
-### Done
-- [x] {Completed items with specific details}
-
-### In Progress
-- [ ] {Current work - what's actively being worked on}
-
-### Blocked
-- {Issues preventing progress, if any - or "(none)"}
-
-## Key Decisions
-- **{Decision}**: {Rationale - why this choice was made}
-
-## Next Steps
-1. {Ordered list of what to do next - be specific}
-
-## Critical Context
-- {Data, examples, references, or findings needed to continue work}
-- {Important discoveries or insights from this session}
-${fileOpsSection}
-
-IMPORTANT:
-- Preserve EXACT file paths and function names
-- Focus on information needed to continue seamlessly
-- Be specific about what was done, not vague summaries
-- Include any error messages or issues encountered`;
+    "experimental.chat.system.transform": async (input, output) => {
+      if (!input.sessionID) return;
+      output.system = await micode.systemPrompt({ sessionID: input.sessionID, system: output.system });
     },
-
-    // Tool output processing
-    "tool.execute.after": async (
-      input: { tool: string; sessionID: string; callID: string; args?: Record<string, unknown> },
-      output: { output?: string },
-    ) => {
-      // Token-aware truncation
-      output.output = await tokenAwareTruncationHook.onToolResult({
+    "experimental.session.compacting": async (input, output) => {
+      output.prompt = micode.compactionInstruction(input.sessionID);
+    },
+    "tool.execute.after": async (input, output) => {
+      const args: unknown = input.args;
+      output.output = await micode.onToolResult({
         tool: input.tool,
         sessionID: input.sessionID,
-        output: output.output ?? "",
+        args: recordArgs(args),
+        output: output.output,
       });
-
-      // Comment checker for Edit tool
-      await commentCheckerHook["tool.execute.after"]({ tool: input.tool, args: input.args }, output);
-
-      // Directory-aware context injection for Read/Edit
-      await contextInjectorHook["tool.execute.after"]({ tool: input.tool, args: input.args }, output);
-
-      // Auto-index artifacts when written to thoughts/ directories
-      await artifactAutoIndexHook["tool.execute.after"]({ tool: input.tool, args: input.args }, output);
-
-      // Track file operations for ledger
-      await fileOpsTrackerHook["tool.execute.after"](
-        { tool: input.tool, sessionID: input.sessionID, args: input.args },
-        output,
-      );
-
-      // Track fetch operations and cache results
-      await fetchTrackerHook["tool.execute.after"](
-        { tool: input.tool, sessionID: input.sessionID, args: input.args },
-        output,
-      );
-
-      // Constraint review for Edit/Write
-      await constraintReviewerHook["tool.execute.after"](
-        { tool: input.tool, sessionID: input.sessionID, args: input.args },
-        output,
-      );
     },
-
-    // Transform messages: match task keywords and prepare mindmodel injection
-    "experimental.chat.messages.transform": async (input, output) => {
-      if (!mindmodelInjectorHook) return;
-      // Skip internal sessions (reviewer)
-      const sessionID = (input as { sessionID?: string }).sessionID;
-      if (sessionID && internalSessions.has(sessionID)) return;
-
-      await mindmodelInjectorHook["experimental.chat.messages.transform"](input, output);
-    },
-
-    // Transform system prompt: filter CLAUDE.md/AGENTS.md + inject mindmodel
-    "experimental.chat.system.transform": async (input, output) => {
-      // Filter out CLAUDE.md/AGENTS.md from system prompt for our agents
-      output.system = output.system.filter((s) => {
-        // Keep entries that don't come from CLAUDE.md or AGENTS.md
-        if (s.startsWith("Instructions from:")) {
-          const path = s.split("\n")[0];
-          if (path.includes("CLAUDE.md") || path.includes("AGENTS.md")) {
-            return false;
-          }
-        }
-        return true;
-      });
-
-      // Inject mindmodel patterns into system prompt (if enabled)
-      if (mindmodelInjectorHook && input.sessionID) {
-        await mindmodelInjectorHook["experimental.chat.system.transform"](
-          input as typeof input & { sessionID: string },
-          output,
-        );
-      }
-    },
-
     event: async ({ event }) => {
-      const normalized = v1Host.relay(event);
-      // Session cleanup (think mode + PTY + octto + constraint reviewer + trackers)
-      if (normalized?.type === "session.deleted") {
-        await cleanupDeletedSession(normalized.sessionID);
-      }
-
-      if (normalized) {
-        sessionUsage.onEvent(normalized);
-        await autoCompactHook.onEvent(normalized);
-        await sessionRecoveryHook.onEvent(normalized);
-        await contextWindowMonitorHook.onEvent(normalized);
-      }
+      const normalized = host.relay(event);
+      if (normalized) await micode.onEvent(normalized);
     },
   };
+}
+
+const OpenCodeConfigPlugin: Plugin = async ({ client, directory }) => {
+  const host = createV1Host(client, directory);
+  const micode = await createMicode({ directory, host });
+  return hooksFor(micode, host);
 };
 
 export { OpenCodeConfigPlugin };
