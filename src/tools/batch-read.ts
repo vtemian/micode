@@ -1,9 +1,9 @@
 import { readFile } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
-
-import type { PluginInput, ToolDefinition } from "@opencode-ai/plugin";
-import { tool } from "@opencode-ai/plugin/tool";
+import { z } from "zod";
+import type { Workspace } from "@/host/port";
 import { extractErrorMessage } from "@/utils/errors";
+import { defineTool, type MicodeTool } from "./define";
 
 interface FileResult {
   readonly path: string;
@@ -46,8 +46,8 @@ function formatResults(results: FileResult[], totalFiles: number): string {
   return output.join("\n");
 }
 
-export function createBatchReadTool(ctx: PluginInput): ToolDefinition {
-  return tool({
+export function createBatchReadTool(workspace: Workspace): MicodeTool {
+  return defineTool({
     description: `Read multiple files in parallel. Much faster than reading files one at a time.
 Use this when you need to read 2+ files - all reads happen concurrently via Promise.all.
 
@@ -55,13 +55,8 @@ Example: batch_read({paths: ["src/index.ts", "src/utils.ts", "package.json"]})
 
 Returns content for each file, or error message if file doesn't exist.`,
     args: {
-      paths: tool.schema
-        .array(tool.schema.string())
-        .describe("Array of file paths to read (relative to project root or absolute)"),
-      maxLines: tool.schema
-        .number()
-        .optional()
-        .describe("Optional: limit each file to first N lines (default: no limit)"),
+      paths: z.array(z.string()).describe("Array of file paths to read (relative to project root or absolute)"),
+      maxLines: z.number().optional().describe("Optional: limit each file to first N lines (default: no limit)"),
     },
     execute: async (args) => {
       const { paths, maxLines } = args;
@@ -70,7 +65,7 @@ Returns content for each file, or error message if file doesn't exist.`,
         return "## batch_read Failed\n\nNo paths specified";
       }
 
-      const results = await Promise.all(paths.map((p) => readSingleFile(p, ctx.directory, maxLines)));
+      const results = await Promise.all(paths.map((p) => readSingleFile(p, workspace.directory, maxLines)));
       return formatResults(results, paths.length);
     },
   });

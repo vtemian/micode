@@ -19,6 +19,7 @@ import {
   getFileOps,
   warnUnknownAgents,
 } from "@/hooks";
+import { createV1Host, toV1Tool } from "@/host/v1";
 import { mergeMcpServers, mergePluginAgents } from "@/plugin-config";
 import { deleteSessionModel, setSessionModel } from "@/session-model";
 import {
@@ -39,6 +40,7 @@ import {
   look_at,
   milestone_artifact_search,
 } from "@/tools";
+import type { MicodeTools } from "@/tools/define";
 import { config } from "@/utils/config";
 import { extractErrorMessage } from "@/utils/errors";
 import { log } from "@/utils/logger";
@@ -87,6 +89,8 @@ function extractTextFromParts(parts: Array<{ type: string; text?: string }>): st
 
 // eslint-disable-next-line max-lines-per-function
 const OpenCodeConfigPlugin: Plugin = async (ctx) => {
+  const v1Host = createV1Host(ctx.client, ctx.directory);
+
   // Validate external tool dependencies at startup
   const astGrepStatus = await checkAstGrepAvailable();
   if (!astGrepStatus.available) {
@@ -207,7 +211,7 @@ const OpenCodeConfigPlugin: Plugin = async (ctx) => {
       .filter(([, override]) => override.model)
       .map(([name]) => name),
   );
-  const spawn_agent = createSpawnAgentTool(ctx, agentModelOverrides);
+  const spawn_agent = createSpawnAgentTool(v1Host, agentModelOverrides);
 
   // Batch read tool (for parallel file reads)
   const batch_read = createBatchReadTool(ctx);
@@ -218,7 +222,7 @@ const OpenCodeConfigPlugin: Plugin = async (ctx) => {
   // Track octto sessions per opencode session for cleanup
   const octtoSessions = new Map<string, Set<string>>();
 
-  const octtoTools = createOcttoTools(octtoSessionStore, ctx.client, {
+  const octtoTools = createOcttoTools(octtoSessionStore, v1Host, {
     onCreated: (parentSessionId, octtoSessionId) => {
       const sessions = octtoSessions.get(parentSessionId) ?? new Set<string>();
       sessions.add(octtoSessionId);
@@ -257,21 +261,24 @@ const OpenCodeConfigPlugin: Plugin = async (ctx) => {
     }
   }
 
+  const coreTools: MicodeTools = {
+    ast_grep_search,
+    ast_grep_replace,
+    btca_ask,
+    look_at,
+    artifact_search,
+    milestone_artifact_search,
+    spawn_agent,
+    batch_read,
+    ...mindmodelLookupTool,
+    ...ptyTools,
+    ...octtoTools,
+  };
+  const hostTools = Object.fromEntries(Object.entries(coreTools).map(([name, core]) => [name, toV1Tool(core)]));
+
   return {
     // Tools
-    tool: {
-      ast_grep_search,
-      ast_grep_replace,
-      btca_ask,
-      look_at,
-      artifact_search,
-      milestone_artifact_search,
-      spawn_agent,
-      batch_read,
-      ...mindmodelLookupTool,
-      ...ptyTools,
-      ...octtoTools,
-    },
+    tool: hostTools,
 
     config: async (config) => {
       // Allow all permissions globally - no prompts

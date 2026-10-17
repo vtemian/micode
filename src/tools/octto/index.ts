@@ -1,27 +1,24 @@
 // src/tools/octto/index.ts
 
+import type { SessionHost } from "@/host/port";
 import type { SessionStore } from "@/octto/session";
 import { createBrainstormTools } from "./brainstorm";
 import { createPushQuestionTool } from "./factory";
 import { createQuestionTools } from "./questions";
 import { createResponseTools } from "./responses";
 import { createSessionTools } from "./session";
-import type { OcttoSessionTracker, OcttoTools, OpencodeClient } from "./types";
+import type { OcttoSessionTracker, OcttoTools } from "./types";
 
 export type { SessionStore } from "@/octto/session";
 export { createSessionStore } from "@/octto/session";
-export type { OcttoSessionTracker, OcttoTools, OpencodeClient } from "./types";
+export type { OcttoSessionTracker, OcttoTools } from "./types";
 
-export function createOcttoTools(
-  sessions: SessionStore,
-  client: OpencodeClient,
-  tracker?: OcttoSessionTracker,
-): OcttoTools {
+export function createOcttoTools(sessions: SessionStore, host: SessionHost, tracker?: OcttoSessionTracker): OcttoTools {
   return {
     ...createSessionTools(sessions, tracker),
     ...createQuestionTools(sessions),
     ...createResponseTools(sessions),
     ...createPushQuestionTool(sessions),
-    ...createBrainstormTools(sessions, client, tracker),
+    ...createBrainstormTools(sessions, host, tracker),
   };
 }
