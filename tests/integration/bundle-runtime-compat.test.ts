@@ -68,6 +68,13 @@ describe("bundle runtime compatibility", () => {
     expect(bundle).toContain('import("bun:sqlite")');
   });
 
+  // The v2 host provides @opencode/plugin itself and refuses a copy from the
+  // plugin's node_modules; the v1 host must never load it at all.
+  it("keeps the v2 SDK external and loads it only on demand", () => {
+    expect(bundle.match(/import\("@opencode\/plugin"\)/g)).toHaveLength(1);
+    expect(bundle).not.toContain("node_modules/@opencode/plugin");
+  });
+
   // The greps above only catch failure modes we already know about. Actually
   // loading the artifact under each runtime catches the ones we do not.
   it("loads under node", async () => {
@@ -79,7 +86,7 @@ describe("bundle runtime compatibility", () => {
 
     expect(stderr).toBe("");
     expect(exitCode).toBe(0);
-    expect(stdout).toContain("OpenCodeConfigPlugin");
+    expect(stdout).toContain("default");
   });
 
   it("loads under bun", async () => {
@@ -91,6 +98,6 @@ describe("bundle runtime compatibility", () => {
 
     expect(stderr).toBe("");
     expect(exitCode).toBe(0);
-    expect(stdout).toContain("OpenCodeConfigPlugin");
+    expect(stdout).toContain("default");
   });
 });

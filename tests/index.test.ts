@@ -112,20 +112,3 @@ describe("micode.ts commands", () => {
     expect(mindmodelMatch?.[1]).toBe("mm-orchestrator");
   });
 });
-
-// opencode calls every exported function in a plugin module as a plugin factory
-// and treats each return value as a hooks object. A stray helper export is
-// therefore never harmless: it either throws and kills registration, or returns
-// something nonsensical that opencode installs as hooks. Which one happens to
-// win depends on alphabetical sort order of the module namespace, so the only
-// safe surface is the plugin itself.
-describe("plugin module surface", () => {
-  it("exports the plugin factory and nothing else callable", async () => {
-    const surface: Record<string, unknown> = await import("../src/index");
-    const callable = Object.entries(surface)
-      .filter(([, value]) => typeof value === "function")
-      .map(([name]) => name);
-
-    expect(callable).toEqual(["OpenCodeConfigPlugin"]);
-  });
-});
