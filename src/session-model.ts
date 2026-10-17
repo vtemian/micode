@@ -5,11 +5,11 @@
  * baked into the agent config at plugin startup.
  *
  * opencode's built-in task tool passes the parent model through when spawning
- * subagents, but the `spawn_agent` tool creates sessions via `session.prompt`
- * without a model. When a user switches models with `/models`, the switch only
- * affects the running session; the plugin's agent configs are baked once at
- * startup. This module captures the live model from each `chat.message` and
- * replays it onto child sessions.
+ * subagents, but `spawn_agent` creates its own sessions. When a user switches
+ * models, the switch only affects the running session; the plugin's agent
+ * configs are baked once at startup. This module records the live model from
+ * each prompt (`Micode.onPrompt` / `onRequest`) and `spawn_agent` replays it
+ * onto child sessions through `AgentRun.model`.
  */
 export interface SessionModel {
   providerID: string;

@@ -187,8 +187,8 @@ cd ~/.micode && bun install && bun run build
 ```
 
 ```json
-// Use local path (OpenCode 2 resolves the directory through its root index.js)
-{ "plugins": ["~/.micode"] }
+// OpenCode 2: an absolute directory path, resolved through the root index.js
+{ "plugins": ["/Users/you/.micode"] }
 // OpenCode 1
 { "plugin": ["~/.micode"] }
 ```

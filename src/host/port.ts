@@ -48,10 +48,13 @@ export interface SessionHost {
   runAgent(run: AgentRun): Promise<AgentReply>;
   /** Best-effort delete; never throws. */
   remove(sessionID: string): Promise<void>;
-  /** Enqueue a user prompt on an existing session and return without waiting. */
+  /**
+   * Enqueue a user prompt on an existing session and return without waiting.
+   * The hint is advisory: v1 applies it, v2 ignores it because the session already carries agent and model.
+   */
   prompt(sessionID: string, text: string, hint?: PromptHint): Promise<void>;
   interrupt(sessionID: string): Promise<void>;
-  /** Run compaction to completion and resolve with the summary text. */
+  /** Run compaction to completion and resolve with the summary text. The model is advisory (v2 ignores it). */
   compact(sessionID: string, model: ModelRef): Promise<string>;
   lastUserText(sessionID: string): Promise<string | undefined>;
   /** Best-effort, never throws. v1 shows a TUI toast; v2 has no server-side toast and logs instead. */

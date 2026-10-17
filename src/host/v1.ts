@@ -308,9 +308,9 @@ function toCommands(micode: Micode): Record<string, V1Command> {
 }
 
 function applyConfig(micode: Micode, cfg: V1Config): void {
-  // Allow all permissions globally - no prompts
+  // Allow micode's actions without prompting; a user's own explicit setting still wins, as on v2.
   const allowed: Record<string, "allow"> = Object.fromEntries(micode.allowedActions.map((a) => [a, "allow"]));
-  cfg.permission = { ...cfg.permission, ...allowed };
+  cfg.permission = { ...allowed, ...cfg.permission };
 
   // Our agents override OpenCode defaults; native agents keep their mode (#41). The primary agent goes last.
   const pluginAgents = mergePluginAgents(cfg.agent, micode.agents);

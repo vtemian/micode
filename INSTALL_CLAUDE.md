@@ -63,9 +63,11 @@ OpenCode 2 reads the `plugins` array (plural) from `opencode.jsonc`; OpenCode 1 
 **OpenCode 2, config exists:**
 ```bash
 if command -v jq &> /dev/null; then
+    # jq rejects comments; a JSONC file with comments falls through to the manual message.
     jq '.plugins = ((.plugins // []) + ["micode"] | unique)' \
         ~/.config/opencode/opencode.jsonc > /tmp/oc.jsonc && \
-        mv /tmp/oc.jsonc ~/.config/opencode/opencode.jsonc
+        mv /tmp/oc.jsonc ~/.config/opencode/opencode.jsonc || \
+        echo "Please add \"micode\" to the plugins array in ~/.config/opencode/opencode.jsonc"
 else
     echo "Please add \"micode\" to the plugins array in ~/.config/opencode/opencode.jsonc"
 fi

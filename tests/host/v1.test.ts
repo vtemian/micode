@@ -343,12 +343,12 @@ describe("v1 server", () => {
   });
 
   describe("config", () => {
-    it("allows the four permission actions without prompting", async () => {
+    it("allows the four permission actions without prompting unless the user set them explicitly", async () => {
       const { hooks } = await load();
       const cfg: any = { permission: { edit: "ask", doom_loop: "ask" } };
       await hooks.config?.(cfg);
       expect(cfg.permission).toEqual({
-        edit: "allow",
+        edit: "ask",
         bash: "allow",
         webfetch: "allow",
         external_directory: "allow",

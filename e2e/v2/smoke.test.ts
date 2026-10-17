@@ -68,11 +68,8 @@ async function startServer(): Promise<Server> {
   void readLines(proc.stdout, log);
   void readLines(proc.stderr, log);
   const line = await waitFor(() => log.find((l) => l.includes("server password")), BOOT_TIMEOUT_MS);
-  const password =
-    line
-      .split("server password")
-      .pop()
-      ?.replace(/[^A-Za-z0-9-]/g, "") ?? "";
+  // The password is the last whitespace-delimited token and may contain underscores.
+  const password = line.trim().split(/\s+/).pop() ?? "";
   return { proc, log, password, project };
 }
 
@@ -119,13 +116,6 @@ describe("micode on OpenCode 2", () => {
     return agents.map((a) => a.name ?? a.id ?? "");
   }
 
-  it("loads without a plugin error", () => {
-    const bad = server.log.filter(
-      (l) => /failed to load|LoadError/i.test(l) || (/micode/i.test(l) && /error/i.test(l)),
-    );
-    expect(bad).toEqual([]);
-  });
-
   it("registers the micode agents", async () => {
     // Plugins load lazily on the first request for a directory; poll until setup has run.
     let names: string[] = [];
@@ -141,6 +131,14 @@ describe("micode on OpenCode 2", () => {
   it("registers the micode commands", async () => {
     const commands = (await api(`/api/command?directory=${encodeURIComponent(server.project)}`)) as { name?: string }[];
     expect(commands.map((c) => c.name)).toEqual(expect.arrayContaining(["init", "mindmodel", "ledger", "search"]));
+  });
+
+  it("loads without a plugin error", () => {
+    // Runs after the directory-scoped requests above, so the plugin has been set up by now.
+    const bad = server.log.filter(
+      (l) => /failed to load|LoadError/i.test(l) || (/micode/i.test(l) && /error/i.test(l)),
+    );
+    expect(bad).toEqual([]);
   });
 
   it("maps the commander agent onto the v2 record", async () => {

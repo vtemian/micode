@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-// Mock PluginInput
+// Mock Workspace
 function createMockCtx(directory: string) {
   return {
     directory,
