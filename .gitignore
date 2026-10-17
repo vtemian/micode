@@ -19,3 +19,6 @@ yarn.lock
 
 # Worktrees
 .worktrees/
+
+# Agent worktrees (Biome honours this via vcs.useIgnoreFile)
+.claude/worktrees/

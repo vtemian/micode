@@ -1,10 +1,11 @@
 // src/tools/mindmodel-lookup.ts
-import type { PluginInput, ToolDefinition } from "@opencode-ai/plugin";
-import { tool } from "@opencode-ai/plugin/tool";
 
+import { z } from "zod";
+import type { Workspace } from "@/host/port";
 import { formatExamplesForInjection, type LoadedMindmodel, loadExamples, loadMindmodel } from "@/mindmodel";
 import { extractErrorMessage } from "@/utils/errors";
 import { log } from "@/utils/logger";
+import { defineTool, type MicodeTools } from "./define";
 
 const MAX_QUERY_LOG_LENGTH = 100;
 
@@ -38,20 +39,20 @@ export function matchCategories(query: string, manifest: LoadedMindmodel["manife
   return matched;
 }
 
-export function createMindmodelLookupTool(ctx: PluginInput): { mindmodel_lookup: ToolDefinition } {
-  const mindmodel_lookup = tool({
+export function createMindmodelLookupTool(workspace: Workspace): MicodeTools {
+  const mindmodel_lookup = defineTool({
     description: `Look up coding patterns and examples from the project's .mindmodel/ directory.
 Call this tool when you need to understand how to implement something in this codebase.
 Provide a brief description of what you're trying to do (e.g., "create a form component", "add error handling", "write a test").
 Returns relevant code examples and patterns to follow.`,
     args: {
-      query: tool.schema
+      query: z
         .string()
         .describe("What you're trying to implement (e.g., 'create a button component', 'add form validation')"),
     },
     execute: async ({ query }) => {
       try {
-        const mindmodel = await getMindmodel(ctx.directory);
+        const mindmodel = await getMindmodel(workspace.directory);
         if (!mindmodel) {
           return "No .mindmodel/ directory found in this project. Proceed without specific patterns.";
         }

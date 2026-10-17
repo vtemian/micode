@@ -18,7 +18,7 @@ export type {
   SpawnOptions,
 } from "./types";
 
-import type { ToolDefinition } from "@opencode-ai/plugin";
+import type { MicodeTools } from "@/tools/define";
 import type { PTYManager } from "./manager"; // now a ReturnType alias
 import { createPtyKillTool } from "./tools/kill";
 import { createPtyListTool } from "./tools/list";
@@ -26,7 +26,7 @@ import { createPtyReadTool } from "./tools/read";
 import { createPtySpawnTool } from "./tools/spawn";
 import { createPtyWriteTool } from "./tools/write";
 
-export function createPtyTools(manager: PTYManager): Record<string, ToolDefinition> {
+export function createPtyTools(manager: PTYManager): MicodeTools {
   return {
     pty_spawn: createPtySpawnTool(manager),
     pty_write: createPtyWriteTool(manager),

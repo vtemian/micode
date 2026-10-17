@@ -1,6 +1,7 @@
 // src/tools/pty/tools/kill.ts
-import type { ToolDefinition } from "@opencode-ai/plugin";
-import { tool } from "@opencode-ai/plugin/tool";
+
+import { z } from "zod";
+import { defineTool, type MicodeTool } from "@/tools/define";
 import type { PTYManager } from "@/tools/pty/manager";
 
 const DESCRIPTION = `Terminates a PTY session and optionally cleans up its buffer.
@@ -29,15 +30,12 @@ Examples:
 - Kill but keep logs: cleanup=false (or omit)
 - Kill and remove: cleanup=true`;
 
-export function createPtyKillTool(manager: PTYManager): ToolDefinition {
-  return tool({
+export function createPtyKillTool(manager: PTYManager): MicodeTool {
+  return defineTool({
     description: DESCRIPTION,
     args: {
-      id: tool.schema.string().describe("The PTY session ID (e.g., pty_a1b2c3d4)"),
-      cleanup: tool.schema
-        .boolean()
-        .optional()
-        .describe("If true, removes the session and frees the buffer (default: false)"),
+      id: z.string().describe("The PTY session ID (e.g., pty_a1b2c3d4)"),
+      cleanup: z.boolean().optional().describe("If true, removes the session and frees the buffer (default: false)"),
     },
     execute: async (args) => {
       const session = manager.get(args.id);

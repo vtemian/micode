@@ -1,18 +1,19 @@
-import { tool } from "@opencode-ai/plugin/tool";
+import { z } from "zod";
 import { extractErrorMessage } from "@/utils/errors";
 import { getArtifactIndex } from "./artifact-index";
+import { defineTool } from "./define";
 
 const ARTIFACT_TYPES = ["feature", "decision", "session"] as const;
 
-export const milestone_artifact_search = tool({
+export const milestone_artifact_search = defineTool({
   description: `Search milestone-driven artifacts stored in SQLite.
 Use this to find feature, decision, or session artifacts for a specific milestone.
 Returns ranked results filtered by milestone metadata.`,
   args: {
-    query: tool.schema.string().describe("Search query for milestone artifacts"),
-    milestone_id: tool.schema.string().optional().describe("Optional milestone identifier to filter results"),
-    artifact_type: tool.schema.enum(ARTIFACT_TYPES).optional().describe("Optional artifact type to filter results"),
-    limit: tool.schema.number().optional().describe("Max results to return (default: 10)"),
+    query: z.string().describe("Search query for milestone artifacts"),
+    milestone_id: z.string().optional().describe("Optional milestone identifier to filter results"),
+    artifact_type: z.enum(ARTIFACT_TYPES).optional().describe("Optional artifact type to filter results"),
+    limit: z.number().optional().describe("Max results to return (default: 10)"),
   },
   execute: async (args) => {
     try {

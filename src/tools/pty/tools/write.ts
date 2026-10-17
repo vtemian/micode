@@ -1,6 +1,7 @@
 // src/tools/pty/tools/write.ts
-import type { ToolDefinition } from "@opencode-ai/plugin";
-import { tool } from "@opencode-ai/plugin/tool";
+
+import { z } from "zod";
+import { defineTool, type MicodeTool } from "@/tools/define";
 import type { PTYManager } from "@/tools/pty/manager";
 
 const DESCRIPTION = `Sends input data to an active PTY session.
@@ -63,12 +64,12 @@ function parseEscapeSequences(input: string): string {
 
 const MAX_WRITE_PREVIEW_LENGTH = 50;
 
-export function createPtyWriteTool(manager: PTYManager): ToolDefinition {
-  return tool({
+export function createPtyWriteTool(manager: PTYManager): MicodeTool {
+  return defineTool({
     description: DESCRIPTION,
     args: {
-      id: tool.schema.string().describe("The PTY session ID (e.g., pty_a1b2c3d4)"),
-      data: tool.schema.string().describe("The input data to send to the PTY"),
+      id: z.string().describe("The PTY session ID (e.g., pty_a1b2c3d4)"),
+      data: z.string().describe("The input data to send to the PTY"),
     },
     execute: async (args) => {
       const session = manager.get(args.id);
