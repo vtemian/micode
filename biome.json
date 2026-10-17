@@ -63,6 +63,16 @@
       }
     },
     {
+      "includes": ["src/index.ts"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noDefaultExport": "off"
+          }
+        }
+      }
+    },
+    {
       "includes": ["tests/**", "e2e/**", "**/*.test.ts"],
       "linter": {
         "rules": {

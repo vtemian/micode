@@ -9,11 +9,12 @@
   "files": [
     "src",
     "dist",
+    "index.js",
     "INSTALL_CLAUDE.md"
   ],
   "scripts": {
     "prepare": "lefthook install",
-    "build": "bun build src/index.ts --outdir dist --target node --external bun-pty --external jsonc-parser --external ws",
+    "build": "bun build src/index.ts --outdir dist --target node --external bun-pty --external jsonc-parser --external ws --external @opencode/plugin",
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "bun run check && bun run build",
     "test": "bun test tests",
@@ -50,11 +51,16 @@
     "jsonc-parser": "^3.3.1",
     "valibot": "^1.2.0",
     "ws": "^8.21.1",
-    "yaml": "^2.8.2"
+    "yaml": "^2.8.2",
+    "zod": "^4.3.5"
+  },
+  "overrides": {
+    "zod": "^4.3.5"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.3.10",
     "@eslint/js": "^10.0.1",
+    "@opencode/plugin": "2.0.31",
     "@types/ws": "^8.18.1",
     "bun-types": "latest",
     "eslint": "^10.8.0",
