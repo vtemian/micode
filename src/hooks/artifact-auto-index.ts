@@ -2,7 +2,7 @@
 // Auto-indexes artifacts when written to thoughts/ directories
 
 import { readFileSync } from "node:fs";
-import type { PluginInput } from "@opencode-ai/plugin";
+import type { Workspace } from "@/host/port";
 import { getArtifactIndex } from "@/tools/artifact-index";
 import { log } from "@/utils/logger";
 
@@ -99,7 +99,7 @@ interface ArtifactAutoIndexHooks {
   ) => Promise<void>;
 }
 
-export function createArtifactAutoIndexHook(_ctx: PluginInput): ArtifactAutoIndexHooks {
+export function createArtifactAutoIndexHook(_ctx: Workspace): ArtifactAutoIndexHooks {
   return {
     "tool.execute.after": async (
       input: { tool: string; args?: Record<string, unknown> },

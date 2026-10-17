@@ -1,5 +1,5 @@
 // src/hooks/file-ops-tracker.ts
-import type { PluginInput } from "@opencode-ai/plugin";
+import type { Workspace } from "@/host/port";
 
 interface FileOps {
   read: Set<string>;
@@ -71,7 +71,7 @@ interface FileOpsTrackerHooks {
   event: (input: { event: { type: string; properties?: unknown } }) => Promise<void>;
 }
 
-export function createFileOpsTrackerHook(_ctx: PluginInput): FileOpsTrackerHooks {
+export function createFileOpsTrackerHook(_ctx: Workspace): FileOpsTrackerHooks {
   return {
     "tool.execute.after": async (
       input: { tool: string; sessionID: string; args?: Record<string, unknown> },

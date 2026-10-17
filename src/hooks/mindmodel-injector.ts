@@ -2,7 +2,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import type { PluginInput } from "@opencode-ai/plugin";
+import type { Workspace } from "@/host/port";
 
 import { formatExamplesForInjection, type LoadedMindmodel, loadExamples, loadMindmodel } from "@/mindmodel";
 import { matchCategories } from "@/tools/mindmodel-lookup";
@@ -136,7 +136,7 @@ interface MindmodelInjectorHooks {
   "experimental.chat.system.transform": (_input: { sessionID: string }, output: { system: string[] }) => Promise<void>;
 }
 
-export function createMindmodelInjectorHook(ctx: PluginInput): MindmodelInjectorHooks {
+export function createMindmodelInjectorHook(ctx: Workspace): MindmodelInjectorHooks {
   let pendingInjection: string | null = null;
   const matchedTasks = createLRUCache<string>(TASK_CACHE_MAX_ENTRIES);
   const getMindmodel = createCachedLoader(() => loadMindmodel(ctx.directory));

@@ -1,4 +1,4 @@
-import type { PluginInput } from "@opencode-ai/plugin";
+import type { Workspace } from "@/host/port";
 
 const MAX_COMMENT_PREVIEW_LENGTH = 60;
 const MAX_CONSECUTIVE_COMMENTS = 5;
@@ -101,7 +101,7 @@ interface CommentCheckerHooks {
   ) => Promise<void>;
 }
 
-export function createCommentCheckerHook(_ctx: PluginInput): CommentCheckerHooks {
+export function createCommentCheckerHook(_ctx: Workspace): CommentCheckerHooks {
   return {
     // Check after file edits
     "tool.execute.after": async (

@@ -1,5 +1,5 @@
 // src/hooks/constraint-reviewer.ts
-import type { PluginInput } from "@opencode-ai/plugin";
+import type { Workspace } from "@/host/port";
 
 import {
   formatViolationsForRetry,
@@ -34,7 +34,7 @@ interface ConstraintReviewerHooks {
   cleanupSession: (sessionID: string) => void;
 }
 
-export function createConstraintReviewerHook(ctx: PluginInput, review: Reviewer): ConstraintReviewerHooks {
+export function createConstraintReviewerHook(ctx: Workspace, review: Reviewer): ConstraintReviewerHooks {
   let mindmodel: LoadedMindmodel | null | undefined;
   const sessionState = new Map<string, ReviewState>();
 
@@ -143,7 +143,7 @@ function handleViolations(
 }
 
 async function handleChatMessage(
-  ctx: PluginInput,
+  ctx: Workspace,
   input: { sessionID: string },
   output: { parts: Array<{ type: string; text?: string }> },
   getSessionState: (sessionID: string) => ReviewState,

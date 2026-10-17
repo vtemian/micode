@@ -2,7 +2,7 @@
 
 import { readdir, readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
-import type { PluginInput } from "@opencode-ai/plugin";
+import type { Workspace } from "@/host/port";
 import { config } from "@/utils/config";
 
 export interface LedgerInfo {
@@ -73,7 +73,7 @@ interface LedgerLoaderHooks {
   ) => Promise<void>;
 }
 
-export function createLedgerLoaderHook(ctx: PluginInput): LedgerLoaderHooks {
+export function createLedgerLoaderHook(ctx: Workspace): LedgerLoaderHooks {
   return {
     "chat.params": async (
       _input: { sessionID: string },

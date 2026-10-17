@@ -63,7 +63,7 @@ categories:
     const mockCtx = createMockCtx(testDir);
     const mockReviewer = async () => '{"status": "BLOCKED", "violations": []}';
 
-    const hook = createConstraintReviewerHook(mockCtx as any, mockReviewer);
+    const hook = createConstraintReviewerHook(mockCtx, mockReviewer);
 
     const output = { output: "some code" };
     await hook["tool.execute.after"]({ tool: "Write", sessionID: "test", args: { file_path: "test.ts" } }, output);
@@ -84,7 +84,7 @@ categories:
       return '{"status": "PASS", "violations": [], "summary": "OK"}';
     };
 
-    const hook = createConstraintReviewerHook(mockCtx as any, mockReviewer);
+    const hook = createConstraintReviewerHook(mockCtx, mockReviewer);
 
     const output = { output: "some result" };
     await hook["tool.execute.after"]({ tool: "Read", sessionID: "test", args: { file_path: "test.ts" } }, output);
@@ -104,7 +104,7 @@ categories:
       return '{"status": "PASS", "violations": [], "summary": "OK"}';
     };
 
-    const hook = createConstraintReviewerHook(mockCtx as any, mockReviewer);
+    const hook = createConstraintReviewerHook(mockCtx, mockReviewer);
 
     const output = { output: "some code" };
     await hook["tool.execute.after"](
@@ -131,7 +131,7 @@ categories:
       return '{"status": "PASS", "violations": [], "summary": "OK"}';
     };
 
-    const hook = createConstraintReviewerHook(mockCtx as any, mockReviewer);
+    const hook = createConstraintReviewerHook(mockCtx, mockReviewer);
 
     const output = { output: "edited code" };
     await hook["tool.execute.after"](
@@ -154,7 +154,7 @@ categories:
     const mockCtx = createMockCtx(testDir);
     const mockReviewer = async () => '{"status": "PASS", "violations": [], "summary": "All good"}';
 
-    const hook = createConstraintReviewerHook(mockCtx as any, mockReviewer);
+    const hook = createConstraintReviewerHook(mockCtx, mockReviewer);
 
     const output = { output: "clean code" };
     await hook["tool.execute.after"](
@@ -191,7 +191,7 @@ categories:
         summary: "Found 1 violation",
       });
 
-    const hook = createConstraintReviewerHook(mockCtx as any, mockReviewer);
+    const hook = createConstraintReviewerHook(mockCtx, mockReviewer);
 
     const output = { output: "bad code" };
     await hook["tool.execute.after"](
@@ -232,7 +232,7 @@ categories:
         summary: "Found 1 violation",
       });
 
-    const hook = createConstraintReviewerHook(mockCtx as any, mockReviewer);
+    const hook = createConstraintReviewerHook(mockCtx, mockReviewer);
 
     // First call - increments retry count
     const output1 = { output: "bad code" };
@@ -288,7 +288,7 @@ categories:
       });
     };
 
-    const hook = createConstraintReviewerHook(mockCtx as any, mockReviewer);
+    const hook = createConstraintReviewerHook(mockCtx, mockReviewer);
 
     // First, set override via chat message
     await hook["chat.message"](
@@ -325,7 +325,7 @@ categories:
       return '{"status": "PASS", "violations": [], "summary": "OK"}';
     };
 
-    const hook = createConstraintReviewerHook(mockCtx as any, mockReviewer);
+    const hook = createConstraintReviewerHook(mockCtx, mockReviewer);
 
     // Set override
     await hook["chat.message"](
@@ -371,7 +371,7 @@ categories:
       return '{"status": "PASS", "violations": [], "summary": "OK"}';
     };
 
-    const hook = createConstraintReviewerHook(mockCtx as any, mockReviewer);
+    const hook = createConstraintReviewerHook(mockCtx, mockReviewer);
 
     const output = { output: "some code" };
     await hook["tool.execute.after"]({ tool: "Write", sessionID: "test", args: {} }, output);
@@ -389,7 +389,7 @@ categories:
       throw new Error("Review service unavailable");
     };
 
-    const hook = createConstraintReviewerHook(mockCtx as any, mockReviewer);
+    const hook = createConstraintReviewerHook(mockCtx, mockReviewer);
 
     // Should not throw, should gracefully degrade
     const output = { output: "some code" };
@@ -421,7 +421,7 @@ categories:
         violations: [{ file: "test", rule: "rule", constraint_file: "c.md", found: "x", expected: "y" }],
       });
 
-    const hook = createConstraintReviewerHook(mockCtx as any, mockReviewer);
+    const hook = createConstraintReviewerHook(mockCtx, mockReviewer);
 
     // First file - first retry
     const output1 = { output: "code" };
@@ -463,7 +463,7 @@ categories:
         violations: [{ file: "test", rule: "rule", constraint_file: "c.md", found: "x", expected: "y" }],
       });
 
-    const hook = createConstraintReviewerHook(mockCtx as any, mockReviewer);
+    const hook = createConstraintReviewerHook(mockCtx, mockReviewer);
 
     // Build up some state
     await hook["tool.execute.after"](
