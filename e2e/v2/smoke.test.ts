@@ -92,12 +92,22 @@ describe("micode on OpenCode 2", () => {
     server?.proc.kill();
   });
 
+  /** Responses are wrapped as `{ location, data }`. */
   async function api(path: string): Promise<unknown> {
     const res = await fetch(`http://127.0.0.1:${PORT}${path}`, {
       headers: { Authorization: `Basic ${btoa(`opencode:${server.password}`)}` },
     });
     expect(res.ok).toBe(true);
-    return res.json();
+    const body = (await res.json()) as { data?: unknown };
+    return body.data;
+  }
+
+  async function agentNames(): Promise<string[]> {
+    const agents = (await api(`/api/agent?directory=${encodeURIComponent(server.project)}`)) as {
+      id?: string;
+      name?: string;
+    }[];
+    return agents.map((a) => a.name ?? a.id ?? "");
   }
 
   it("loads without a plugin error", () => {
@@ -108,17 +118,31 @@ describe("micode on OpenCode 2", () => {
   });
 
   it("registers the micode agents", async () => {
-    const agents = (await api(`/api/agent?directory=${encodeURIComponent(server.project)}`)) as {
-      id?: string;
-      name?: string;
-    }[];
-    const names = agents.map((a) => a.name ?? a.id);
+    // Plugins load lazily on the first request for a directory; poll until setup has run.
+    let names: string[] = [];
+    const started = Date.now();
+    while (!names.includes("commander")) {
+      names = await agentNames();
+      if (Date.now() - started > READY_TIMEOUT_MS) break;
+      await new Promise((r) => setTimeout(r, POLL_MS));
+    }
     expect(names).toEqual(expect.arrayContaining(["commander", "executor", "probe", "mm-constraint-reviewer"]));
   });
 
-  it("prints the permission lines seen by the host (informational)", () => {
-    // The plugin allows edit/bash/webfetch/external_directory by action name. If the v2 host uses other
-    // action names they show up here once a session runs.
-    console.log(server.log.filter((l) => l.includes("permission")).join("\n"));
+  it("registers the micode commands", async () => {
+    const commands = (await api(`/api/command?directory=${encodeURIComponent(server.project)}`)) as { name?: string }[];
+    expect(commands.map((c) => c.name)).toEqual(expect.arrayContaining(["init", "mindmodel", "ledger", "search"]));
+  });
+
+  it("maps the commander agent onto the v2 record", async () => {
+    const agents = (await api(`/api/agent?directory=${encodeURIComponent(server.project)}`)) as Record<string, any>[];
+    const commander = agents.find((a) => (a.name ?? a.id) === "commander");
+    expect(commander?.mode).toBe("primary");
+    expect(typeof commander?.system).toBe("string");
+    expect(commander?.request?.body?.temperature).toBeDefined();
+    // OpenCode 2 names the shell action "shell"; the v1 "bash" permission must have been translated.
+    expect(commander?.permissions).toEqual(
+      expect.arrayContaining([{ action: "shell", resource: "*", effect: "allow" }]),
+    );
   });
 });

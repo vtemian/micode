@@ -254,13 +254,17 @@ describe("v2 setup", () => {
     const h = createHost();
     cleanup = await setup(h.host);
     const evaluate = h.hooks.get("permission.evaluate")!;
-    const ask = { action: "bash", resources: ["*"], effect: "ask", sessionID: "s1" };
+    // v1 names the shell action "bash"; OpenCode 2 names it "shell".
+    const ask = { action: "shell", resources: ["*"], effect: "ask", sessionID: "s1" };
     await evaluate(ask);
     expect(ask.effect).toBe("allow");
+    const legacy = { action: "bash", resources: ["*"], effect: "ask", sessionID: "s1" };
+    await evaluate(legacy);
+    expect(legacy.effect).toBe("ask");
     const other = { action: "read", resources: ["x.env"], effect: "ask", sessionID: "s1" };
     await evaluate(other);
     expect(other.effect).toBe("ask");
-    const denied = { action: "bash", resources: ["*"], effect: "deny", sessionID: "s1" };
+    const denied = { action: "shell", resources: ["*"], effect: "deny", sessionID: "s1" };
     await evaluate(denied);
     expect(denied.effect).toBe("deny");
   });
@@ -415,7 +419,7 @@ describe("toAgentInfo", () => {
     expect(agent.request.body).toEqual({ temperature: 0.3, maxTokens: 1000 });
     expect(agent.permissions).toEqual([
       { action: "edit", resource: "*", effect: "deny" },
-      { action: "bash", resource: "*", effect: "allow" },
+      { action: "shell", resource: "*", effect: "allow" },
       { action: "write", resource: "*", effect: "deny" },
     ]);
   });
@@ -424,8 +428,17 @@ describe("toAgentInfo", () => {
     const agent = blankAgent("x");
     toAgentInfo(agent, { permission: { bash: { "git *": "allow", "rm *": "deny" } } } as any, undefined);
     expect(agent.permissions).toEqual([
-      { action: "bash", resource: "git *", effect: "allow" },
-      { action: "bash", resource: "rm *", effect: "deny" },
+      { action: "shell", resource: "git *", effect: "allow" },
+      { action: "shell", resource: "rm *", effect: "deny" },
+    ]);
+  });
+
+  it("translates the v1 task tool into the v2 subagent action", () => {
+    const agent = blankAgent("x");
+    toAgentInfo(agent, { tools: { task: false, write: false } }, undefined);
+    expect(agent.permissions).toEqual([
+      { action: "subagent", resource: "*", effect: "deny" },
+      { action: "write", resource: "*", effect: "deny" },
     ]);
   });
 

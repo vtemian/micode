@@ -172,18 +172,29 @@ function extrasOf(config: AgentConfig): Extras {
   return {};
 }
 
+/**
+ * v1 permission keys and tool names that OpenCode 2 calls something else
+ * (verified against the 2.0.31 binary: `action:"shell"`, `action:"subagent"`).
+ */
+const V2_ACTIONS: Readonly<Record<string, string>> = { bash: "shell", task: "subagent" };
+
+function toV2Action(action: string): string {
+  return V2_ACTIONS[action] ?? action;
+}
+
 function permissionRules(permission: Extras["permission"]): Rule[] {
-  return Object.entries(permission ?? {}).flatMap(([action, rule]) =>
-    typeof rule === "string"
+  return Object.entries(permission ?? {}).flatMap(([name, rule]) => {
+    const action = toV2Action(name);
+    return typeof rule === "string"
       ? [{ action, resource: ANY, effect: rule }]
-      : Object.entries(rule).map(([resource, ruleEffect]) => ({ action, resource, effect: ruleEffect })),
-  );
+      : Object.entries(rule).map(([resource, ruleEffect]) => ({ action, resource, effect: ruleEffect }));
+  });
 }
 
 function toolRules(tools: Extras["tools"]): Rule[] {
   return Object.entries(tools ?? {})
     .filter(([, enabled]) => !enabled)
-    .map(([action]) => ({ action, resource: ANY, effect: "deny" as const }));
+    .map(([name]) => ({ action: toV2Action(name), resource: ANY, effect: "deny" as const }));
 }
 
 export function toAgentInfo(agent: AgentRecord, config: AgentConfig, model: V2ModelRef | undefined): void {
@@ -264,8 +275,9 @@ async function registerMcp(host: V2Host, micode: Micode): Promise<void> {
 }
 
 async function registerPermissions(host: V2Host, micode: Micode): Promise<void> {
+  const allowed = new Set(micode.allowedActions.map(toV2Action));
   await host.permission.hook("evaluate", (evaluation) => {
-    if (evaluation.effect === "ask" && micode.allowedActions.includes(evaluation.action)) evaluation.effect = "allow";
+    if (evaluation.effect === "ask" && allowed.has(evaluation.action)) evaluation.effect = "allow";
   });
 }
 
