@@ -5,6 +5,8 @@ import { defineTool } from "../../src/tools/define";
 
 type Log = Record<string, unknown[]>;
 
+const MODEL = { providerID: "p", modelID: "m" };
+
 function fakeClient(log: Log) {
   const record = (name: string, input: unknown) => {
     log[name] ??= [];
@@ -18,7 +20,7 @@ function fakeClient(log: Log) {
       },
       prompt: async (i: unknown) => {
         record("prompt", i);
-        return { data: { parts: [{ type: "text", text: "ignored" }] } };
+        return { data: { info: { role: "assistant" }, parts: [{ type: "text", text: "answer" }] } };
       },
       messages: async (i: unknown) => {
         record("messages", i);
@@ -36,11 +38,11 @@ function fakeClient(log: Log) {
       },
       abort: async (i: unknown) => {
         record("abort", i);
-        return {};
+        return { data: true };
       },
       summarize: async (i: unknown) => {
         record("summarize", i);
-        return {};
+        return { data: true };
       },
     },
     tui: {
@@ -53,136 +55,221 @@ function fakeClient(log: Log) {
 }
 
 describe("v1 host", () => {
-  it("runs an agent: create with parentID, blocking prompt, then reads the last assistant text", async () => {
-    const log: Log = {};
-    const host = createV1Host(fakeClient(log) as any, "/work");
-    const created: string[] = [];
+  describe("runAgent", () => {
+    it("creates under the parent, prompts with agent/model/tools and returns the blocking reply", async () => {
+      const log: Log = {};
+      const host = createV1Host(fakeClient(log) as any, "/work");
+      const created: string[] = [];
 
-    const reply = await host.runAgent({
-      agent: "probe",
-      text: "q",
-      parentID: "ses_parent",
-      title: "t",
-      denyTools: true,
-      model: { providerID: "p", modelID: "m" },
-      onCreated: (id) => created.push(id),
-    });
-
-    expect(reply).toEqual({ sessionID: "ses_child", text: "the summary" });
-    expect(created).toEqual(["ses_child"]);
-    expect(log.create[0]).toEqual({ body: { parentID: "ses_parent", title: "t" }, query: { directory: "/work" } });
-    expect(log.prompt[0]).toMatchObject({
-      path: { id: "ses_child" },
-      body: {
+      const reply = await host.runAgent({
         agent: "probe",
-        tools: {},
-        model: { providerID: "p", modelID: "m" },
-        parts: [{ type: "text", text: "q" }],
-      },
+        text: "q",
+        parentID: "ses_parent",
+        title: "t",
+        denyTools: true,
+        model: MODEL,
+        onCreated: (id) => created.push(id),
+      });
+
+      expect(reply).toEqual({ sessionID: "ses_child", text: "answer" });
+      expect(created).toEqual(["ses_child"]);
+      expect(log.create[0]).toEqual({ body: { parentID: "ses_parent", title: "t" }, query: { directory: "/work" } });
+      expect(log.prompt[0]).toMatchObject({
+        path: { id: "ses_child" },
+        body: { agent: "probe", tools: {}, model: MODEL, parts: [{ type: "text", text: "q" }] },
+      });
+      expect(log.messages).toBeUndefined();
+    });
+
+    it("throws when the host returns no session id", async () => {
+      const client = fakeClient({});
+      client.session.create = async () => ({ data: {} }) as never;
+      const host = createV1Host(client as any, "/work");
+      await expect(host.runAgent({ agent: "a", text: "t" })).rejects.toThrow("Failed to create session");
+    });
+
+    it("throws on an HTTP error response instead of returning an empty reply", async () => {
+      const client = fakeClient({});
+      client.session.prompt = async () => ({ error: { message: "agent not found" } }) as never;
+      const host = createV1Host(client as any, "/work");
+      await expect(host.runAgent({ agent: "nope", text: "t" })).rejects.toThrow("agent not found");
+    });
+
+    it("throws when the reply itself carries a provider error", async () => {
+      const client = fakeClient({});
+      client.session.prompt = async () =>
+        ({ data: { info: { role: "assistant", error: { message: "rate limited" } }, parts: [] } }) as never;
+      const host = createV1Host(client as any, "/work");
+      await expect(host.runAgent({ agent: "a", text: "t" })).rejects.toThrow("rate limited");
     });
   });
 
-  it("throws when the host returns no session id", async () => {
-    const client = fakeClient({});
-    client.session.create = async () => ({ data: {} }) as never;
-    const host = createV1Host(client as any, "/work");
-    await expect(host.runAgent({ agent: "a", text: "t" })).rejects.toThrow("Failed to create session");
-  });
+  describe("compact", () => {
+    it("summarizes and resolves with the summary once session.compacted arrives", async () => {
+      const log: Log = {};
+      const host = createV1Host(fakeClient(log) as any, "/work");
 
-  it("compacts by summarizing and waiting for the summary message event", async () => {
-    const log: Log = {};
-    const host = createV1Host(fakeClient(log) as any, "/work");
+      const pending = host.compact("ses_1", MODEL);
+      host.relay({ type: "session.compacted", properties: { sessionID: "ses_1" } });
 
-    const pending = host.compact("ses_1", { providerID: "p", modelID: "m" });
-    host.relay({
-      type: "message.updated",
-      properties: { info: { sessionID: "ses_1", role: "assistant", summary: true } },
+      expect(await pending).toBe("the summary");
+      expect(log.summarize[0]).toMatchObject({ path: { id: "ses_1" }, body: MODEL });
     });
 
-    expect(await pending).toBe("the summary");
-    expect(log.summarize[0]).toMatchObject({ path: { id: "ses_1" }, body: { providerID: "p", modelID: "m" } });
-  });
+    it("also settles on a completed summary message, but not on its creation", async () => {
+      const host = createV1Host(fakeClient({}) as any, "/work");
+      const pending = host.compact("ses_1", MODEL);
+      let settled = false;
+      void pending.then(() => {
+        settled = true;
+      });
 
-  it("rejects a pending compaction when the session is deleted", async () => {
-    const host = createV1Host(fakeClient({}) as any, "/work");
-    const pending = host.compact("ses_1", { providerID: "p", modelID: "m" });
-    host.relay({ type: "session.deleted", properties: { info: { id: "ses_1" } } });
-    await expect(pending).rejects.toThrow("Session deleted");
-  });
-
-  it("normalizes v1 events", () => {
-    const host = createV1Host(fakeClient({}) as any, "/work");
-    expect(host.relay({ type: "session.deleted", properties: { info: { id: "s1" } } })).toEqual({
-      type: "session.deleted",
-      sessionID: "s1",
-    });
-    expect(
       host.relay({
         type: "message.updated",
-        properties: {
-          info: {
-            sessionID: "s1",
-            role: "assistant",
-            tokens: { input: 10, cache: { read: 5 } },
-            providerID: "p",
-            modelID: "m",
+        properties: { info: { sessionID: "ses_1", role: "assistant", summary: true } },
+      });
+      await new Promise((r) => setTimeout(r, 0));
+      expect(settled).toBe(false);
+
+      host.relay({
+        type: "message.updated",
+        properties: { info: { sessionID: "ses_1", role: "assistant", summary: true, time: { completed: 1 } } },
+      });
+      expect(await pending).toBe("the summary");
+    });
+
+    it("rejects when the summary message carries an error and still emits the error event", async () => {
+      const host = createV1Host(fakeClient({}) as any, "/work");
+      const pending = host.compact("ses_1", MODEL);
+
+      const emitted = host.relay({
+        type: "message.updated",
+        properties: { info: { sessionID: "ses_1", role: "assistant", summary: true, error: { message: "too long" } } },
+      });
+
+      await expect(pending).rejects.toThrow("too long");
+      expect(emitted).toMatchObject({ type: "session.error", sessionID: "ses_1" });
+    });
+
+    it("rejects immediately when the summarize request fails", async () => {
+      const client = fakeClient({});
+      client.session.summarize = async () => ({ error: { message: "not found" } }) as never;
+      const host = createV1Host(client as any, "/work");
+      await expect(host.compact("ses_1", MODEL)).rejects.toThrow("not found");
+    });
+
+    it("rejects a pending compaction when the session is deleted", async () => {
+      const host = createV1Host(fakeClient({}) as any, "/work");
+      const pending = host.compact("ses_1", MODEL);
+      host.relay({ type: "session.deleted", properties: { info: { id: "ses_1" } } });
+      await expect(pending).rejects.toThrow("Session deleted");
+    });
+  });
+
+  describe("relay", () => {
+    it("normalizes v1 events", () => {
+      const host = createV1Host(fakeClient({}) as any, "/work");
+      expect(host.relay({ type: "session.deleted", properties: { info: { id: "s1" } } })).toEqual({
+        type: "session.deleted",
+        sessionID: "s1",
+      });
+      expect(
+        host.relay({
+          type: "message.updated",
+          properties: {
+            info: {
+              sessionID: "s1",
+              role: "assistant",
+              tokens: { input: 10, cache: { read: 5 } },
+              providerID: "p",
+              modelID: "m",
+            },
           },
-        },
-      }),
-    ).toEqual({
-      type: "assistant.usage",
-      sessionID: "s1",
-      input: 10,
-      cacheRead: 5,
-      model: { providerID: "p", modelID: "m" },
+        }),
+      ).toEqual({ type: "assistant.usage", sessionID: "s1", input: 10, cacheRead: 5, model: MODEL });
+      expect(host.relay({ type: "session.error", properties: { sessionID: "s1", error: "boom" } })).toEqual({
+        type: "session.error",
+        sessionID: "s1",
+        error: "boom",
+      });
+      expect(
+        host.relay({
+          type: "message.updated",
+          properties: { info: { sessionID: "s1", role: "assistant", error: "bad", providerID: "p", modelID: "m" } },
+        }),
+      ).toEqual({ type: "session.error", sessionID: "s1", error: "bad", model: MODEL });
     });
-    expect(host.relay({ type: "session.error", properties: { sessionID: "s1", error: "boom" } })).toEqual({
-      type: "session.error",
-      sessionID: "s1",
-      error: "boom",
+
+    it("drops user messages, summary usage, zero usage and unrelated events", () => {
+      const host = createV1Host(fakeClient({}) as any, "/work");
+      expect(
+        host.relay({ type: "message.updated", properties: { info: { sessionID: "s1", role: "user" } } }),
+      ).toBeUndefined();
+      expect(
+        host.relay({
+          type: "message.updated",
+          properties: { info: { sessionID: "s1", role: "assistant", summary: true, tokens: { input: 900 } } },
+        }),
+      ).toBeUndefined();
+      expect(
+        host.relay({
+          type: "message.updated",
+          properties: { info: { sessionID: "s1", role: "assistant", tokens: { input: 0 } } },
+        }),
+      ).toBeUndefined();
+      expect(host.relay({ type: "session.idle", properties: {} })).toBeUndefined();
+      expect(host.relay({ type: "session.deleted", properties: null })).toBeUndefined();
     });
-    expect(
-      host.relay({
-        type: "message.updated",
-        properties: { info: { sessionID: "s1", role: "assistant", error: "bad", providerID: "p", modelID: "m" } },
-      }),
-    ).toEqual({ type: "session.error", sessionID: "s1", error: "bad", model: { providerID: "p", modelID: "m" } });
-    expect(
-      host.relay({ type: "message.updated", properties: { info: { sessionID: "s1", role: "user" } } }),
-    ).toBeUndefined();
-    expect(host.relay({ type: "session.idle", properties: {} })).toBeUndefined();
   });
 
-  it("prompts, interrupts, reads the last user text, removes and notifies through the client", async () => {
-    const log: Log = {};
-    const host = createV1Host(fakeClient(log) as any, "/work");
+  describe("session calls", () => {
+    it("prompts, interrupts, reads the last user text, removes and notifies through the client", async () => {
+      const log: Log = {};
+      const host = createV1Host(fakeClient(log) as any, "/work");
 
-    await host.prompt("s1", "continue", { model: { providerID: "p", modelID: "m" }, agent: "build" });
-    await host.interrupt("s1");
-    await host.remove("s1");
-    await host.notify({ title: "T", message: "M", variant: "info", duration: 1 });
+      await host.prompt("s1", "continue", { model: MODEL, agent: "build" });
+      await host.interrupt("s1");
+      await host.remove("s1");
+      await host.notify({ title: "T", message: "M", variant: "info", duration: 1 });
 
-    expect(log.prompt[0]).toMatchObject({
-      path: { id: "s1" },
-      body: { parts: [{ type: "text", text: "continue" }], model: { providerID: "p", modelID: "m" }, agent: "build" },
+      expect(log.prompt[0]).toMatchObject({
+        path: { id: "s1" },
+        body: { parts: [{ type: "text", text: "continue" }], model: MODEL, agent: "build" },
+      });
+      expect(log.abort[0]).toMatchObject({ path: { id: "s1" }, query: { directory: "/work" } });
+      expect(log.delete[0]).toMatchObject({ path: { id: "s1" }, query: { directory: "/work" } });
+      expect(log.toast[0]).toEqual({ body: { title: "T", message: "M", variant: "info", duration: 1 } });
+      expect(await host.lastUserText("s1")).toBe("question");
     });
-    expect(log.abort[0]).toMatchObject({ path: { id: "s1" } });
-    expect(log.delete[0]).toMatchObject({ path: { id: "s1" } });
-    expect(log.toast[0]).toEqual({ body: { title: "T", message: "M", variant: "info", duration: 1 } });
-    expect(await host.lastUserText("s1")).toBe("question");
-  });
 
-  it("swallows delete and toast failures", async () => {
-    const client = fakeClient({});
-    client.session.delete = async () => {
-      throw new Error("gone");
-    };
-    client.tui.showToast = async () => {
-      throw new Error("no tui");
-    };
-    const host = createV1Host(client as any, "/work");
-    await host.remove("s1");
-    await host.notify({ title: "T", message: "M", variant: "info", duration: 1 });
+    it("surfaces HTTP errors from prompt and abort", async () => {
+      const client = fakeClient({});
+      client.session.prompt = async () => ({ error: "gone" }) as never;
+      client.session.abort = async () => ({ error: "gone" }) as never;
+      const host = createV1Host(client as any, "/work");
+      await expect(host.prompt("s1", "x")).rejects.toThrow("Prompt failed");
+      await expect(host.interrupt("s1")).rejects.toThrow("Abort failed");
+    });
+
+    it("returns undefined when the session has no user text", async () => {
+      const client = fakeClient({});
+      client.session.messages = async () => ({ data: [] });
+      const host = createV1Host(client as any, "/work");
+      expect(await host.lastUserText("s1")).toBeUndefined();
+    });
+
+    it("swallows delete and toast failures", async () => {
+      const client = fakeClient({});
+      client.session.delete = async () => {
+        throw new Error("gone");
+      };
+      client.tui.showToast = async () => {
+        throw new Error("no tui");
+      };
+      const host = createV1Host(client as any, "/work");
+      await host.remove("s1");
+      await host.notify({ title: "T", message: "M", variant: "info", duration: 1 });
+    });
   });
 
   it("wraps a core tool for the v1 tool() helper and forwards the session id and progress", async () => {
