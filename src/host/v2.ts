@@ -1,0 +1,409 @@
+import type { Plugin } from "@opencode/plugin";
+import type { AgentEditor } from "@opencode/plugin/promise/agent";
+import type { MCPEditor } from "@opencode/plugin/promise/mcp";
+import type { SessionContext } from "@opencode/plugin/promise/session";
+import type { Info as ToolInfo } from "@opencode/plugin/promise/tool";
+import type { AgentConfig, McpLocalConfig } from "@opencode-ai/sdk";
+import { z } from "zod";
+
+import { createMicode, type Micode } from "@/micode";
+import type { MicodeTool } from "@/tools/define";
+import { extractErrorMessage } from "@/utils/errors";
+import { log } from "@/utils/logger";
+
+import type { AgentReply, AgentRun, HostEvent, ModelRef, SessionHost } from "./port";
+
+/** The slice of the v2 plugin context micode uses. Tests fake exactly this. */
+export type V2Host = Pick<
+  Plugin.Context,
+  "location" | "tool" | "agent" | "command" | "mcp" | "permission" | "event" | "session"
+>;
+
+/** v2 permission vocabulary for a run that may not call tools (reviewer, probe). */
+export const DENY_ALL_TOOLS = [{ action: "*", resource: "*", effect: "deny" }] as const;
+
+type Session = V2Host["session"];
+type AgentRecord = Parameters<Parameters<AgentEditor["update"]>[1]>[0];
+type V2ModelRef = NonNullable<AgentRecord["model"]>;
+type Rule = AgentRecord["permissions"][number];
+type V2Tool = ToolInfo<z.ZodObject<z.ZodRawShape>, undefined>;
+type McpServer = Parameters<MCPEditor["set"]>[1];
+type SessionMessage = Awaited<ReturnType<Session["context"]>>[number];
+type AssistantReply = Extract<SessionMessage, { type: "assistant" }>;
+type ReplyPart = AssistantReply["content"][number];
+type SystemPart = SessionContext["system"][number];
+type ContextMessage = SessionContext["messages"][number];
+type ParseModel = (ref: string) => V2ModelRef;
+type Extras = z.infer<typeof extras>;
+
+const LOG_SCOPE = "host";
+const ANY = "*";
+const TEXT = "text";
+const USER_ROLE = "user";
+const ARGUMENTS_PLACEHOLDER = "$ARGUMENTS";
+const SESSION_DELETED = "session.deleted";
+const STEP_ENDED = "session.step.ended";
+const EXECUTION_FAILED = "session.execution.failed";
+
+const envelope = z.object({ type: z.string() });
+const sessionDeleted = z.object({ data: z.object({ sessionID: z.string() }) });
+const stepEnded = z.object({
+  data: z.object({
+    sessionID: z.string(),
+    tokens: z.object({ input: z.number(), cache: z.object({ read: z.number() }) }),
+  }),
+});
+const executionFailed = z.object({ data: z.object({ sessionID: z.string(), error: z.unknown() }) });
+
+const effect = z.enum(["allow", "deny", "ask"]);
+/** v1 AgentConfig types none of these; micode's agent configs carry them through its index signature. */
+const extras = z.object({
+  variant: z.string().optional(),
+  thinking: z.unknown().optional(),
+  maxTokens: z.number().optional(),
+  tools: z.record(z.string(), z.boolean()).optional(),
+  permission: z.record(z.string(), z.union([effect, z.record(z.string(), effect)])).optional(),
+});
+
+function isAssistant(message: SessionMessage): message is AssistantReply {
+  return message.type === "assistant";
+}
+
+function isText(part: ReplyPart): part is Extract<ReplyPart, { type: "text" }> {
+  return part.type === TEXT;
+}
+
+/** Only a completed, error-free turn counts (mirrors octto and the host's own subagent reader). */
+export function lastAssistantText(messages: readonly SessionMessage[]): string {
+  const reply = messages
+    .filter(isAssistant)
+    .filter((m) => m.time.completed !== undefined)
+    .at(-1);
+  if (!reply) throw new Error("Agent returned no completed reply");
+  if (reply.error) throw new Error(`Agent failed: ${reply.error.message}`);
+  return reply.content
+    .filter(isText)
+    .map((part) => part.text)
+    .join("");
+}
+
+function lastSummary(messages: readonly SessionMessage[]): string {
+  const compaction = messages.filter((m) => m.type === "compaction").at(-1);
+  const summary = compaction && "summary" in compaction ? compaction.summary : undefined;
+  return typeof summary === "string" ? summary : "";
+}
+
+function lastUserText(messages: readonly SessionMessage[]): string | undefined {
+  const user = messages.filter((m) => m.type === USER_ROLE).at(-1);
+  return user && "text" in user && typeof user.text === "string" ? user.text : undefined;
+}
+
+/** The session API takes a plain ref; only agent records need the branded `Model.Ref`. */
+function toSessionModel(model: ModelRef): { providerID: string; id: string } {
+  return { providerID: model.providerID, id: model.modelID };
+}
+
+async function runAgent(session: Session, run: AgentRun): Promise<AgentReply> {
+  const { id: sessionID } = await session.create({
+    agent: run.agent,
+    ...(run.title ? { title: run.title } : {}),
+    ...(run.parentID ? { parentID: run.parentID } : {}),
+    ...(run.model ? { model: toSessionModel(run.model) } : {}),
+    ...(run.denyTools ? { permissions: [...DENY_ALL_TOOLS] } : {}),
+  });
+  run.onCreated?.(sessionID);
+  // v2 prompts enqueue and return at once; wait() blocks until the reply is complete.
+  await session.prompt({ sessionID, text: run.text });
+  await session.wait({ sessionID });
+  return { sessionID, text: lastAssistantText(await session.context({ sessionID })) };
+}
+
+export function createV2Host(session: Session): SessionHost {
+  return {
+    runAgent: (run) => runAgent(session, run),
+    remove: async (sessionID) => {
+      try {
+        await session.remove({ sessionID });
+      } catch (error: unknown) {
+        log.warn(LOG_SCOPE, `failed to remove session ${sessionID}: ${extractErrorMessage(error)}`);
+      }
+    },
+    // v2 prompts carry no agent/model; the session already has both, so the hint is ignored.
+    prompt: async (sessionID, text) => {
+      await session.prompt({ sessionID, text });
+    },
+    interrupt: async (sessionID) => {
+      await session.interrupt({ sessionID });
+    },
+    compact: async (sessionID) => {
+      await session.compact({ sessionID });
+      await session.wait({ sessionID });
+      return lastSummary(await session.context({ sessionID }));
+    },
+    lastUserText: async (sessionID) => lastUserText(await session.context({ sessionID })),
+    notify: async (notification) => {
+      // No server-side toast on v2; a TUI subplugin is a follow-up.
+      log.info(LOG_SCOPE, `${notification.title}: ${notification.message}`);
+    },
+  };
+}
+
+function toV2Tool(name: string, core: MicodeTool): V2Tool {
+  return {
+    name,
+    description: core.description,
+    input: z.object(core.args),
+    // Verified on 2.0.31 (octto): tools default to Code Mode only, and the agent
+    // prompts call these by name, so they must be listed as direct function tools.
+    options: { codemode: false },
+    execute: async (input: unknown, context) => ({
+      content: await core.execute(input, {
+        sessionID: context.sessionID,
+        progress: (title) => void context.progress({ title }),
+      }),
+    }),
+  };
+}
+
+function extrasOf(config: AgentConfig): Extras {
+  const parsed = extras.safeParse(config);
+  if (parsed.success) return parsed.data;
+  log.warn(LOG_SCOPE, `ignoring unreadable agent fields: ${parsed.error.message}`);
+  return {};
+}
+
+function permissionRules(permission: Extras["permission"]): Rule[] {
+  return Object.entries(permission ?? {}).flatMap(([action, rule]) =>
+    typeof rule === "string"
+      ? [{ action, resource: ANY, effect: rule }]
+      : Object.entries(rule).map(([resource, ruleEffect]) => ({ action, resource, effect: ruleEffect })),
+  );
+}
+
+function toolRules(tools: Extras["tools"]): Rule[] {
+  return Object.entries(tools ?? {})
+    .filter(([, enabled]) => !enabled)
+    .map(([action]) => ({ action, resource: ANY, effect: "deny" as const }));
+}
+
+export function toAgentInfo(agent: AgentRecord, config: AgentConfig, model: V2ModelRef | undefined): void {
+  const extra = extrasOf(config);
+  if (config.description !== undefined) agent.description = config.description;
+  if (config.mode !== undefined) agent.mode = config.mode;
+  if (config.prompt !== undefined) agent.system = config.prompt;
+  if (model !== undefined) agent.model = model;
+  if (config.maxSteps !== undefined) agent.steps = config.maxSteps;
+  // v2 agents have no temperature/maxTokens/thinking fields; they travel in the raw provider body.
+  if (config.temperature !== undefined) agent.request.body.temperature = config.temperature;
+  if (extra.maxTokens !== undefined) agent.request.body.maxTokens = extra.maxTokens;
+  if (extra.thinking !== undefined) agent.request.body.thinking = extra.thinking;
+  const rules = [...permissionRules(extra.permission), ...toolRules(extra.tools)];
+  if (rules.length > 0) agent.permissions = [...agent.permissions, ...rules];
+}
+
+function modelRefOf(config: AgentConfig, parseModel: ParseModel): V2ModelRef | undefined {
+  if (config.model === undefined) return undefined;
+  const { variant } = extrasOf(config);
+  return parseModel(variant ? `${config.model}#${variant}` : config.model);
+}
+
+async function registerTools(host: V2Host, micode: Micode): Promise<void> {
+  await host.tool.transform((editor) => {
+    for (const [name, core] of Object.entries(micode.tools)) editor.add(toV2Tool(name, core));
+  });
+}
+
+async function registerAgents(host: V2Host, micode: Micode, parseModel: ParseModel): Promise<void> {
+  // Transforms replay synchronously, so resolve branded model refs up front and only assign inside.
+  const prepared = Object.entries(micode.agents).map(([name, config]) => ({
+    name,
+    config,
+    model: modelRefOf(config, parseModel),
+  }));
+  await host.agent.transform((editor) => {
+    for (const { name, config, model } of prepared) editor.update(name, (agent) => toAgentInfo(agent, config, model));
+    editor.default(micode.defaultAgent);
+  });
+}
+
+async function registerCommands(host: V2Host, micode: Micode): Promise<void> {
+  await host.command.transform((editor) => {
+    for (const command of micode.commands) {
+      editor.add({
+        name: command.name,
+        description: command.description,
+        execute: async ({ sessionID, prompt, delivery }) => {
+          await host.session.switchAgent({ sessionID, agent: command.agent });
+          await host.session.prompt({
+            ...prompt,
+            sessionID,
+            text: command.template.replace(ARGUMENTS_PLACEHOLDER, prompt.text),
+            delivery,
+          });
+        },
+      });
+    }
+  });
+}
+
+function toMcpServer(server: McpLocalConfig): McpServer {
+  return {
+    type: "local",
+    command: [...server.command],
+    ...(server.environment ? { environment: server.environment } : {}),
+  };
+}
+
+async function registerMcp(host: V2Host, micode: Micode): Promise<void> {
+  await host.mcp.transform((editor) => {
+    for (const [name, server] of Object.entries(micode.mcpServers)) {
+      if (editor.get(name)) continue; // the user's own entry wins, as in v1
+      editor.set(name, toMcpServer(server));
+    }
+  });
+}
+
+async function registerPermissions(host: V2Host, micode: Micode): Promise<void> {
+  await host.permission.hook("evaluate", (evaluation) => {
+    if (evaluation.effect === "ask" && micode.allowedActions.includes(evaluation.action)) evaluation.effect = "allow";
+  });
+}
+
+function textOf(message: ContextMessage): string {
+  return message.content
+    .map((part) => (part.type === TEXT ? part.text : ""))
+    .filter(Boolean)
+    .join(" ");
+}
+
+/** Keeps the host's own parts (and their cache hints); only micode's additions are plain text. */
+function toSystemParts(original: readonly SystemPart[], texts: readonly string[]): SystemPart[] {
+  return texts.map((text) => original.find((part) => part.text === text) ?? { type: TEXT, text });
+}
+
+async function applyContext(micode: Micode, input: SessionContext): Promise<void> {
+  micode.onRequest({
+    sessionID: input.sessionID,
+    agent: input.agent,
+    model: { providerID: input.model.providerID, modelID: input.model.id },
+  });
+  const lastUser = [...input.messages].reverse().find((m) => m.role === USER_ROLE);
+  const system = await micode.systemPrompt({
+    sessionID: input.sessionID,
+    agent: input.agent,
+    system: input.system.map((part) => part.text),
+    userText: lastUser ? textOf(lastUser) : undefined,
+  });
+  input.system.splice(0, input.system.length, ...toSystemParts(input.system, system));
+  Object.assign(input.options, micode.requestOptions(input.sessionID));
+}
+
+async function registerSessionHooks(host: V2Host, micode: Micode): Promise<void> {
+  await host.session.hook("prompt", async (input) => {
+    await micode.onPrompt({ sessionID: input.sessionID, text: input.prompt.text });
+  });
+  await host.session.hook("context", (input) => applyContext(micode, input));
+  await host.session.hook("compaction", (input) => {
+    // The compaction hook has no prompt field; the instruction rides on the system prompt.
+    input.system.push({ type: TEXT, text: micode.compactionInstruction(input.sessionID) });
+  });
+}
+
+function recordArgs(args: unknown): Record<string, unknown> | undefined {
+  return typeof args === "object" && args !== null ? (args as Record<string, unknown>) : undefined;
+}
+
+async function registerToolHook(host: V2Host, micode: Micode): Promise<void> {
+  await host.tool.hook("execute.after", async (input) => {
+    if (input.status !== "completed" || typeof input.result.content !== "string") return;
+    // ConstraintViolationError cannot abort the call on v2 (after-hook rejections are swallowed);
+    // the reviewer has already appended the violation text to the output before it throws.
+    try {
+      const content = await micode.onToolResult({
+        tool: input.tool,
+        sessionID: input.sessionID,
+        args: recordArgs(input.input),
+        output: input.result.content,
+      });
+      input.result = { ...input.result, content };
+    } catch (error: unknown) {
+      log.warn(LOG_SCOPE, `tool post-processing failed for ${input.tool}: ${extractErrorMessage(error)}`);
+    }
+  });
+}
+
+function deletedOf(event: unknown): HostEvent | undefined {
+  const parsed = sessionDeleted.safeParse(event);
+  return parsed.success ? { type: SESSION_DELETED, sessionID: parsed.data.data.sessionID } : undefined;
+}
+
+function usageOf(event: unknown): HostEvent | undefined {
+  const parsed = stepEnded.safeParse(event);
+  if (!parsed.success) return undefined;
+  const { sessionID, tokens } = parsed.data.data;
+  return { type: "assistant.usage", sessionID, input: tokens.input, cacheRead: tokens.cache.read };
+}
+
+function errorOf(event: unknown): HostEvent | undefined {
+  const parsed = executionFailed.safeParse(event);
+  return parsed.success
+    ? { type: "session.error", sessionID: parsed.data.data.sessionID, error: parsed.data.data.error }
+    : undefined;
+}
+
+/** Maps the v2 events micode cares about onto the host event union; anything else is dropped. */
+export function normalizeEvent(event: unknown): HostEvent | undefined {
+  const typed = envelope.safeParse(event);
+  if (!typed.success) return undefined;
+  if (typed.data.type === SESSION_DELETED) return deletedOf(event);
+  if (typed.data.type === STEP_ENDED) return usageOf(event);
+  if (typed.data.type === EXECUTION_FAILED) return errorOf(event);
+  return undefined;
+}
+
+async function relayEvents(host: V2Host, micode: Micode, signal: AbortSignal): Promise<void> {
+  for await (const event of host.event.subscribe({ signal })) {
+    const normalized = normalizeEvent(event);
+    if (!normalized) continue;
+    try {
+      await micode.onEvent(normalized);
+    } catch (error: unknown) {
+      // One bad event must not end the subscription for the plugin's lifetime.
+      log.error(LOG_SCOPE, `event handling failed: ${extractErrorMessage(error)}`);
+    }
+  }
+}
+
+function watchEvents(host: V2Host, micode: Micode): () => void {
+  const controller = new AbortController();
+  void relayEvents(host, micode, controller.signal).catch((error: unknown) => {
+    if (controller.signal.aborted) return;
+    log.error(LOG_SCOPE, `event stream ended unexpectedly: ${extractErrorMessage(error)}`);
+  });
+  return () => controller.abort();
+}
+
+/** The v2 plugin entry: assembles the core over a v2 session host and registers it on the context. */
+export async function setup(host: V2Host): Promise<Plugin.Cleanup> {
+  // Dynamic on purpose: the v1 host must never load the v2 SDK.
+  const { Model } = await import("@opencode/plugin");
+  const parseModel: ParseModel = (ref) => Model.Ref.parse(ref);
+  const micode = await createMicode({
+    directory: host.location.directory,
+    host: createV2Host(host.session),
+  });
+
+  await registerTools(host, micode);
+  await registerAgents(host, micode, parseModel);
+  await registerCommands(host, micode);
+  await registerMcp(host, micode);
+  await registerPermissions(host, micode);
+  await registerSessionHooks(host, micode);
+  await registerToolHook(host, micode);
+  const stopWatching = watchEvents(host, micode);
+
+  return async () => {
+    stopWatching();
+    await micode.dispose();
+  };
+}

@@ -1,12 +1,8 @@
 import { describe, expect, it } from "bun:test";
 
-import { DENY_ALL_TOOLS, type HostEvent, type SessionHost } from "../../src/host/port";
+import type { HostEvent, SessionHost } from "../../src/host/port";
 
 describe("host port", () => {
-  it("exposes a deny-all permission ruleset for tool-less runs", () => {
-    expect(DENY_ALL_TOOLS).toEqual([{ action: "*", resource: "*", effect: "deny" }]);
-  });
-
   it("types normalized events as a discriminated union", () => {
     const deleted: HostEvent = { type: "session.deleted", sessionID: "ses_1" };
     const usage: HostEvent = { type: "assistant.usage", sessionID: "ses_1", input: 10, cacheRead: 5 };

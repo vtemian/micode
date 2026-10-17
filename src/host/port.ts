@@ -74,5 +74,3 @@ export type HostEvent =
       readonly model?: ModelRef;
       readonly agent?: string;
     };
-
-export const DENY_ALL_TOOLS = [{ action: "*", resource: "*", effect: "deny" }] as const;
