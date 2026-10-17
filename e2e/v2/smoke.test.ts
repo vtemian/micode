@@ -51,6 +51,8 @@ async function startServer(): Promise<Server> {
     join(home, ".config", "opencode", "opencode.jsonc"),
     JSON.stringify({ plugins: [REPO_ROOT], share: "disabled" }),
   );
+  // The harness image has no npx, so the bundled context7 MCP server cannot start; keep it off like the v1 tier.
+  await writeFile(join(home, ".config", "opencode", "micode.json"), JSON.stringify({ features: { context7: false } }));
   const project = await mkdtemp(join(tmpdir(), "micode-v2-project-"));
   const log: string[] = [];
   const proc = Bun.spawn(["opencode", "serve", "--port", String(PORT), "--print-logs", "--log-level", "info"], {
@@ -135,9 +137,7 @@ describe("micode on OpenCode 2", () => {
 
   it("loads without a plugin error", () => {
     // Runs after the directory-scoped requests above, so the plugin has been set up by now.
-    const bad = server.log.filter(
-      (l) => /failed to load|LoadError/i.test(l) || (/micode/i.test(l) && /error/i.test(l)),
-    );
+    const bad = server.log.filter((l) => /failed to load|LoadError|PluginModule|level=ERROR/i.test(l));
     expect(bad).toEqual([]);
   });
 
