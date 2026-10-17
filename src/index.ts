@@ -113,9 +113,8 @@ const OpenCodeConfigPlugin: Plugin = async (ctx) => {
   const sessionUsage = createSessionUsage(modelContextLimits);
 
   // Hooks
-  const autoCompactHook = createAutoCompactHook(ctx, {
+  const autoCompactHook = createAutoCompactHook(ctx, v1Host, sessionUsage, {
     compactionThreshold: userConfig?.compactionThreshold,
-    modelContextLimits,
   });
   const contextInjectorHook = createContextInjectorHook(ctx);
   const ledgerLoaderHook = createLedgerLoaderHook(ctx);
@@ -492,11 +491,11 @@ IMPORTANT:
       const normalized = v1Host.relay(event);
       if (normalized) {
         sessionUsage.onEvent(normalized);
+        await autoCompactHook.onEvent(normalized);
         await contextWindowMonitorHook.onEvent(normalized);
       }
 
       // Run all event hooks
-      await autoCompactHook.event({ event });
       await sessionRecoveryHook.event({ event });
 
       // File ops tracker cleanup

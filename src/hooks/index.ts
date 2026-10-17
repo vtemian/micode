@@ -1,5 +1,5 @@
 export { createArtifactAutoIndexHook, parseLedger } from "./artifact-auto-index";
-export { type AutoCompactConfig, createAutoCompactHook } from "./auto-compact";
+export { type AutoCompactConfig, type AutoCompactHook, createAutoCompactHook } from "./auto-compact";
 export { createCommentCheckerHook } from "./comment-checker";
 export { ConstraintViolationError, createConstraintReviewerHook } from "./constraint-reviewer";
 export { createContextInjectorHook } from "./context-injector";
