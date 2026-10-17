@@ -55,25 +55,26 @@ describe("buildMcpServers", () => {
 
 describe("mergeMcpServers", () => {
   const hostContext7 = { type: "local" as const, command: ["my-own-context7"] };
+  const bundled = { context7: { type: "local" as const, command: ["npx", "-y", "@upstash/context7-mcp@latest"] } };
 
   it("lets a host entry of the same name replace the bundled server", () => {
-    const merged = mergeMcpServers({ context7: hostContext7 });
+    const merged = mergeMcpServers({ context7: hostContext7 }, bundled);
     expect(merged.context7.command).toEqual(["my-own-context7"]);
   });
 
   it("keeps host-only servers alongside the bundled ones", () => {
     const custom = { type: "local" as const, command: ["something-else"] };
-    const merged = mergeMcpServers({ custom });
+    const merged = mergeMcpServers({ custom }, bundled);
 
     expect(merged.custom).toEqual(custom);
-    expect(Object.keys(merged)).toContain("context7");
+    expect(merged.context7).toEqual(bundled.context7);
   });
 
   it("registers the bundled servers when the host declares none", () => {
-    expect(Object.keys(mergeMcpServers(undefined))).toEqual(["context7"]);
+    expect(Object.keys(mergeMcpServers(undefined, bundled))).toEqual(["context7"]);
   });
 
-  it("drops context7 entirely when disabled and unclaimed by the host", () => {
-    expect(mergeMcpServers({}, { context7: false })).toEqual({});
+  it("adds nothing when the plugin offers no servers", () => {
+    expect(mergeMcpServers({}, {})).toEqual({});
   });
 });
