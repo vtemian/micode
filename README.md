@@ -9,13 +9,30 @@ https://github.com/user-attachments/assets/85236ad3-e78a-4ff7-a840-620f6ea2f512
 
 ## Quick Start
 
-Add to `~/.config/opencode/opencode.json`:
+micode loads on both OpenCode 2 and OpenCode 1 (1.18.29 or newer) from one package.
+
+**OpenCode 2** (`~/.config/opencode/opencode.jsonc`):
+
+```json
+{ "plugins": ["micode"] }
+```
+
+**OpenCode 1, 1.18.29 or newer** (`~/.config/opencode/opencode.json`):
 
 ```json
 { "plugin": ["micode"] }
 ```
 
 Then run `/init` to generate `ARCHITECTURE.md` and `CODE_STYLE.md`.
+
+### OpenCode 2 notes
+
+- Commands (`/init`, `/mindmodel`, `/ledger`, `/search`) switch the session's agent and keep it switched; pick another agent in the UI to switch back.
+- The default agent is set to `commander` on load. Switch agents in the UI to use another one.
+- Toast notifications (auto-compact, session recovery, context window) are written to the log instead of shown.
+- Constraint-review violations are appended to the tool output but cannot block the call.
+- Fragments, the continuity ledger and project context files are injected into the system prompt on both hosts (on OpenCode 1 they previously never reached the model).
+- The default model is `openai/gpt-5.3-codex`; override it per agent in `micode.json` as before.
 
 ## Workflow
 
@@ -169,7 +186,9 @@ cd ~/.micode && bun install && bun run build
 ```
 
 ```json
-// Use local path
+// Use local path (OpenCode 2 resolves the directory through its root index.js)
+{ "plugins": ["~/.micode"] }
+// OpenCode 1
 { "plugin": ["~/.micode"] }
 ```
 
