@@ -3,6 +3,7 @@ import type { Plugin } from "@opencode-ai/plugin";
 import { agents, PRIMARY_AGENT_NAME } from "@/agents";
 import { loadMicodeConfig, loadModelContextLimits, mergeAgentConfigs } from "@/config-loader";
 import {
+  clearFileOps,
   createArtifactAutoIndexHook,
   createAutoCompactHook,
   createCommentCheckerHook,
@@ -238,16 +239,13 @@ const OpenCodeConfigPlugin: Plugin = async (ctx) => {
     },
   });
 
-  async function cleanupDeletedSession(event: { properties?: unknown }): Promise<void> {
-    const props = event.properties as { info?: { id?: string } } | undefined;
-    if (!props?.info?.id) return;
-
-    const sessionId = props.info.id;
+  async function cleanupDeletedSession(sessionId: string): Promise<void> {
     thinkModeState.delete(sessionId);
     deleteSessionModel(sessionId);
     ptyManager.cleanupBySession(sessionId);
     constraintReviewerHook.cleanupSession(sessionId);
     fetchTrackerHook.cleanupSession(sessionId);
+    clearFileOps(sessionId);
 
     // Cleanup octto sessions
     const sessionOcttoIds = octtoSessions.get(sessionId);
@@ -483,24 +481,18 @@ IMPORTANT:
     },
 
     event: async ({ event }) => {
-      // Session cleanup (think mode + PTY + octto + constraint reviewer)
-      if (event.type === "session.deleted") {
-        await cleanupDeletedSession(event);
+      const normalized = v1Host.relay(event);
+      // Session cleanup (think mode + PTY + octto + constraint reviewer + trackers)
+      if (normalized?.type === "session.deleted") {
+        await cleanupDeletedSession(normalized.sessionID);
       }
 
-      const normalized = v1Host.relay(event);
       if (normalized) {
         sessionUsage.onEvent(normalized);
         await autoCompactHook.onEvent(normalized);
         await sessionRecoveryHook.onEvent(normalized);
         await contextWindowMonitorHook.onEvent(normalized);
       }
-
-      // File ops tracker cleanup
-      await fileOpsTrackerHook.event({ event });
-
-      // Fetch tracker cleanup
-      await fetchTrackerHook.event({ event });
     },
   };
 };

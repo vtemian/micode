@@ -168,7 +168,6 @@ interface FetchTrackerHooks {
     input: { tool: string; sessionID: string; args?: Record<string, unknown> },
     output: { output?: string },
   ) => Promise<void>;
-  event: (input: { event: { type: string; properties?: unknown } }) => Promise<void>;
   cleanupSession: (sessionID: string) => void;
 }
 
@@ -180,12 +179,6 @@ export function createFetchTrackerHook(_ctx: Workspace): FetchTrackerHooks {
       } catch (error) {
         log.warn("hooks.fetch-tracker", `After hook error: ${extractErrorMessage(error)}`);
       }
-    },
-
-    event: async ({ event }) => {
-      if (event.type !== "session.deleted") return;
-      const props = event.properties as { info?: { id?: string } } | undefined;
-      if (props?.info?.id) clearSession(props.info.id);
     },
 
     cleanupSession: clearSession,

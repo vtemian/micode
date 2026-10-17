@@ -94,11 +94,10 @@ describe("fetch-tracker", () => {
       expect(typeof createFetchTrackerHook).toBe("function");
     });
 
-    it("should return hook with after handler, event handler, and cleanupSession", () => {
+    it("should return hook with after handler and cleanupSession", () => {
       const mockCtx = { directory: "/test" } as any;
       const hook = createFetchTrackerHook(mockCtx);
       expect(hook["tool.execute.after"]).toBeDefined();
-      expect(hook.event).toBeDefined();
       expect(hook.cleanupSession).toBeDefined();
     });
   });
@@ -278,7 +277,7 @@ describe("fetch-tracker", () => {
       expect(getCacheEntry(testSessionID, "webfetch|https://example.com/cleanup")).toBeUndefined();
     });
 
-    it("should clean up via event handler on session.deleted", async () => {
+    it("should clean up when the core clears the deleted session", async () => {
       const mockCtx = { directory: "/test" } as any;
       const hook = createFetchTrackerHook(mockCtx);
 
@@ -288,13 +287,8 @@ describe("fetch-tracker", () => {
 
       expect(getCallCount(testSessionID, "webfetch|https://example.com/event-cleanup")).toBe(1);
 
-      // Simulate session.deleted event
-      await hook.event({
-        event: {
-          type: "session.deleted",
-          properties: { info: { id: testSessionID } },
-        },
-      });
+      // The core calls clearSession on session.deleted
+      clearSession(testSessionID);
 
       expect(getCallCount(testSessionID, "webfetch|https://example.com/event-cleanup")).toBe(0);
     });

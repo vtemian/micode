@@ -68,7 +68,6 @@ interface FileOpsTrackerHooks {
     input: { tool: string; sessionID: string; args?: Record<string, unknown> },
     _output: { output?: string },
   ) => Promise<void>;
-  event: (input: { event: { type: string; properties?: unknown } }) => Promise<void>;
 }
 
 export function createFileOpsTrackerHook(_ctx: Workspace): FileOpsTrackerHooks {
@@ -89,16 +88,6 @@ export function createFileOpsTrackerHook(_ctx: Workspace): FileOpsTrackerHooks {
       if (!filePath) return;
 
       trackFileOp(input.sessionID, toolName as "read" | "write" | "edit", filePath);
-    },
-
-    event: async ({ event }: { event: { type: string; properties?: unknown } }) => {
-      // Clean up on session delete
-      if (event.type === "session.deleted") {
-        const props = event.properties as { info?: { id?: string } } | undefined;
-        if (props?.info?.id) {
-          clearFileOps(props.info.id);
-        }
-      }
     },
   };
 }
