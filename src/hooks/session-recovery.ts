@@ -1,4 +1,8 @@
-import type { PluginInput } from "@opencode-ai/plugin";
+import type { HostEvent, PromptHint, SessionHost } from "@/host/port";
+
+export interface SessionRecoveryHook {
+  onEvent(event: HostEvent): Promise<void>;
+}
 
 // Error patterns we can recover from
 const RECOVERABLE_ERRORS = {
@@ -21,6 +25,7 @@ const ABORT_SETTLE_DELAY_MS = 500;
 const RECOVERY_TOAST_DURATION_MS = 3000;
 const TOAST_FAILURE_DURATION_MS = 5000;
 const ERROR_KEY_EXPIRY_MS = 10000;
+const RESUME_PROMPT = "Continue from where you left off.";
 
 function extractErrorInfo(error: unknown): { message: string; messageIndex?: number } | null {
   if (!error) return null;
@@ -52,120 +57,6 @@ function identifyErrorType(errorMessage: string): RecoverableErrorType | null {
   return null;
 }
 
-interface RecoveryContext {
-  ctx: PluginInput;
-  state: RecoveryState;
-}
-
-async function getSessionMessages(rc: RecoveryContext, sessionID: string): Promise<unknown[]> {
-  try {
-    const resp = await rc.ctx.client.session.messages({
-      path: { id: sessionID },
-      query: { directory: rc.ctx.directory },
-    });
-    return (resp as { data?: unknown[] }).data || [];
-  } catch {
-    return [];
-  }
-}
-
-async function abortSession(rc: RecoveryContext, sessionID: string): Promise<void> {
-  try {
-    await rc.ctx.client.session.abort({
-      path: { id: sessionID },
-      query: { directory: rc.ctx.directory },
-    });
-  } catch {
-    // Ignore abort errors
-  }
-}
-
-async function resumeSession(
-  rc: RecoveryContext,
-  sessionID: string,
-  providerID?: string,
-  modelID?: string,
-  agent?: string,
-): Promise<void> {
-  try {
-    const messages = await getSessionMessages(rc, sessionID);
-    const lastUserMsg = [...messages].reverse().find((m) => {
-      const msg = m as Record<string, unknown>;
-      const info = msg.info as Record<string, unknown> | undefined;
-      return info?.role === "user";
-    });
-
-    if (!lastUserMsg) return;
-
-    const parts = (lastUserMsg as Record<string, unknown>).parts as Array<{ type: string; text?: string }>;
-    const text = parts?.find((p) => p.type === "text")?.text;
-    if (!text) return;
-
-    await rc.ctx.client.session.prompt({
-      path: { id: sessionID },
-      body: {
-        parts: [{ type: "text", text: "Continue from where you left off." }],
-        ...(providerID && modelID ? { providerID, modelID } : {}),
-        ...(agent ? { agent } : {}),
-      },
-      query: { directory: rc.ctx.directory },
-    });
-  } catch {
-    // Resume failed - user will need to manually continue
-  }
-}
-
-function showToast(
-  rc: RecoveryContext,
-  title: string,
-  message: string,
-  variant: "info" | "success" | "warning" | "error",
-  duration: number,
-): void {
-  rc.ctx.client.tui.showToast({ body: { title, message, variant, duration } }).catch((_e: unknown) => {
-    /* fire-and-forget */
-  });
-}
-
-async function attemptRecovery(
-  rc: RecoveryContext,
-  sessionID: string,
-  errorType: RecoverableErrorType,
-  providerID?: string,
-  modelID?: string,
-  agent?: string,
-): Promise<boolean> {
-  const recoveryKey = `${sessionID}:${errorType}`;
-  const attempts = rc.state.recoveryAttempts.get(recoveryKey) || 0;
-
-  if (attempts >= MAX_RECOVERY_ATTEMPTS) {
-    showToast(
-      rc,
-      "Recovery Failed",
-      `Max attempts reached for ${errorType}. Manual intervention needed.`,
-      "error",
-      TOAST_FAILURE_DURATION_MS,
-    );
-    return false;
-  }
-
-  rc.state.recoveryAttempts.set(recoveryKey, attempts + 1);
-  showToast(
-    rc,
-    "Session Recovery",
-    `Recovering from ${errorType.toLowerCase().replace(/_/g, " ")}...`,
-    "warning",
-    RECOVERY_TOAST_DURATION_MS,
-  );
-
-  await abortSession(rc, sessionID);
-  await new Promise((resolve) => setTimeout(resolve, ABORT_SETTLE_DELAY_MS));
-  await resumeSession(rc, sessionID, providerID, modelID, agent);
-
-  showToast(rc, "Recovery Complete", "Session resumed. Continuing...", "success", RECOVERY_TOAST_DURATION_MS);
-  return true;
-}
-
 function cleanupSession(state: RecoveryState, sessionID: string): void {
   for (const key of state.recoveryAttempts.keys()) {
     if (key.startsWith(`${sessionID}:`)) state.recoveryAttempts.delete(key);
@@ -189,56 +80,75 @@ function classifyError(error: unknown): RecoverableErrorType | null {
   return identifyErrorType(errorInfo.message);
 }
 
-async function handleSessionError(rc: RecoveryContext, props: Record<string, unknown> | undefined): Promise<void> {
-  const sessionID = props?.sessionID as string | undefined;
-  const error = props?.error;
-  if (!sessionID || !error) return;
-
-  const errorType = classifyError(error);
-  if (!errorType) return;
-  if (!deduplicateError(rc.state, sessionID, errorType)) return;
-
-  await attemptRecovery(rc, sessionID, errorType);
+async function sleep(ms: number): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function handleMessageError(rc: RecoveryContext, props: Record<string, unknown> | undefined): Promise<void> {
-  const info = props?.info as Record<string, unknown> | undefined;
-  const sessionID = info?.sessionID as string | undefined;
-  const error = info?.error;
-  if (!sessionID || !error) return;
-
-  const errorType = classifyError(error);
-  if (!errorType) return;
-  if (!deduplicateError(rc.state, sessionID, errorType)) return;
-
-  const providerID = info.providerID as string | undefined;
-  const modelID = info.modelID as string | undefined;
-  const agent = info.agent as string | undefined;
-  await attemptRecovery(rc, sessionID, errorType, providerID, modelID, agent);
+async function resumeSession(host: SessionHost, sessionID: string, hint: PromptHint): Promise<void> {
+  try {
+    const lastUser = await host.lastUserText(sessionID);
+    if (!lastUser) return;
+    await host.prompt(sessionID, RESUME_PROMPT, hint);
+  } catch {
+    // Resume failed - the user will need to continue manually
+  }
 }
 
-interface SessionRecoveryHooks {
-  event: (input: { event: { type: string; properties?: unknown } }) => Promise<void>;
+async function attemptRecovery(
+  host: SessionHost,
+  state: RecoveryState,
+  sessionID: string,
+  errorType: RecoverableErrorType,
+  hint: PromptHint,
+): Promise<void> {
+  const recoveryKey = `${sessionID}:${errorType}`;
+  const attempts = state.recoveryAttempts.get(recoveryKey) ?? 0;
+  if (attempts >= MAX_RECOVERY_ATTEMPTS) {
+    await host.notify({
+      title: "Recovery Failed",
+      message: `Max attempts reached for ${errorType}. Manual intervention needed.`,
+      variant: "error",
+      duration: TOAST_FAILURE_DURATION_MS,
+    });
+    return;
+  }
+  state.recoveryAttempts.set(recoveryKey, attempts + 1);
+  await host.notify({
+    title: "Session Recovery",
+    message: `Recovering from ${errorType.toLowerCase().replace(/_/g, " ")}...`,
+    variant: "warning",
+    duration: RECOVERY_TOAST_DURATION_MS,
+  });
+
+  try {
+    await host.interrupt(sessionID);
+  } catch {
+    // Ignore interrupt errors; the resume attempt is what matters
+  }
+  await sleep(ABORT_SETTLE_DELAY_MS);
+  await resumeSession(host, sessionID, hint);
+  await host.notify({
+    title: "Recovery Complete",
+    message: "Session resumed. Continuing...",
+    variant: "success",
+    duration: RECOVERY_TOAST_DURATION_MS,
+  });
 }
 
-export function createSessionRecoveryHook(ctx: PluginInput): SessionRecoveryHooks {
-  const rc: RecoveryContext = {
-    ctx,
-    state: { processingErrors: new Set(), recoveryAttempts: new Map() },
-  };
+export function createSessionRecoveryHook(host: SessionHost): SessionRecoveryHook {
+  const state: RecoveryState = { processingErrors: new Set(), recoveryAttempts: new Map() };
 
   return {
-    event: async ({ event }: { event: { type: string; properties?: unknown } }) => {
-      const props = event.properties as Record<string, unknown> | undefined;
-
+    onEvent: async (event) => {
       if (event.type === "session.deleted") {
-        const sessionInfo = props?.info as { id?: string } | undefined;
-        if (sessionInfo?.id) cleanupSession(rc.state, sessionInfo.id);
+        cleanupSession(state, event.sessionID);
         return;
       }
-
-      if (event.type === "session.error") await handleSessionError(rc, props);
-      if (event.type === "message.updated") await handleMessageError(rc, props);
+      if (event.type !== "session.error") return;
+      const errorType = classifyError(event.error);
+      if (!errorType) return;
+      if (!deduplicateError(state, event.sessionID, errorType)) return;
+      await attemptRecovery(host, state, event.sessionID, errorType, { model: event.model, agent: event.agent });
     },
   };
 }

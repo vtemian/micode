@@ -118,7 +118,7 @@ const OpenCodeConfigPlugin: Plugin = async (ctx) => {
   });
   const contextInjectorHook = createContextInjectorHook(ctx);
   const ledgerLoaderHook = createLedgerLoaderHook(ctx);
-  const sessionRecoveryHook = createSessionRecoveryHook(ctx);
+  const sessionRecoveryHook = createSessionRecoveryHook(v1Host);
   const tokenAwareTruncationHook = createTokenAwareTruncationHook(sessionUsage);
   const contextWindowMonitorHook = createContextWindowMonitorHook(sessionUsage, (n) => v1Host.notify(n));
   const commentCheckerHook = createCommentCheckerHook(ctx);
@@ -492,11 +492,9 @@ IMPORTANT:
       if (normalized) {
         sessionUsage.onEvent(normalized);
         await autoCompactHook.onEvent(normalized);
+        await sessionRecoveryHook.onEvent(normalized);
         await contextWindowMonitorHook.onEvent(normalized);
       }
-
-      // Run all event hooks
-      await sessionRecoveryHook.event({ event });
 
       // File ops tracker cleanup
       await fileOpsTrackerHook.event({ event });

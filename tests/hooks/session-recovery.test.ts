@@ -1,430 +1,165 @@
 import { describe, expect, it } from "bun:test";
-
 import { createSessionRecoveryHook } from "../../src/hooks/session-recovery";
+import type { Notification, PromptHint, SessionHost } from "../../src/host/port";
 
-describe("session-recovery", () => {
-  function createMockCtx(overrides?: Record<string, unknown>) {
-    return {
-      directory: "/test",
-      client: {
-        session: {
-          abort: async () => {},
-          messages: async () => ({
-            data: [
-              {
-                info: { role: "user" },
-                parts: [{ type: "text", text: "Do something" }],
-              },
-            ],
-          }),
-          prompt: async () => {},
-        },
-        tui: {
-          showToast: async () => {},
-        },
+interface Calls {
+  interrupted: string[];
+  prompted: { sessionID: string; text: string; hint?: PromptHint }[];
+  notified: Notification[];
+}
+
+function newCalls(): Calls {
+  return { interrupted: [], prompted: [], notified: [] };
+}
+
+function fakeHost(calls: Calls, { lastUser }: { lastUser?: string } = { lastUser: "do the thing" }): SessionHost {
+  return {
+    runAgent: async () => ({ sessionID: "", text: "" }),
+    remove: async () => {},
+    prompt: async (sessionID, text, hint) => {
+      calls.prompted.push({ sessionID, text, hint });
+    },
+    interrupt: async (sessionID) => {
+      calls.interrupted.push(sessionID);
+    },
+    compact: async () => "",
+    lastUserText: async () => lastUser,
+    notify: async (notification) => {
+      calls.notified.push(notification);
+    },
+  };
+}
+
+function errorEvent(sessionID: string, error: unknown) {
+  return { type: "session.error" as const, sessionID, error };
+}
+
+describe("session recovery", () => {
+  it("interrupts and resumes on a recoverable provider error", async () => {
+    const calls = newCalls();
+    const hook = createSessionRecoveryHook(fakeHost(calls));
+
+    await hook.onEvent({
+      type: "session.error",
+      sessionID: "s1",
+      error: "messages.3: tool_result block(s) missing",
+      model: { providerID: "p", modelID: "m" },
+      agent: "build",
+    });
+
+    expect(calls.interrupted).toEqual(["s1"]);
+    expect(calls.prompted).toHaveLength(1);
+    expect(calls.prompted[0]).toMatchObject({
+      sessionID: "s1",
+      text: "Continue from where you left off.",
+      hint: { model: { providerID: "p", modelID: "m" }, agent: "build" },
+    });
+    expect(calls.notified.map((n) => n.title)).toEqual(["Session Recovery", "Recovery Complete"]);
+    expect(calls.notified[0].message).toContain("tool result missing");
+  });
+
+  it("recovers from each known provider error pattern", async () => {
+    const patterns = [
+      "thinking blocks must be at the start of the message",
+      "Thinking is not enabled for this model",
+      "messages.2: content cannot be empty",
+      "tool_result must follow tool_use",
+    ];
+    const calls = newCalls();
+    const hook = createSessionRecoveryHook(fakeHost(calls));
+
+    for (const [index, error] of patterns.entries()) {
+      await hook.onEvent(errorEvent(`s${index}`, error));
+    }
+
+    expect(calls.interrupted).toEqual(["s0", "s1", "s2", "s3"]);
+  });
+
+  it("ignores unrelated errors and sessions without a user prompt", async () => {
+    const calls = newCalls();
+    const hook = createSessionRecoveryHook(fakeHost(calls, { lastUser: undefined }));
+
+    await hook.onEvent(errorEvent("s1", "rate limited"));
+    await hook.onEvent(errorEvent("s2", "content cannot be empty"));
+
+    expect(calls.interrupted).toEqual(["s2"]);
+    expect(calls.prompted).toEqual([]);
+  });
+
+  it("ignores empty errors and unrelated events", async () => {
+    const calls = newCalls();
+    const hook = createSessionRecoveryHook(fakeHost(calls));
+
+    await hook.onEvent(errorEvent("s1", undefined));
+    await hook.onEvent(errorEvent("s1", ""));
+    await hook.onEvent({ type: "assistant.usage", sessionID: "s1", input: 10, cacheRead: 0 });
+
+    expect(calls.interrupted).toEqual([]);
+    expect(calls.notified).toEqual([]);
+  });
+
+  it("classifies Error instances and plain objects", async () => {
+    const calls = newCalls();
+    const hook = createSessionRecoveryHook(fakeHost(calls));
+
+    await hook.onEvent(errorEvent("s1", new Error("thinking is not enabled")));
+    await hook.onEvent(errorEvent("s2", { data: { message: "tool_result block(s) missing" } }));
+
+    expect(calls.interrupted).toEqual(["s1", "s2"]);
+  });
+
+  it("deduplicates rapid identical errors for the same session", async () => {
+    const calls = newCalls();
+    const hook = createSessionRecoveryHook(fakeHost(calls));
+    const error = "tool_result block(s) missing";
+
+    await Promise.all([hook.onEvent(errorEvent("s1", error)), hook.onEvent(errorEvent("s1", error))]);
+    await hook.onEvent(errorEvent("s1", error));
+
+    expect(calls.interrupted).toEqual(["s1"]);
+  });
+
+  it("keeps recovering when the interrupt fails", async () => {
+    const calls = newCalls();
+    const host: SessionHost = {
+      ...fakeHost(calls),
+      interrupt: async () => {
+        throw new Error("abort failed");
       },
-      ...overrides,
-    } as any;
-  }
+    };
+    const hook = createSessionRecoveryHook(host);
 
-  describe("createSessionRecoveryHook", () => {
-    it("should return a hook with event handler", () => {
-      const hook = createSessionRecoveryHook(createMockCtx());
-      expect(hook.event).toBeDefined();
-      expect(typeof hook.event).toBe("function");
-    });
+    await hook.onEvent(errorEvent("s1", "content cannot be empty"));
+
+    expect(calls.prompted).toHaveLength(1);
+    expect(calls.notified.map((n) => n.title)).toEqual(["Session Recovery", "Recovery Complete"]);
   });
 
-  describe("session.error event", () => {
-    it("should attempt recovery for TOOL_RESULT_MISSING error", async () => {
-      let abortCalled = false;
-      let promptCalled = false;
-      const ctx = createMockCtx({
-        client: {
-          session: {
-            abort: async () => {
-              abortCalled = true;
-            },
-            messages: async () => ({
-              data: [
-                {
-                  info: { role: "user" },
-                  parts: [{ type: "text", text: "Run tests" }],
-                },
-              ],
-            }),
-            prompt: async () => {
-              promptCalled = true;
-            },
-          },
-          tui: { showToast: async () => {} },
-        },
-      });
+  it("does not fail when the resume prompt throws", async () => {
+    const calls = newCalls();
+    const host: SessionHost = {
+      ...fakeHost(calls),
+      prompt: async () => {
+        throw new Error("prompt failed");
+      },
+    };
+    const hook = createSessionRecoveryHook(host);
 
-      const hook = createSessionRecoveryHook(ctx);
+    await hook.onEvent(errorEvent("s1", "content cannot be empty"));
 
-      await hook.event({
-        event: {
-          type: "session.error",
-          properties: {
-            sessionID: "s1",
-            error: "tool_result block(s) missing in the request",
-          },
-        },
-      });
-
-      // Give async recovery time to complete
-      await new Promise((resolve) => setTimeout(resolve, 600));
-
-      expect(abortCalled).toBe(true);
-      expect(promptCalled).toBe(true);
-    });
-
-    it("should attempt recovery for THINKING_BLOCK_ORDER error", async () => {
-      let abortCalled = false;
-      const ctx = createMockCtx({
-        client: {
-          session: {
-            abort: async () => {
-              abortCalled = true;
-            },
-            messages: async () => ({
-              data: [{ info: { role: "user" }, parts: [{ type: "text", text: "x" }] }],
-            }),
-            prompt: async () => {},
-          },
-          tui: { showToast: async () => {} },
-        },
-      });
-
-      const hook = createSessionRecoveryHook(ctx);
-
-      await hook.event({
-        event: {
-          type: "session.error",
-          properties: {
-            sessionID: "s1",
-            error: "thinking blocks must be at the start of the response",
-          },
-        },
-      });
-
-      await new Promise((resolve) => setTimeout(resolve, 600));
-      expect(abortCalled).toBe(true);
-    });
-
-    it("should attempt recovery for THINKING_DISABLED error", async () => {
-      let abortCalled = false;
-      const ctx = createMockCtx({
-        client: {
-          session: {
-            abort: async () => {
-              abortCalled = true;
-            },
-            messages: async () => ({
-              data: [{ info: { role: "user" }, parts: [{ type: "text", text: "x" }] }],
-            }),
-            prompt: async () => {},
-          },
-          tui: { showToast: async () => {} },
-        },
-      });
-
-      const hook = createSessionRecoveryHook(ctx);
-
-      await hook.event({
-        event: {
-          type: "session.error",
-          properties: {
-            sessionID: "s1",
-            error: "thinking is not enabled for this model",
-          },
-        },
-      });
-
-      await new Promise((resolve) => setTimeout(resolve, 600));
-      expect(abortCalled).toBe(true);
-    });
-
-    it("should ignore non-recoverable errors", async () => {
-      let abortCalled = false;
-      const ctx = createMockCtx({
-        client: {
-          session: {
-            abort: async () => {
-              abortCalled = true;
-            },
-            messages: async () => ({ data: [] }),
-            prompt: async () => {},
-          },
-          tui: { showToast: async () => {} },
-        },
-      });
-
-      const hook = createSessionRecoveryHook(ctx);
-
-      await hook.event({
-        event: {
-          type: "session.error",
-          properties: {
-            sessionID: "s1",
-            error: "rate limit exceeded",
-          },
-        },
-      });
-
-      await new Promise((resolve) => setTimeout(resolve, 600));
-      expect(abortCalled).toBe(false);
-    });
-
-    it("should ignore events without sessionID", async () => {
-      let abortCalled = false;
-      const ctx = createMockCtx({
-        client: {
-          session: {
-            abort: async () => {
-              abortCalled = true;
-            },
-            messages: async () => ({ data: [] }),
-            prompt: async () => {},
-          },
-          tui: { showToast: async () => {} },
-        },
-      });
-
-      const hook = createSessionRecoveryHook(ctx);
-
-      await hook.event({
-        event: {
-          type: "session.error",
-          properties: { error: "tool_result block(s) missing" },
-        },
-      });
-
-      await new Promise((resolve) => setTimeout(resolve, 600));
-      expect(abortCalled).toBe(false);
-    });
-
-    it("should show toast with error type info during recovery", async () => {
-      const toastMessages: string[] = [];
-      const ctx = createMockCtx({
-        client: {
-          session: {
-            abort: async () => {},
-            messages: async () => ({
-              data: [{ info: { role: "user" }, parts: [{ type: "text", text: "x" }] }],
-            }),
-            prompt: async () => {},
-          },
-          tui: {
-            showToast: async ({ body }: any) => {
-              toastMessages.push(body.message);
-            },
-          },
-        },
-      });
-
-      const hook = createSessionRecoveryHook(ctx);
-
-      await hook.event({
-        event: {
-          type: "session.error",
-          properties: {
-            sessionID: "s1",
-            error: "content cannot be empty",
-          },
-        },
-      });
-
-      await new Promise((resolve) => setTimeout(resolve, 600));
-      expect(toastMessages.some((m) => m.includes("empty content"))).toBe(true);
-    });
+    expect(calls.interrupted).toEqual(["s1"]);
+    expect(calls.notified.map((n) => n.title)).toEqual(["Session Recovery", "Recovery Complete"]);
   });
 
-  describe("message.updated event with error", () => {
-    it("should attempt recovery for error in message info", async () => {
-      let abortCalled = false;
-      const ctx = createMockCtx({
-        client: {
-          session: {
-            abort: async () => {
-              abortCalled = true;
-            },
-            messages: async () => ({
-              data: [{ info: { role: "user" }, parts: [{ type: "text", text: "x" }] }],
-            }),
-            prompt: async () => {},
-          },
-          tui: { showToast: async () => {} },
-        },
-      });
+  it("forgets a deleted session so it can recover again", async () => {
+    const calls = newCalls();
+    const hook = createSessionRecoveryHook(fakeHost(calls));
+    const error = "tool_result block(s) missing";
 
-      const hook = createSessionRecoveryHook(ctx);
+    await hook.onEvent(errorEvent("s1", error));
+    await hook.onEvent({ type: "session.deleted", sessionID: "s1" });
+    await hook.onEvent(errorEvent("s1", error));
 
-      await hook.event({
-        event: {
-          type: "message.updated",
-          properties: {
-            info: {
-              sessionID: "s1",
-              error: "tool_result must follow tool_use",
-              providerID: "anthropic",
-              modelID: "claude-sonnet",
-            },
-          },
-        },
-      });
-
-      await new Promise((resolve) => setTimeout(resolve, 600));
-      expect(abortCalled).toBe(true);
-    });
-  });
-
-  describe("session.deleted event", () => {
-    it("should clean up recovery state for deleted session", async () => {
-      const hook = createSessionRecoveryHook(createMockCtx());
-
-      // Trigger a recovery to set up state
-      await hook.event({
-        event: {
-          type: "session.error",
-          properties: {
-            sessionID: "s1",
-            error: "content cannot be empty",
-          },
-        },
-      });
-
-      await new Promise((resolve) => setTimeout(resolve, 600));
-
-      // Delete the session
-      await hook.event({
-        event: {
-          type: "session.deleted",
-          properties: { info: { id: "s1" } },
-        },
-      });
-
-      // Should not throw or cause issues
-    });
-
-    it("should handle missing session info on deletion", async () => {
-      const hook = createSessionRecoveryHook(createMockCtx());
-
-      await hook.event({
-        event: {
-          type: "session.deleted",
-          properties: {},
-        },
-      });
-    });
-  });
-
-  describe("error classification", () => {
-    it("should handle Error objects", async () => {
-      let abortCalled = false;
-      const ctx = createMockCtx({
-        client: {
-          session: {
-            abort: async () => {
-              abortCalled = true;
-            },
-            messages: async () => ({
-              data: [{ info: { role: "user" }, parts: [{ type: "text", text: "x" }] }],
-            }),
-            prompt: async () => {},
-          },
-          tui: { showToast: async () => {} },
-        },
-      });
-
-      const hook = createSessionRecoveryHook(ctx);
-
-      await hook.event({
-        event: {
-          type: "session.error",
-          properties: {
-            sessionID: "s1",
-            error: new Error("tool_result block(s) missing"),
-          },
-        },
-      });
-
-      await new Promise((resolve) => setTimeout(resolve, 600));
-      expect(abortCalled).toBe(true);
-    });
-
-    it("should handle error as object (JSON stringified)", async () => {
-      let abortCalled = false;
-      const ctx = createMockCtx({
-        client: {
-          session: {
-            abort: async () => {
-              abortCalled = true;
-            },
-            messages: async () => ({
-              data: [{ info: { role: "user" }, parts: [{ type: "text", text: "x" }] }],
-            }),
-            prompt: async () => {},
-          },
-          tui: { showToast: async () => {} },
-        },
-      });
-
-      const hook = createSessionRecoveryHook(ctx);
-
-      await hook.event({
-        event: {
-          type: "session.error",
-          properties: {
-            sessionID: "s2",
-            error: { message: "thinking is not enabled" },
-          },
-        },
-      });
-
-      await new Promise((resolve) => setTimeout(resolve, 600));
-      expect(abortCalled).toBe(true);
-    });
-  });
-
-  describe("deduplication", () => {
-    it("should deduplicate rapid identical errors for same session", async () => {
-      let abortCount = 0;
-      const ctx = createMockCtx({
-        client: {
-          session: {
-            abort: async () => {
-              abortCount++;
-            },
-            messages: async () => ({
-              data: [{ info: { role: "user" }, parts: [{ type: "text", text: "x" }] }],
-            }),
-            prompt: async () => {},
-          },
-          tui: { showToast: async () => {} },
-        },
-      });
-
-      const hook = createSessionRecoveryHook(ctx);
-
-      // Fire two identical errors rapidly (before dedup expiry)
-      await hook.event({
-        event: {
-          type: "session.error",
-          properties: { sessionID: "s1", error: "content cannot be empty" },
-        },
-      });
-      await hook.event({
-        event: {
-          type: "session.error",
-          properties: { sessionID: "s1", error: "content cannot be empty" },
-        },
-      });
-
-      await new Promise((resolve) => setTimeout(resolve, 600));
-      // Only one recovery should have been attempted
-      expect(abortCount).toBe(1);
-    });
+    expect(calls.interrupted).toEqual(["s1", "s1"]);
   });
 });

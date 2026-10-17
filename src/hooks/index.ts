@@ -38,7 +38,7 @@ export {
   type LedgerInfo,
 } from "./ledger-loader";
 export { createMindmodelInjectorHook } from "./mindmodel-injector";
-export { createSessionRecoveryHook } from "./session-recovery";
+export { createSessionRecoveryHook, type SessionRecoveryHook } from "./session-recovery";
 export { createSessionUsage, type SessionUsage, type SessionUsageTracker } from "./session-usage";
 export {
   createTokenAwareTruncationHook,
