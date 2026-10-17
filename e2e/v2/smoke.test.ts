@@ -16,13 +16,20 @@ interface Server {
   project: string;
 }
 
+/** Pushes complete lines only; a chunk boundary must not split the password line. */
 async function readLines(stream: ReadableStream<Uint8Array>, into: string[]): Promise<void> {
   const reader = stream.getReader();
   const decoder = new TextDecoder();
+  let rest = "";
   for (;;) {
     const { value, done } = await reader.read();
-    if (done) return;
-    into.push(...decoder.decode(value).split("\n"));
+    if (done) {
+      if (rest) into.push(rest);
+      return;
+    }
+    const lines = (rest + decoder.decode(value, { stream: true })).split("\n");
+    rest = lines.pop() ?? "";
+    into.push(...lines);
   }
 }
 
@@ -84,7 +91,9 @@ describe("micode on OpenCode 2", () => {
         headers: { Authorization: `Basic ${btoa(`opencode:${server.password}`)}` },
       }).catch(() => undefined);
       if (res?.ok) break;
-      if (Date.now() - started > READY_TIMEOUT_MS) throw new Error("server never became ready");
+      if (Date.now() - started > READY_TIMEOUT_MS) {
+        throw new Error(`server never became ready (last status ${res?.status ?? "no response"})`);
+      }
       await new Promise((r) => setTimeout(r, POLL_MS));
     }
   });

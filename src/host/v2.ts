@@ -84,18 +84,26 @@ export function lastAssistantText(messages: readonly SessionMessage[]): string {
   return reply.content
     .filter(isText)
     .map((part) => part.text)
-    .join("");
+    .join("\n");
 }
 
+type Compaction = Extract<SessionMessage, { type: "compaction" }>;
+
+function isCompaction(message: SessionMessage): message is Compaction {
+  return message.type === "compaction";
+}
+
+/** A failed compaction must reject like v1 does, never resolve with an empty summary. */
 function lastSummary(messages: readonly SessionMessage[]): string {
-  const compaction = messages.filter((m) => m.type === "compaction").at(-1);
-  const summary = compaction && "summary" in compaction ? compaction.summary : undefined;
-  return typeof summary === "string" ? summary : "";
+  const compaction = messages.filter(isCompaction).at(-1);
+  if (!compaction) return "";
+  if (compaction.status === "failed") throw new Error(`Compaction failed: ${compaction.error.message}`);
+  return compaction.status === "completed" ? compaction.summary : "";
 }
 
 function lastUserText(messages: readonly SessionMessage[]): string | undefined {
   const user = messages.filter((m) => m.type === USER_ROLE).at(-1);
-  return user && "text" in user && typeof user.text === "string" ? user.text : undefined;
+  return user && "text" in user && typeof user.text === "string" ? user.text || undefined : undefined;
 }
 
 /** The session API takes a plain ref; only agent records need the branded `Model.Ref`. */
@@ -209,7 +217,8 @@ export function toAgentInfo(agent: AgentRecord, config: AgentConfig, model: V2Mo
   if (extra.maxTokens !== undefined) agent.request.body.maxTokens = extra.maxTokens;
   if (extra.thinking !== undefined) agent.request.body.thinking = extra.thinking;
   const rules = [...permissionRules(extra.permission), ...toolRules(extra.tools)];
-  if (rules.length > 0) agent.permissions = [...agent.permissions, ...rules];
+  // The last matching rule wins on v2, so micode's rules go first and the user's own rules keep precedence.
+  if (rules.length > 0) agent.permissions = [...rules, ...agent.permissions];
 }
 
 function modelRefOf(config: AgentConfig, parseModel: ParseModel): V2ModelRef | undefined {
@@ -405,13 +414,19 @@ export async function setup(host: V2Host): Promise<Plugin.Cleanup> {
     host: createV2Host(host.session),
   });
 
-  await registerTools(host, micode);
-  await registerAgents(host, micode, parseModel);
-  await registerCommands(host, micode);
-  await registerMcp(host, micode);
-  await registerPermissions(host, micode);
-  await registerSessionHooks(host, micode);
-  await registerToolHook(host, micode);
+  try {
+    await registerTools(host, micode);
+    await registerAgents(host, micode, parseModel);
+    await registerCommands(host, micode);
+    await registerMcp(host, micode);
+    await registerPermissions(host, micode);
+    await registerSessionHooks(host, micode);
+    await registerToolHook(host, micode);
+  } catch (error) {
+    // A half-registered plugin must not keep PTY and octto state alive.
+    await micode.dispose();
+    throw error;
+  }
   const stopWatching = watchEvents(host, micode);
 
   return async () => {

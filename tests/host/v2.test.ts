@@ -39,7 +39,8 @@ function createHost() {
   const mcp = new Map<string, Any>();
   const hooks = new Map<string, (input: Any) => Promise<void> | void>();
   let defaultAgent: string | undefined;
-  let push: ((event: Any) => void) | undefined;
+  const queue: Any[] = [];
+  let push: (() => void) | undefined;
   const sessions = {
     created: [] as Any[],
     prompted: [] as Any[],
@@ -140,15 +141,19 @@ function createHost() {
       ],
     },
     event: {
+      // Events are queued so two back-to-back emits both reach the consumer.
       subscribe: ({ signal }: { signal: AbortSignal }) => ({
         async *[Symbol.asyncIterator]() {
           while (!signal.aborted) {
-            const event = await new Promise<Any>((resolve) => {
-              push = resolve;
-              signal.addEventListener("abort", () => resolve(undefined), { once: true });
-            });
-            if (event === undefined) return;
-            yield event;
+            if (queue.length === 0) {
+              await new Promise<void>((resolve) => {
+                push = resolve;
+                signal.addEventListener("abort", () => resolve(), { once: true });
+              });
+            }
+            if (signal.aborted) return;
+            const event = queue.shift();
+            if (event !== undefined) yield event;
           }
         },
       }),
@@ -163,8 +168,18 @@ function createHost() {
     hooks,
     sessions,
     defaultAgent: () => defaultAgent,
-    emit: (e: Any) => push?.(e),
+    emit: (e: Any) => {
+      queue.push(e);
+      push?.();
+    },
   };
+}
+
+/** Removes the lines a test expected so the afterEach pristine-output check only sees surprises. */
+function drain(lines: string[], pattern: RegExp): string[] {
+  const taken = lines.filter((l) => pattern.test(l));
+  for (const line of taken) lines.splice(lines.indexOf(line), 1);
+  return taken;
 }
 
 async function waitUntil(condition: () => Promise<boolean>, timeoutMs = 2000): Promise<void> {
@@ -324,6 +339,67 @@ describe("v2 setup", () => {
     expect(failed.error).toEqual({ message: "boom" });
   });
 
+  it("logs and keeps the tool result when post-processing throws", async () => {
+    const h = createHost();
+    cleanup = await setup(h.host);
+    const after = h.hooks.get("tool.execute.after")!;
+    // An absurdly long grep output under an exhausted context exercises the truncation path; to force a
+    // throw we hand the pipeline a result whose content getter explodes.
+    const event = {
+      tool: "read",
+      sessionID: "s1",
+      input: { filePath: "/x/a.ts" },
+      status: "completed",
+      get result() {
+        return { content: "body" };
+      },
+      set result(_value: unknown) {
+        throw new Error("result is sealed");
+      },
+    };
+    await after(event);
+    expect(drain(logs.warn, /tool post-processing failed for read: result is sealed/)).toHaveLength(1);
+  });
+
+  it("drives session recovery from session.execution.failed and keeps the subscription alive", async () => {
+    const h = createHost();
+    cleanup = await setup(h.host);
+    h.emit({
+      type: "session.execution.failed",
+      data: { sessionID: "s1", error: { type: "x", message: "content cannot be empty" } },
+    });
+    await waitUntil(async () => h.sessions.prompted.length === 1);
+    expect(h.sessions.interrupted).toEqual(["s1"]);
+    expect(h.sessions.prompted[0]).toMatchObject({ sessionID: "s1", text: "Continue from where you left off." });
+    // v2 has no toast; the notifications land in the log.
+    expect(drain(logs.info, /Session Recovery|Recovery Complete/)).toHaveLength(2);
+    // The stream is still being consumed afterwards.
+    h.emit({ type: "session.deleted", data: { sessionID: "s1" } });
+    h.emit({
+      type: "session.execution.failed",
+      data: { sessionID: "s1", error: { type: "x", message: "content cannot be empty" } },
+    });
+    await waitUntil(async () => h.sessions.prompted.length === 2);
+    expect(drain(logs.info, /Session Recovery|Recovery Complete/)).toHaveLength(2);
+  });
+
+  it("logs when the event stream itself breaks", async () => {
+    const h = createHost();
+    const broken = {
+      ...h.host,
+      event: {
+        subscribe: () => ({
+          [Symbol.asyncIterator]: () => ({
+            next: () => Promise.reject(new Error("stream reset")),
+          }),
+        }),
+      },
+    } as unknown as V2Host;
+    cleanup = await setup(broken);
+    await waitUntil(async () => logs.error.some((l) => l.includes("event stream ended unexpectedly")));
+    expect(drain(logs.error, /event stream ended unexpectedly: stream reset/)).toHaveLength(1);
+  });
+
   it("relays session.deleted into the core and survives a malformed event", async () => {
     const h = createHost();
     cleanup = await setup(h.host);
@@ -431,6 +507,29 @@ describe("toAgentInfo", () => {
       { action: "shell", resource: "git *", effect: "allow" },
       { action: "shell", resource: "rm *", effect: "deny" },
     ]);
+  });
+
+  it("puts micode's rules before the user's so the user's own rules win", () => {
+    const agent = blankAgent("x");
+    agent.permissions = [{ action: "edit", resource: "*", effect: "allow" }];
+    toAgentInfo(agent, { permission: { edit: "deny" } }, undefined);
+    expect(agent.permissions).toEqual([
+      { action: "edit", resource: "*", effect: "deny" },
+      { action: "edit", resource: "*", effect: "allow" },
+    ]);
+  });
+
+  it("warns and ignores unreadable extra fields", () => {
+    const logs = captureLogs();
+    try {
+      const agent = blankAgent("x");
+      toAgentInfo(agent, { permission: { bash: 42 } } as any, undefined);
+      expect(agent.permissions).toEqual([]);
+      expect(drain(logs.warn, /ignoring unreadable agent fields/)).toHaveLength(1);
+      expect(logs.unread()).toEqual([]);
+    } finally {
+      logs.restore();
+    }
   });
 
   it("translates the v1 task tool into the v2 subagent action", () => {
@@ -551,6 +650,33 @@ describe("createV2Host", () => {
     expect(h.sessions.compacted).toEqual(["s1"]);
     expect(h.sessions.waited).toEqual(["s1"]);
     expect(h.sessions.removed).toEqual(["s1"]);
+  });
+
+  it("rejects a failed compaction instead of returning an empty summary", async () => {
+    const h = createHost();
+    const session = {
+      ...h.host.session,
+      context: async () => [{ type: "compaction", status: "failed", error: { type: "x", message: "too long" } }],
+    } as unknown as V2Host["session"];
+    await expect(createV2Host(session).compact("s1", MODEL)).rejects.toThrow("too long");
+  });
+
+  it("joins multi-part replies with newlines like the v1 host", async () => {
+    const h = createHost();
+    const session = {
+      ...h.host.session,
+      context: async () => [
+        {
+          type: "assistant",
+          time: { created: 1, completed: 2 },
+          content: [
+            { type: "text", text: "a" },
+            { type: "text", text: "b" },
+          ],
+        },
+      ],
+    } as unknown as V2Host["session"];
+    expect((await createV2Host(session).runAgent({ agent: "a", text: "t" })).text).toBe("a\nb");
   });
 
   it("returns an empty summary and no user text when the context has neither", async () => {
