@@ -19,6 +19,7 @@
     "prepublishOnly": "bun run check && bun run build",
     "test": "bun test tests",
     "test:e2e": "docker build -f e2e/Dockerfile -t micode-e2e . && docker run --rm micode-e2e",
+    "test:e2e:v2": "docker build -f e2e/Dockerfile --build-arg OPENCODE_INSTALL_URL=https://opencode.ai/v2/install --build-arg E2E_SPECS=e2e/v2 -t micode-e2e-v2 . && docker run --rm micode-e2e-v2",
     "test:e2e:live": "bun run build && bun test ./tests/e2e/*.e2e.ts --timeout 1560000",
     "test:watch": "bun test --watch",
     "format": "biome format --write .",
