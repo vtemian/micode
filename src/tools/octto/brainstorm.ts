@@ -1,5 +1,6 @@
 // src/tools/octto/brainstorm.ts
 import { z } from "zod";
+import type { SessionHost } from "@/host/port";
 import type { Answer, ReviewAnswer, SessionStore } from "@/octto/session";
 import { QUESTION_TYPES, QUESTIONS, STATUSES } from "@/octto/session";
 import { BRANCH_STATUSES, type BrainstormState, createStateStore, type StateStore } from "@/octto/state";
@@ -8,7 +9,7 @@ import { config } from "@/utils/config";
 import { log } from "@/utils/logger";
 import { formatBranchStatus, formatFindingSummary, formatFindings, formatQASummary } from "./formatters";
 import { processAnswer } from "./processor";
-import type { OcttoSessionTracker, OcttoTool, OcttoTools, OpencodeClient } from "./types";
+import type { OcttoSessionTracker, OcttoTool, OcttoTools } from "./types";
 import { generateSessionId } from "./utils";
 
 // --- Extracted helper functions ---
@@ -36,20 +37,14 @@ function enqueueAnswerProcessing(
   browserSessionId: string,
   questionId: string,
   response: Answer,
-  client: OpencodeClient,
+  host: SessionHost,
   pendingProcessing: Promise<void>[],
 ): void {
-  const processing = processAnswer(
-    stateStore,
-    sessions,
-    sessionId,
-    browserSessionId,
-    questionId,
-    response,
-    client,
-  ).catch((error: unknown) => {
-    log.error("octto", `Error processing answer ${questionId}`, error);
-  });
+  const processing = processAnswer(stateStore, sessions, sessionId, browserSessionId, questionId, response, host).catch(
+    (error: unknown) => {
+      log.error("octto", `Error processing answer ${questionId}`, error);
+    },
+  );
   pendingProcessing.push(processing);
 }
 
@@ -58,7 +53,7 @@ async function collectAnswers(
   sessions: SessionStore,
   sessionId: string,
   browserSessionId: string,
-  client: OpencodeClient,
+  host: SessionHost,
 ): Promise<CollectionResult> {
   const pendingProcessing: Promise<void>[] = [];
 
@@ -87,7 +82,7 @@ async function collectAnswers(
       browserSessionId,
       question_id,
       response,
-      client,
+      host,
       pendingProcessing,
     );
   }
@@ -342,11 +337,7 @@ function buildEndBrainstormTool(store: StateStore, sessions: SessionStore, track
   });
 }
 
-function buildAwaitBrainstormCompleteTool(
-  store: StateStore,
-  sessions: SessionStore,
-  client: OpencodeClient,
-): OcttoTool {
+function buildAwaitBrainstormCompleteTool(store: StateStore, sessions: SessionStore, host: SessionHost): OcttoTool {
   return defineTool({
     description: `Wait for brainstorm session to complete. Processes answers asynchronously as they arrive.
 Returns when all branches are done with their findings.
@@ -361,7 +352,7 @@ This is the recommended way to run a brainstorm - just create_brainstorm then aw
         sessions,
         args.session_id,
         args.browser_session_id,
-        client,
+        host,
       );
 
       if (!state) return "<error>Session lost</error>";
@@ -386,7 +377,7 @@ This is the recommended way to run a brainstorm - just create_brainstorm then aw
 
 export function createBrainstormTools(
   sessions: SessionStore,
-  client: OpencodeClient,
+  host: SessionHost,
   tracker?: OcttoSessionTracker,
 ): OcttoTools {
   const store = createStateStore();
@@ -395,6 +386,6 @@ export function createBrainstormTools(
     create_brainstorm: buildCreateBrainstormTool(store, sessions, tracker),
     get_session_summary: buildGetSessionSummaryTool(store),
     end_brainstorm: buildEndBrainstormTool(store, sessions, tracker),
-    await_brainstorm_complete: buildAwaitBrainstormCompleteTool(store, sessions, client),
+    await_brainstorm_complete: buildAwaitBrainstormCompleteTool(store, sessions, host),
   };
 }

@@ -222,7 +222,7 @@ const OpenCodeConfigPlugin: Plugin = async (ctx) => {
   // Track octto sessions per opencode session for cleanup
   const octtoSessions = new Map<string, Set<string>>();
 
-  const octtoTools = createOcttoTools(octtoSessionStore, ctx.client, {
+  const octtoTools = createOcttoTools(octtoSessionStore, v1Host, {
     onCreated: (parentSessionId, octtoSessionId) => {
       const sessions = octtoSessions.get(parentSessionId) ?? new Set<string>();
       sessions.add(octtoSessionId);
