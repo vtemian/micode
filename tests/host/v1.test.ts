@@ -1,7 +1,8 @@
-import { describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 
 import { createV1Host, joinTextParts, server, toV1Tool } from "../../src/host/v1";
 import { defineTool } from "../../src/tools/define";
+import { captureLogs, type LogCapture } from "../helpers/log-capture";
 
 type Log = Record<string, unknown[]>;
 
@@ -21,6 +22,10 @@ function fakeClient(log: Log) {
       prompt: async (i: unknown) => {
         record("prompt", i);
         return { data: { info: { role: "assistant" }, parts: [{ type: "text", text: "answer" }] } };
+      },
+      promptAsync: async (i: unknown) => {
+        record("promptAsync", i);
+        return { data: {} };
       },
       messages: async (i: unknown) => {
         record("messages", i);
@@ -158,6 +163,17 @@ describe("v1 host", () => {
       await expect(host.compact("ses_1", MODEL)).rejects.toThrow("not found");
     });
 
+    it("rejects and settles the waiter when the summarize call itself throws", async () => {
+      const client = fakeClient({});
+      client.session.summarize = async () => {
+        throw new Error("socket hang up");
+      };
+      const host = createV1Host(client as any, "/work");
+      await expect(host.compact("ses_1", MODEL)).rejects.toThrow("socket hang up");
+      // A later completion event must find nothing pending (no stale timer, no second rejection).
+      expect(host.relay({ type: "session.compacted", properties: { sessionID: "ses_1" } })).toBeUndefined();
+    });
+
     it("rejects a pending compaction when the session is deleted", async () => {
       const host = createV1Host(fakeClient({}) as any, "/work");
       const pending = host.compact("ses_1", MODEL);
@@ -232,10 +248,11 @@ describe("v1 host", () => {
       await host.remove("s1");
       await host.notify({ title: "T", message: "M", variant: "info", duration: 1 });
 
-      expect(log.prompt[0]).toMatchObject({
+      expect(log.promptAsync[0]).toMatchObject({
         path: { id: "s1" },
         body: { parts: [{ type: "text", text: "continue" }], model: MODEL, agent: "build" },
       });
+      expect(log.prompt).toBeUndefined();
       expect(log.abort[0]).toMatchObject({ path: { id: "s1" }, query: { directory: "/work" } });
       expect(log.delete[0]).toMatchObject({ path: { id: "s1" }, query: { directory: "/work" } });
       expect(log.toast[0]).toEqual({ body: { title: "T", message: "M", variant: "info", duration: 1 } });
@@ -244,7 +261,7 @@ describe("v1 host", () => {
 
     it("surfaces HTTP errors from prompt and abort", async () => {
       const client = fakeClient({});
-      client.session.prompt = async () => ({ error: "gone" }) as never;
+      client.session.promptAsync = async () => ({ error: "gone" }) as never;
       client.session.abort = async () => ({ error: "gone" }) as never;
       const host = createV1Host(client as any, "/work");
       await expect(host.prompt("s1", "x")).rejects.toThrow("Prompt failed");
@@ -298,6 +315,18 @@ describe("v1 host", () => {
 });
 
 describe("v1 server", () => {
+  let logs: LogCapture;
+  beforeEach(() => {
+    logs = captureLogs();
+  });
+  afterEach(() => {
+    // Startup probes for ast-grep/btca/bun-pty log their findings; nothing else may.
+    const startup = [...logs.warn, ...logs.info].filter((l) => !/ast-grep|btca|pty\.loader|BUN_PTY/i.test(l));
+    logs.restore();
+    expect(startup).toEqual([]);
+    expect(logs.unread()).toEqual([]);
+  });
+
   async function load(log: Log = {}) {
     const host = fakeClient(log);
     const hooks = await server({ client: host, directory: "/work" } as any);

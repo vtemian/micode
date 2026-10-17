@@ -123,9 +123,10 @@ const THINK_KEYWORDS = [
   /\blet('s|s)?\s*think\b/i,
 ];
 
-const THINKING_OPTIONS: Readonly<Record<string, unknown>> = {
-  thinking: { type: "enabled", budgetTokens: config.thinking.budgetTokens },
-};
+/** Built per request so a provider adapter mutating the options cannot leak into the next call. */
+function thinkingOptions(): Record<string, unknown> {
+  return { thinking: { type: "enabled", budgetTokens: config.thinking.budgetTokens } };
+}
 
 const ALLOWED_ACTIONS = ["edit", "bash", "webfetch", "external_directory"] as const;
 
@@ -433,7 +434,7 @@ async function userSystemBlock(hooks: CoreHooks, sessionID: string, agent: strin
   await hooks.fragments["chat.params"](input, output);
   await hooks.ledger["chat.params"](input, output);
   await hooks.context["chat.params"](input, output);
-  return output.system ? `${output.system}${hooks.monitor.systemSuffix(sessionID)}` : "";
+  return output.system ?? "";
 }
 
 async function injectMindmodel(
@@ -458,6 +459,9 @@ function createSystemPrompt(hooks: CoreHooks, sessions: SessionState): Micode["s
     }
     const block = await userSystemBlock(hooks, sessionID, request.agent ?? sessions.agentOf(sessionID));
     if (block) output.system.unshift(block);
+    // The usage status changes every turn; it goes last so the cached system prefix stays stable.
+    const status = hooks.monitor.systemSuffix(sessionID);
+    if (status) output.system.push(status.trim());
     return output.system;
   };
 }
@@ -492,12 +496,21 @@ function createEventRouter(
     await octto.endSessionsOf(sessionID);
   }
 
+  // One listener failing must not hide the event from the others.
+  async function settle(label: string, listener: () => Promise<void>): Promise<void> {
+    try {
+      await listener();
+    } catch (error) {
+      log.error(LOG_SCOPE, `${label} listener failed`, error);
+    }
+  }
+
   return async (event) => {
     usage.onEvent(event);
-    if (event.type === "session.deleted") await forget(event.sessionID);
-    await hooks.autoCompact.onEvent(event);
-    await hooks.recovery.onEvent(event);
-    await hooks.monitor.onEvent(event);
+    if (event.type === "session.deleted") await settle("session cleanup", () => forget(event.sessionID));
+    await settle("auto-compact", () => hooks.autoCompact.onEvent(event));
+    await settle("session recovery", () => hooks.recovery.onEvent(event));
+    await settle("context window monitor", () => hooks.monitor.onEvent(event));
   };
 }
 
@@ -529,10 +542,13 @@ export async function createMicode({ directory, host }: MicodeOptions): Promise<
     },
     onRequest: (request) => sessions.remember(request),
     systemPrompt: createSystemPrompt(hooks, sessions),
-    requestOptions: (sessionID) => (sessions.thinkMode(sessionID) ? { ...THINKING_OPTIONS } : {}),
+    requestOptions: (sessionID) => (sessions.thinkMode(sessionID) ? thinkingOptions() : {}),
     compactionInstruction: compactionPrompt,
     onToolResult: createToolResultPipeline(hooks),
     onEvent: createEventRouter(hooks, usage, sessions, pty, octto),
-    dispose: () => octto.dispose(),
+    dispose: async () => {
+      pty.cleanupAll();
+      await octto.dispose();
+    },
   };
 }

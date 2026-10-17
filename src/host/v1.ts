@@ -69,12 +69,6 @@ interface V1Context {
   readonly waiters: CompactionWaiters;
 }
 
-/** v1 tool contexts carry an undocumented `metadata({ title })` used for progress. */
-interface ProgressContext {
-  readonly sessionID?: string;
-  readonly metadata?: (input: { title?: string }) => void;
-}
-
 const USER_ROLE = "user";
 const ASSISTANT_ROLE = "assistant";
 const MESSAGE_UPDATED = "message.updated";
@@ -165,13 +159,11 @@ export function toV1Tool(core: MicodeTool): ToolDefinition {
   return tool({
     description: core.description,
     args: core.args,
-    execute: (args, context) => {
-      const progress = context as ProgressContext;
-      return core.execute(args, {
+    execute: (args, context) =>
+      core.execute(args, {
         sessionID: context.sessionID,
-        progress: (title) => progress.metadata?.({ title }),
-      });
-    },
+        progress: (title) => context.metadata({ title }),
+      }),
   });
 }
 
@@ -243,13 +235,16 @@ async function runAgent(v1: V1Context, run: AgentRun): Promise<AgentReply> {
 async function compact(v1: V1Context, sessionID: string, model: ModelRef): Promise<string> {
   // Register the waiter BEFORE calling summarize to avoid missing the completion event.
   const done = v1.waiters.wait(sessionID);
-  const started = (await v1.client.session.summarize({
-    path: { id: sessionID },
-    body: model,
-    query: v1.query,
-  })) as Response<unknown>;
-  if (started.error !== undefined) {
-    v1.waiters.settle(sessionID, `Compaction request failed: ${extractErrorMessage(started.error)}`);
+  try {
+    const started = (await v1.client.session.summarize({
+      path: { id: sessionID },
+      body: model,
+      query: v1.query,
+    })) as Response<unknown>;
+    if (started.error !== undefined) throw new Error(extractErrorMessage(started.error));
+  } catch (error) {
+    // Settle the waiter so its timeout cannot reject a promise nobody awaits.
+    v1.waiters.settle(sessionID, `Compaction request failed: ${extractErrorMessage(error)}`);
   }
   await done;
   return joinTextParts(lastMessage(await messages(v1, sessionID), ASSISTANT_ROLE, true)?.parts);
@@ -265,13 +260,14 @@ export function createV1Host(client: Client, directory: string): V1Host {
         /* cleanup errors are non-fatal */
       });
     },
+    // promptAsync enqueues and returns; the blocking prompt stays reserved for runAgent.
     prompt: async (sessionID, text, hint) => {
-      const response = (await client.session.prompt({
+      const response = (await client.session.promptAsync({
         path: { id: sessionID },
         body: promptBody(text, hint),
         query: v1.query,
       })) as Response<unknown>;
-      unwrap(response, "Prompt failed");
+      if (response.error !== undefined) throw new Error(`Prompt failed: ${extractErrorMessage(response.error)}`);
     },
     interrupt: async (sessionID) => {
       const response = (await client.session.abort({ path: { id: sessionID }, query: v1.query })) as Response<unknown>;

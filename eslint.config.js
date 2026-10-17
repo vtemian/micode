@@ -11,6 +11,7 @@ export default [
       "node_modules/**",
       "examples/**",
       ".worktrees/**",
+      ".claude/worktrees/**",
       ".mindmodel/**",
       ".opencode/**",
       "*.config.ts",

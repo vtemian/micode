@@ -5,6 +5,7 @@ import { join } from "node:path";
 
 import type { AgentRun, SessionHost } from "../src/host/port";
 import { createMicode, type Micode } from "../src/micode";
+import { captureLogs, type LogCapture } from "./helpers/log-capture";
 
 function fakeHost(runs: AgentRun[] = []): SessionHost {
   return {
@@ -25,8 +26,10 @@ function fakeHost(runs: AgentRun[] = []): SessionHost {
 describe("createMicode", () => {
   let dir: string;
   let micode: Micode;
+  let logs: LogCapture;
 
   beforeEach(async () => {
+    logs = captureLogs();
     dir = await mkdtemp(join(tmpdir(), "micode-core-"));
     micode = await createMicode({ directory: dir, host: fakeHost() });
   });
@@ -34,6 +37,11 @@ describe("createMicode", () => {
   afterEach(async () => {
     await micode.dispose();
     await rm(dir, { recursive: true, force: true });
+    // Startup probes for ast-grep/btca/bun-pty log their findings; nothing else may.
+    const unexpected = [...logs.warn, ...logs.info].filter((l) => !/ast-grep|btca|pty\.loader|BUN_PTY/i.test(l));
+    logs.restore();
+    expect(unexpected).toEqual([]);
+    expect(logs.unread()).toEqual([]);
   });
 
   it("registers the plugin tools, agents, commands and mcp servers", () => {
@@ -104,5 +112,31 @@ describe("createMicode", () => {
   it("ignores usage and error events for sessions it has never seen", async () => {
     await micode.onEvent({ type: "assistant.usage", sessionID: "s9", input: 10, cacheRead: 0 });
     await micode.onEvent({ type: "session.error", sessionID: "s9", error: "boom" });
+    expect(micode.requestOptions("s9")).toEqual({});
+  });
+
+  it("appends the context-window status last so the cached system prefix stays stable", async () => {
+    // Unknown model falls back to the 200k default limit; 190k used is past the warning threshold.
+    await micode.onEvent({ type: "assistant.usage", sessionID: "s1", input: 190_000, cacheRead: 0 });
+    const system = await micode.systemPrompt({ sessionID: "s1", system: ["base"] });
+    expect(system[0]).toBe("base");
+    expect(system.at(-1)).toContain("<context-status>");
+  });
+
+  it("keeps routing an event to the other listeners when one of them fails", async () => {
+    const throwing = {
+      ...fakeHost(),
+      notify: async () => {
+        throw new Error("no tui");
+      },
+    };
+    const core = await createMicode({ directory: dir, host: throwing });
+    try {
+      // Recovery rejects when notify throws; the router must swallow that and log it.
+      await core.onEvent({ type: "session.error", sessionID: "s1", error: "content cannot be empty" });
+      expect(logs.error.some((l) => l.includes("session recovery listener failed"))).toBe(true);
+    } finally {
+      await core.dispose();
+    }
   });
 });
