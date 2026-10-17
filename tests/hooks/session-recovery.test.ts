@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it, spyOn } from "bun:test";
 import { createSessionRecoveryHook } from "../../src/hooks/session-recovery";
 import type { Notification, PromptHint, SessionHost } from "../../src/host/port";
 
@@ -30,6 +30,8 @@ function fakeHost(calls: Calls, { lastUser }: { lastUser?: string } = { lastUser
   };
 }
 
+const FAST = { settleMs: 0, dedupExpiryMs: 20 };
+
 function errorEvent(sessionID: string, error: unknown) {
   return { type: "session.error" as const, sessionID, error };
 }
@@ -37,7 +39,7 @@ function errorEvent(sessionID: string, error: unknown) {
 describe("session recovery", () => {
   it("interrupts and resumes on a recoverable provider error", async () => {
     const calls = newCalls();
-    const hook = createSessionRecoveryHook(fakeHost(calls));
+    const hook = createSessionRecoveryHook(fakeHost(calls), FAST);
 
     await hook.onEvent({
       type: "session.error",
@@ -66,7 +68,7 @@ describe("session recovery", () => {
       "tool_result must follow tool_use",
     ];
     const calls = newCalls();
-    const hook = createSessionRecoveryHook(fakeHost(calls));
+    const hook = createSessionRecoveryHook(fakeHost(calls), FAST);
 
     for (const [index, error] of patterns.entries()) {
       await hook.onEvent(errorEvent(`s${index}`, error));
@@ -77,18 +79,19 @@ describe("session recovery", () => {
 
   it("ignores unrelated errors and sessions without a user prompt", async () => {
     const calls = newCalls();
-    const hook = createSessionRecoveryHook(fakeHost(calls, { lastUser: undefined }));
+    const hook = createSessionRecoveryHook(fakeHost(calls, { lastUser: undefined }), FAST);
 
     await hook.onEvent(errorEvent("s1", "rate limited"));
     await hook.onEvent(errorEvent("s2", "content cannot be empty"));
 
     expect(calls.interrupted).toEqual(["s2"]);
     expect(calls.prompted).toEqual([]);
+    expect(calls.notified.map((n) => n.title)).toEqual(["Session Recovery", "Recovery Incomplete"]);
   });
 
   it("ignores empty errors and unrelated events", async () => {
     const calls = newCalls();
-    const hook = createSessionRecoveryHook(fakeHost(calls));
+    const hook = createSessionRecoveryHook(fakeHost(calls), FAST);
 
     await hook.onEvent(errorEvent("s1", undefined));
     await hook.onEvent(errorEvent("s1", ""));
@@ -100,7 +103,7 @@ describe("session recovery", () => {
 
   it("classifies Error instances and plain objects", async () => {
     const calls = newCalls();
-    const hook = createSessionRecoveryHook(fakeHost(calls));
+    const hook = createSessionRecoveryHook(fakeHost(calls), FAST);
 
     await hook.onEvent(errorEvent("s1", new Error("thinking is not enabled")));
     await hook.onEvent(errorEvent("s2", { data: { message: "tool_result block(s) missing" } }));
@@ -110,7 +113,7 @@ describe("session recovery", () => {
 
   it("deduplicates rapid identical errors for the same session", async () => {
     const calls = newCalls();
-    const hook = createSessionRecoveryHook(fakeHost(calls));
+    const hook = createSessionRecoveryHook(fakeHost(calls), FAST);
     const error = "tool_result block(s) missing";
 
     await Promise.all([hook.onEvent(errorEvent("s1", error)), hook.onEvent(errorEvent("s1", error))]);
@@ -127,7 +130,7 @@ describe("session recovery", () => {
         throw new Error("abort failed");
       },
     };
-    const hook = createSessionRecoveryHook(host);
+    const hook = createSessionRecoveryHook(host, FAST);
 
     await hook.onEvent(errorEvent("s1", "content cannot be empty"));
 
@@ -143,17 +146,52 @@ describe("session recovery", () => {
         throw new Error("prompt failed");
       },
     };
-    const hook = createSessionRecoveryHook(host);
+    const hook = createSessionRecoveryHook(host, FAST);
+    const warn = spyOn(console, "warn").mockImplementation(() => {});
 
-    await hook.onEvent(errorEvent("s1", "content cannot be empty"));
+    let warnings: number | undefined;
+    try {
+      await hook.onEvent(errorEvent("s1", "content cannot be empty"));
+      warnings = warn.mock.calls.length;
+    } finally {
+      warn.mockRestore();
+    }
 
+    expect(warnings).toBe(1);
     expect(calls.interrupted).toEqual(["s1"]);
-    expect(calls.notified.map((n) => n.title)).toEqual(["Session Recovery", "Recovery Complete"]);
+    expect(calls.notified.map((n) => n.title)).toEqual(["Session Recovery", "Recovery Incomplete"]);
+  });
+
+  it("gives up on the same error after the max attempts", async () => {
+    const calls = newCalls();
+    const hook = createSessionRecoveryHook(fakeHost(calls), FAST);
+    const error = "thinking is not enabled";
+
+    for (let i = 0; i < 4; i++) {
+      await hook.onEvent(errorEvent("s1", error));
+      // let the dedup key expire so the next event is not treated as a duplicate
+      await new Promise((r) => setTimeout(r, FAST.dedupExpiryMs + 5));
+    }
+
+    expect(calls.interrupted).toEqual(["s1", "s1", "s1"]);
+    expect(calls.notified.at(-1)?.title).toBe("Recovery Failed");
+  });
+
+  it("survives a notify that throws", async () => {
+    const calls = newCalls();
+    const host: SessionHost = {
+      ...fakeHost(calls),
+      notify: async () => {
+        throw new Error("no tui");
+      },
+    };
+    const hook = createSessionRecoveryHook(host, FAST);
+    await expect(hook.onEvent(errorEvent("s1", "content cannot be empty"))).rejects.toThrow("no tui");
   });
 
   it("forgets a deleted session so it can recover again", async () => {
     const calls = newCalls();
-    const hook = createSessionRecoveryHook(fakeHost(calls));
+    const hook = createSessionRecoveryHook(fakeHost(calls), FAST);
     const error = "tool_result block(s) missing";
 
     await hook.onEvent(errorEvent("s1", error));

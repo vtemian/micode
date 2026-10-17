@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -168,6 +168,59 @@ describe("auto-compact", () => {
     await waitUntil(() => calls.prompted.length === 1);
 
     await expect(readFile(join(dir, "thoughts/ledgers/CONTINUITY_ses_empt.md"), "utf-8")).rejects.toThrow();
+  });
+
+  it("reports a failed auto-continue as a warning, not a failed compaction", async () => {
+    const calls = newCalls();
+    const host: SessionHost = {
+      ...fakeHost(calls),
+      prompt: async () => {
+        throw new Error("session busy");
+      },
+    };
+    const usage = createSessionUsage(new Map([["p/m", LIMIT]]));
+    const hook = createAutoCompactHook({ directory: dir }, host, usage, { compactionThreshold: 0.5 });
+    const event = usageEvent("ses_contfail", 900);
+
+    usage.onEvent(event);
+    await hook.onEvent(event);
+    await waitUntil(() => calls.notified.length === 3);
+
+    expect(calls.notified.map((n) => n.title)).toEqual(["Auto Compacting", "Compaction Complete", "Continue Failed"]);
+    expect(calls.notified[2].message).toContain("session busy");
+    await expect(readFile(join(dir, "thoughts/ledgers/CONTINUITY_ses_cont.md"), "utf-8")).resolves.toContain("stuff");
+  });
+
+  it("does not leak an unhandled rejection when notify throws, and releases the in-progress flag", async () => {
+    const calls = newCalls();
+    let notifications = 0;
+    const host: SessionHost = {
+      ...fakeHost(calls),
+      notify: async () => {
+        notifications += 1;
+        throw new Error("no tui");
+      },
+    };
+    const usage = createSessionUsage(new Map([["p/m", LIMIT]]));
+    const hook = createAutoCompactHook({ directory: dir }, host, usage, { compactionThreshold: 0.5 });
+    const event = usageEvent("ses_notify", 900);
+    const logged = spyOn(console, "error").mockImplementation(() => {});
+    let errors: number | undefined;
+
+    try {
+      usage.onEvent(event);
+      await hook.onEvent(event);
+      // The start notification throws, the failure notification throws too: two attempts per flow.
+      await waitUntil(() => notifications === 2);
+      expect(calls.compacted).toEqual([]);
+
+      await hook.onEvent(event);
+      await waitUntil(() => notifications === 4 && logged.mock.calls.length === 2);
+      errors = logged.mock.calls.length;
+    } finally {
+      logged.mockRestore();
+    }
+    expect(errors).toBe(2);
   });
 
   it("notifies on failure and releases the in-progress flag", async () => {

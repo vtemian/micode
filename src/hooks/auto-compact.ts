@@ -78,7 +78,7 @@ async function compactSession(
       variant: "success",
       duration: config.timeouts.toastSuccessMs,
     });
-    await host.prompt(sessionID, CONTINUE_PROMPT, { model });
+    await autoContinue(host, sessionID, model);
   } catch (error) {
     await host.notify({
       title: "Compaction Failed",
@@ -88,6 +88,20 @@ async function compactSession(
     });
   } finally {
     state.inProgress.delete(sessionID);
+  }
+}
+
+/** The compaction itself succeeded; a failed auto-continue only costs the user a manual prompt. */
+async function autoContinue(host: SessionHost, sessionID: string, model: ModelRef): Promise<void> {
+  try {
+    await host.prompt(sessionID, CONTINUE_PROMPT, { model });
+  } catch (error) {
+    await host.notify({
+      title: "Continue Failed",
+      message: `Compacted, but could not auto-continue: ${extractErrorMessage(error).slice(0, MAX_ERROR_MESSAGE_LENGTH)}`,
+      variant: "warning",
+      duration: config.timeouts.toastWarningMs,
+    });
   }
 }
 
@@ -116,11 +130,10 @@ export function createAutoCompactHook(
       if (!current?.model || current.ratio < threshold) return;
       if (state.inProgress.has(event.sessionID) || coolingDown(state, event.sessionID)) return;
       // Compaction runs to completion in the background; the event loop must not wait on it
-      void compactSession(workspace, host, state, {
-        sessionID: event.sessionID,
-        model: current.model,
-        ratio: current.ratio,
-        threshold,
+      const run = { sessionID: event.sessionID, model: current.model, ratio: current.ratio, threshold };
+      void compactSession(workspace, host, state, run).catch((error: unknown) => {
+        // Last line of defense: a throwing notify must not become an unhandled rejection
+        log.error("auto-compact", "Compaction flow failed", error);
       });
     },
   };

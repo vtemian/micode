@@ -39,7 +39,10 @@ export interface PromptHint {
   readonly agent?: string;
 }
 
-/** Everything micode needs from a host session API. Each adapter implements it once. */
+/**
+ * Everything micode needs from a host session API. Each adapter implements it once.
+ * `remove` and `notify` are best-effort and never throw; every other method rejects on failure.
+ */
 export interface SessionHost {
   /** Create a session, run one prompt to completion and return the reply. The session is kept. */
   runAgent(run: AgentRun): Promise<AgentReply>;
@@ -51,7 +54,7 @@ export interface SessionHost {
   /** Run compaction to completion and resolve with the summary text. */
   compact(sessionID: string, model: ModelRef): Promise<string>;
   lastUserText(sessionID: string): Promise<string | undefined>;
-  /** v1 shows a TUI toast; v2 has no server-side toast and logs instead. */
+  /** Best-effort, never throws. v1 shows a TUI toast; v2 has no server-side toast and logs instead. */
   notify(notification: Notification): Promise<void>;
 }
 

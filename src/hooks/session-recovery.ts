@@ -1,7 +1,17 @@
 import type { HostEvent, PromptHint, SessionHost } from "@/host/port";
+import { extractErrorMessage } from "@/utils/errors";
+import { log } from "@/utils/logger";
 
 export interface SessionRecoveryHook {
   onEvent(event: HostEvent): Promise<void>;
+}
+
+/** Timing knobs; tests shrink them so recoveries do not wait on real delays. */
+export interface RecoveryTiming {
+  /** Pause after interrupting before re-prompting, so the host settles. */
+  readonly settleMs?: number;
+  /** How long an identical error on the same session is treated as a duplicate. */
+  readonly dedupExpiryMs?: number;
 }
 
 // Error patterns we can recover from
@@ -16,8 +26,10 @@ const RECOVERABLE_ERRORS = {
 type RecoverableErrorType = keyof typeof RECOVERABLE_ERRORS;
 
 interface RecoveryState {
-  processingErrors: Set<string>;
-  recoveryAttempts: Map<string, number>;
+  readonly processingErrors: Map<string, ReturnType<typeof setTimeout>>;
+  readonly recoveryAttempts: Map<string, number>;
+  readonly settleMs: number;
+  readonly dedupExpiryMs: number;
 }
 
 const MAX_RECOVERY_ATTEMPTS = 3;
@@ -61,16 +73,18 @@ function cleanupSession(state: RecoveryState, sessionID: string): void {
   for (const key of state.recoveryAttempts.keys()) {
     if (key.startsWith(`${sessionID}:`)) state.recoveryAttempts.delete(key);
   }
-  for (const key of state.processingErrors) {
-    if (key.startsWith(`${sessionID}:`)) state.processingErrors.delete(key);
+  for (const [key, timer] of state.processingErrors) {
+    if (!key.startsWith(`${sessionID}:`)) continue;
+    clearTimeout(timer);
+    state.processingErrors.delete(key);
   }
 }
 
 function deduplicateError(state: RecoveryState, sessionID: string, errorType: RecoverableErrorType): boolean {
   const errorKey = `${sessionID}:${errorType}`;
   if (state.processingErrors.has(errorKey)) return false;
-  state.processingErrors.add(errorKey);
-  setTimeout(() => state.processingErrors.delete(errorKey), ERROR_KEY_EXPIRY_MS);
+  const timer = setTimeout(() => state.processingErrors.delete(errorKey), state.dedupExpiryMs);
+  state.processingErrors.set(errorKey, timer);
   return true;
 }
 
@@ -84,14 +98,35 @@ async function sleep(ms: number): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function resumeSession(host: SessionHost, sessionID: string, hint: PromptHint): Promise<void> {
+/** Re-prompts the session; false when there was nothing to resume or the host refused. */
+async function resumeSession(host: SessionHost, sessionID: string, hint: PromptHint): Promise<boolean> {
   try {
     const lastUser = await host.lastUserText(sessionID);
-    if (!lastUser) return;
+    if (!lastUser) return false;
     await host.prompt(sessionID, RESUME_PROMPT, hint);
-  } catch {
-    // Resume failed - the user will need to continue manually
+    return true;
+  } catch (error) {
+    log.warn("session-recovery", `Resume failed for ${sessionID}: ${extractErrorMessage(error)}`);
+    return false;
   }
+}
+
+async function notifyOutcome(host: SessionHost, resumed: boolean): Promise<void> {
+  if (resumed) {
+    await host.notify({
+      title: "Recovery Complete",
+      message: "Session resumed. Continuing...",
+      variant: "success",
+      duration: RECOVERY_TOAST_DURATION_MS,
+    });
+    return;
+  }
+  await host.notify({
+    title: "Recovery Incomplete",
+    message: "Session interrupted but not resumed. Send a message to continue.",
+    variant: "warning",
+    duration: TOAST_FAILURE_DURATION_MS,
+  });
 }
 
 async function attemptRecovery(
@@ -125,18 +160,17 @@ async function attemptRecovery(
   } catch {
     // Ignore interrupt errors; the resume attempt is what matters
   }
-  await sleep(ABORT_SETTLE_DELAY_MS);
-  await resumeSession(host, sessionID, hint);
-  await host.notify({
-    title: "Recovery Complete",
-    message: "Session resumed. Continuing...",
-    variant: "success",
-    duration: RECOVERY_TOAST_DURATION_MS,
-  });
+  await sleep(state.settleMs);
+  await notifyOutcome(host, await resumeSession(host, sessionID, hint));
 }
 
-export function createSessionRecoveryHook(host: SessionHost): SessionRecoveryHook {
-  const state: RecoveryState = { processingErrors: new Set(), recoveryAttempts: new Map() };
+export function createSessionRecoveryHook(host: SessionHost, timing?: RecoveryTiming): SessionRecoveryHook {
+  const state: RecoveryState = {
+    processingErrors: new Map(),
+    recoveryAttempts: new Map(),
+    settleMs: timing?.settleMs ?? ABORT_SETTLE_DELAY_MS,
+    dedupExpiryMs: timing?.dedupExpiryMs ?? ERROR_KEY_EXPIRY_MS,
+  };
 
   return {
     onEvent: async (event) => {
