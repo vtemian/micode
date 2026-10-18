@@ -1,28 +1,36 @@
+import { resolve } from "node:path";
+
 import type { Plugin } from "@opencode/plugin";
 import type { AgentEditor } from "@opencode/plugin/promise/agent";
 import type { MCPEditor } from "@opencode/plugin/promise/mcp";
 import type { SessionContext } from "@opencode/plugin/promise/session";
-import type { Info as ToolInfo } from "@opencode/plugin/promise/tool";
+import type { ToolContext, Info as ToolInfo } from "@opencode/plugin/promise/tool";
 import type { AgentConfig, McpLocalConfig } from "@opencode-ai/sdk";
 import { z } from "zod";
 
 import { createMicode, type Micode } from "@/micode";
 import type { MicodeTool } from "@/tools/define";
+import { config } from "@/utils/config";
 import { extractErrorMessage } from "@/utils/errors";
 import { log } from "@/utils/logger";
 
 import type { AgentReply, AgentRun, HostEvent, ModelRef, SessionHost } from "./port";
 
 /** The slice of the v2 plugin context micode uses. Tests fake exactly this. */
-export type V2Host = Pick<
-  Plugin.Context,
-  "location" | "tool" | "agent" | "command" | "mcp" | "permission" | "event" | "session"
->;
+export type V2Host = Pick<Plugin.Context, "location" | "tool" | "agent" | "command" | "mcp" | "event" | "session">;
+
+/** The slice the session host needs: the session API and the event stream compaction reports on. */
+export type SessionEvents = Pick<V2Host, "session" | "event">;
+
+export interface V2HostOptions {
+  readonly compactionTimeoutMs?: number;
+}
 
 /** v2 permission vocabulary for a run that may not call tools (reviewer, probe). */
 export const DENY_ALL_TOOLS = [{ action: "*", resource: "*", effect: "deny" }] as const;
 
 type Session = V2Host["session"];
+type Events = V2Host["event"];
 type AgentRecord = Parameters<Parameters<AgentEditor["update"]>[1]>[0];
 type V2ModelRef = NonNullable<AgentRecord["model"]>;
 type Rule = AgentRecord["permissions"][number];
@@ -41,11 +49,14 @@ const ANY = "*";
 const TEXT = "text";
 const USER_ROLE = "user";
 const ARGUMENTS_PLACEHOLDER = "$ARGUMENTS";
+const ANTHROPIC = "anthropic";
 const SESSION_DELETED = "session.deleted";
 const STEP_ENDED = "session.step.ended";
 const EXECUTION_FAILED = "session.execution.failed";
 
 const envelope = z.object({ type: z.string() });
+/** `Event.Payload.location` (the project the event belongs to); absent on server-wide events. */
+const located = z.object({ location: z.object({ directory: z.string() }) });
 const sessionDeleted = z.object({ data: z.object({ sessionID: z.string() }) });
 const stepEnded = z.object({
   data: z.object({
@@ -54,6 +65,19 @@ const stepEnded = z.object({
   }),
 });
 const executionFailed = z.object({ data: z.object({ sessionID: z.string(), error: z.unknown() }) });
+const compactionEnded = z.object({
+  type: z.literal("session.compaction.ended"),
+  data: z.object({ sessionID: z.string(), text: z.string() }),
+});
+const compactionFailed = z.object({
+  type: z.literal("session.compaction.failed"),
+  data: z.object({ sessionID: z.string(), error: z.object({ message: z.string() }) }),
+});
+const toolArgs = z.record(z.string(), z.unknown());
+
+/** How OpenCode 2.0.31 serializes turns into a compaction's `recent` text (newline-joined lines). */
+const RECENT_USER = "[User]: ";
+const RECENT_LINE = /\n\[(?:User|Assistant|Tool|Attached|Skill)/;
 
 const effect = z.enum(["allow", "deny", "ask"]);
 /** v1 AgentConfig types none of these; micode's agent configs carry them through its index signature. */
@@ -61,6 +85,7 @@ const extras = z.object({
   variant: z.string().optional(),
   thinking: z.unknown().optional(),
   maxTokens: z.number().optional(),
+  steps: z.number().optional(),
   tools: z.record(z.string(), z.boolean()).optional(),
   permission: z.record(z.string(), z.union([effect, z.record(z.string(), effect)])).optional(),
 });
@@ -87,23 +112,65 @@ export function lastAssistantText(messages: readonly SessionMessage[]): string {
     .join("\n");
 }
 
-type Compaction = Extract<SessionMessage, { type: "compaction" }>;
-
-function isCompaction(message: SessionMessage): message is Compaction {
-  return message.type === "compaction";
+/**
+ * Resolves with the summary from this session's `session.compaction.ended`, and rejects on its
+ * `session.compaction.failed` (a failed compaction must reject like v1 does, never resolve empty).
+ */
+async function compactionOutcome(events: Events, sessionID: string, signal: AbortSignal): Promise<string> {
+  for await (const event of events.subscribe({ signal })) {
+    const ended = compactionEnded.safeParse(event);
+    if (ended.success && ended.data.data.sessionID === sessionID) return ended.data.data.text;
+    const failed = compactionFailed.safeParse(event);
+    if (failed.success && failed.data.data.sessionID === sessionID) {
+      throw new Error(`Compaction failed: ${failed.data.data.error.message}`);
+    }
+  }
+  throw new Error("Compaction outcome never arrived");
 }
 
-/** A failed compaction must reject like v1 does, never resolve with an empty summary. */
-function lastSummary(messages: readonly SessionMessage[]): string {
-  const compaction = messages.filter(isCompaction).at(-1);
-  if (!compaction) return "";
-  if (compaction.status === "failed") throw new Error(`Compaction failed: ${compaction.error.message}`);
-  return compaction.status === "completed" ? compaction.summary : "";
+/**
+ * v2 queues compaction for the next step boundary and resumes the turn itself afterwards, so
+ * waiting for idle would only return once the agent stopped. A manual compaction that gets
+ * interrupted emits no outcome at all (2.0.31), hence the timeout.
+ */
+async function compact(host: SessionEvents, sessionID: string, timeoutMs: number): Promise<string> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  // Subscribe before requesting, so a fast outcome cannot slip past.
+  const outcome = compactionOutcome(host.event, sessionID, controller.signal).catch((error: unknown) => {
+    if (!controller.signal.aborted) throw error;
+    throw new Error(`Compaction did not finish within ${timeoutMs}ms`);
+  });
+  try {
+    const [, summary] = await Promise.all([host.session.compact({ sessionID }), outcome]);
+    return summary;
+  } finally {
+    clearTimeout(timer);
+    controller.abort();
+  }
 }
 
+type Compaction = Extract<SessionMessage, { type: "compaction"; status: "completed" }>;
+
+function isCompleted(message: SessionMessage): message is Compaction {
+  return message.type === "compaction" && message.status === "completed";
+}
+
+/** The last `[User]: ` turn in a compaction's serialized recent context, up to the next transcript line. */
+function recentUserText(recent: string): string | undefined {
+  const start = recent.lastIndexOf(RECENT_USER);
+  if (start === -1) return undefined;
+  const rest = recent.slice(start + RECENT_USER.length);
+  const end = rest.search(RECENT_LINE);
+  return (end === -1 ? rest : rest.slice(0, end)) || undefined;
+}
+
+/** session.context starts at the last completed compaction, so after one there may be no user row yet. */
 function lastUserText(messages: readonly SessionMessage[]): string | undefined {
   const user = messages.filter((m) => m.type === USER_ROLE).at(-1);
-  return user && "text" in user && typeof user.text === "string" ? user.text || undefined : undefined;
+  if (user) return "text" in user && typeof user.text === "string" ? user.text || undefined : undefined;
+  const compaction = messages.filter(isCompleted).at(-1);
+  return compaction ? recentUserText(compaction.recent) : undefined;
 }
 
 /** The session API takes a plain ref; only agent records need the branded `Model.Ref`. */
@@ -126,7 +193,11 @@ async function runAgent(session: Session, run: AgentRun): Promise<AgentReply> {
   return { sessionID, text: lastAssistantText(await session.context({ sessionID })) };
 }
 
-export function createV2Host(session: Session): SessionHost {
+export function createV2Host(
+  host: SessionEvents,
+  { compactionTimeoutMs = config.compaction.timeoutMs }: V2HostOptions = {},
+): SessionHost {
+  const { session } = host;
   return {
     runAgent: (run) => runAgent(session, run),
     remove: async (sessionID) => {
@@ -143,17 +214,20 @@ export function createV2Host(session: Session): SessionHost {
     interrupt: async (sessionID) => {
       await session.interrupt({ sessionID });
     },
-    compact: async (sessionID) => {
-      await session.compact({ sessionID });
-      await session.wait({ sessionID });
-      return lastSummary(await session.context({ sessionID }));
-    },
+    compact: (sessionID) => compact(host, sessionID, compactionTimeoutMs),
     lastUserText: async (sessionID) => lastUserText(await session.context({ sessionID })),
     notify: async (notification) => {
       // No server-side toast on v2; a TUI subplugin is a follow-up.
       log.info(LOG_SCOPE, `${notification.title}: ${notification.message}`);
     },
   };
+}
+
+/** Title updates are cosmetic; one rejected after the call was interrupted must not surface as unhandled. */
+function reportProgress(context: ToolContext, title: string): void {
+  context.progress({ title }).catch((error: unknown) => {
+    log.debug(LOG_SCOPE, `progress update dropped: ${extractErrorMessage(error)}`);
+  });
 }
 
 function toV2Tool(name: string, core: MicodeTool): V2Tool {
@@ -167,7 +241,7 @@ function toV2Tool(name: string, core: MicodeTool): V2Tool {
     execute: async (input: unknown, context) => ({
       content: await core.execute(input, {
         sessionID: context.sessionID,
-        progress: (title) => void context.progress({ title }),
+        progress: (title) => reportProgress(context, title),
       }),
     }),
   };
@@ -180,11 +254,23 @@ function extrasOf(config: AgentConfig): Extras {
   return {};
 }
 
+const EDIT_ACTION = "edit";
+
 /**
- * v1 permission keys and tool names that OpenCode 2 calls something else
- * (verified against the 2.0.31 binary: `action:"shell"`, `action:"subagent"`).
+ * v1 permission keys and tool names that OpenCode 2 calls something else. Verified against the
+ * 2.0.31 binary: the shell and subagent actions, and the write, edit and patch tools all
+ * declaring `permission: "edit"` (no tool ever asserts a "write" action).
  */
-const V2_ACTIONS: Readonly<Record<string, string>> = { bash: "shell", task: "subagent" };
+const V2_ACTIONS: Readonly<Record<string, string>> = {
+  bash: "shell",
+  task: "subagent",
+  write: EDIT_ACTION,
+  patch: EDIT_ACTION,
+  multiedit: EDIT_ACTION,
+};
+
+/** v1 hid these tools one by one; v2 gates them all through "edit", so only disabling both may deny it. */
+const EDIT_TOOLS = ["edit", "write"] as const;
 
 function toV2Action(action: string): string {
   return V2_ACTIONS[action] ?? action;
@@ -200,31 +286,57 @@ function permissionRules(permission: Extras["permission"]): Rule[] {
 }
 
 function toolRules(tools: Extras["tools"]): Rule[] {
-  return Object.entries(tools ?? {})
+  const toggles = tools ?? {};
+  const editsDisabled = EDIT_TOOLS.every((name) => toggles[name] === false);
+  const actions = Object.entries(toggles)
     .filter(([, enabled]) => !enabled)
-    .map(([name]) => ({ action: toV2Action(name), resource: ANY, effect: "deny" as const }));
+    .map(([name]) => toV2Action(name))
+    .filter((action) => action !== EDIT_ACTION || editsDisabled);
+  return [...new Set(actions)].map((action) => ({ action, resource: ANY, effect: "deny" as const }));
 }
 
-export function toAgentInfo(agent: AgentRecord, config: AgentConfig, model: V2ModelRef | undefined): void {
+function isBlanketDeny(rule: Rule, action: string): boolean {
+  return rule.action === action && rule.resource === ANY && rule.effect === "deny";
+}
+
+/** micode's allow-by-default actions, minus the ones this agent denies outright. */
+function allowRules(allowed: readonly string[], own: readonly Rule[]): Rule[] {
+  return [...new Set(allowed.map(toV2Action))]
+    .filter((action) => !own.some((rule) => isBlanketDeny(rule, action)))
+    .map((action) => ({ action, resource: ANY, effect: "allow" as const }));
+}
+
+export function toAgentInfo(
+  agent: AgentRecord,
+  config: AgentConfig,
+  model: V2ModelRef | undefined,
+  allowed: readonly string[] = [],
+): void {
   const extra = extrasOf(config);
   if (config.description !== undefined) agent.description = config.description;
   if (config.mode !== undefined) agent.mode = config.mode;
   if (config.prompt !== undefined) agent.system = config.prompt;
   if (model !== undefined) agent.model = model;
-  if (config.maxSteps !== undefined) agent.steps = config.maxSteps;
-  // v2 agents have no temperature/maxTokens/thinking fields; they travel in the raw provider body.
-  if (config.temperature !== undefined) agent.request.body.temperature = config.temperature;
-  if (extra.maxTokens !== undefined) agent.request.body.maxTokens = extra.maxTokens;
-  if (extra.thinking !== undefined) agent.request.body.thinking = extra.thinking;
-  const rules = [...permissionRules(extra.permission), ...toolRules(extra.tools)];
-  // The last matching rule wins on v2, so micode's rules go first and the user's own rules keep precedence.
-  if (rules.length > 0) agent.permissions = [...rules, ...agent.permissions];
+  const steps = extra.steps ?? config.maxSteps;
+  if (steps !== undefined) agent.steps = steps;
+  // The last matching rule wins on v2. A fresh record starts with `*: allow`, so micode's rules go after it,
+  // its allows before the agent's own rules; the host appends the user's global rules after every plugin
+  // transform, so those win over everything micode sets.
+  const own = [...permissionRules(extra.permission), ...toolRules(extra.tools)];
+  agent.permissions.push(...allowRules(allowed, own), ...own);
 }
 
-function modelRefOf(config: AgentConfig, parseModel: ParseModel): V2ModelRef | undefined {
+/** A malformed override (no provider prefix, empty) must not stop micode loading; the host default applies. */
+function modelRefOf(name: string, config: AgentConfig, parseModel: ParseModel): V2ModelRef | undefined {
   if (config.model === undefined) return undefined;
   const { variant } = extrasOf(config);
-  return parseModel(variant ? `${config.model}#${variant}` : config.model);
+  const ref = variant ? `${config.model}#${variant}` : config.model;
+  try {
+    return parseModel(ref);
+  } catch (error: unknown) {
+    log.warn(LOG_SCOPE, `agent ${name}: ignoring model "${ref}" (${extractErrorMessage(error)}); using the default`);
+    return undefined;
+  }
 }
 
 async function registerTools(host: V2Host, micode: Micode): Promise<void> {
@@ -233,15 +345,21 @@ async function registerTools(host: V2Host, micode: Micode): Promise<void> {
   });
 }
 
-async function registerAgents(host: V2Host, micode: Micode, parseModel: ParseModel): Promise<void> {
+export async function registerAgents(
+  host: Pick<V2Host, "agent">,
+  micode: Pick<Micode, "agents" | "defaultAgent" | "allowedActions">,
+  parseModel: ParseModel,
+): Promise<void> {
   // Transforms replay synchronously, so resolve branded model refs up front and only assign inside.
   const prepared = Object.entries(micode.agents).map(([name, config]) => ({
     name,
     config,
-    model: modelRefOf(config, parseModel),
+    model: modelRefOf(name, config, parseModel),
   }));
   await host.agent.transform((editor) => {
-    for (const { name, config, model } of prepared) editor.update(name, (agent) => toAgentInfo(agent, config, model));
+    for (const { name, config, model } of prepared) {
+      editor.update(name, (agent) => toAgentInfo(agent, config, model, micode.allowedActions));
+    }
     editor.default(micode.defaultAgent);
   });
 }
@@ -271,6 +389,8 @@ function toMcpServer(server: McpLocalConfig): McpServer {
     type: "local",
     command: [...server.command],
     ...(server.environment ? { environment: server.environment } : {}),
+    // Like micode's own tools: the agent prompts call `context7_*` by name, which Code Mode would hide.
+    codemode: false,
   };
 }
 
@@ -280,13 +400,6 @@ async function registerMcp(host: V2Host, micode: Micode): Promise<void> {
       if (editor.get(name)) continue; // the user's own entry wins, as in v1
       editor.set(name, toMcpServer(server));
     }
-  });
-}
-
-async function registerPermissions(host: V2Host, micode: Micode): Promise<void> {
-  const allowed = new Set(micode.allowedActions.map(toV2Action));
-  await host.permission.hook("evaluate", (evaluation) => {
-    if (evaluation.effect === "ask" && allowed.has(evaluation.action)) evaluation.effect = "allow";
   });
 }
 
@@ -300,6 +413,18 @@ function textOf(message: ContextMessage): string {
 /** Keeps the host's own parts (and their cache hints); only micode's additions are plain text. */
 function toSystemParts(original: readonly SystemPart[], texts: readonly string[]): SystemPart[] {
   return texts.map((text) => original.find((part) => part.text === text) ?? { type: TEXT, text });
+}
+
+/** v2 never applies `agent.request.body`, so per-agent generation settings ride on each request's options. */
+function generationOptions(micode: Micode, agent: string, providerID: string): Record<string, unknown> {
+  if (!Object.hasOwn(micode.agents, agent)) return {};
+  const config = micode.agents[agent];
+  const { maxTokens, thinking } = extrasOf(config);
+  return {
+    ...(config.temperature === undefined ? {} : { temperature: config.temperature }),
+    ...(maxTokens === undefined ? {} : { maxTokens }),
+    ...(thinking !== undefined && providerID === ANTHROPIC ? { thinking } : {}),
+  };
 }
 
 async function applyContext(micode: Micode, input: SessionContext): Promise<void> {
@@ -316,7 +441,11 @@ async function applyContext(micode: Micode, input: SessionContext): Promise<void
     userText: lastUser ? textOf(lastUser) : undefined,
   });
   input.system.splice(0, input.system.length, ...toSystemParts(input.system, system));
-  Object.assign(input.options, micode.requestOptions(input.sessionID));
+  Object.assign(
+    input.options,
+    generationOptions(micode, input.agent, input.model.providerID),
+    micode.requestOptions(input.sessionID),
+  );
 }
 
 async function registerSessionHooks(host: V2Host, micode: Micode): Promise<void> {
@@ -330,8 +459,16 @@ async function registerSessionHooks(host: V2Host, micode: Micode): Promise<void>
   });
 }
 
-function recordArgs(args: unknown): Record<string, unknown> | undefined {
-  return typeof args === "object" && args !== null ? (args as Record<string, unknown>) : undefined;
+/**
+ * OpenCode 2's read/write/edit take `path` (project-relative or absolute; verified on 2.0.31), while
+ * micode's file trackers read v1's absolute `filePath`. The original keys are kept alongside.
+ */
+function toV1Args(args: unknown, directory: string): Record<string, unknown> | undefined {
+  const parsed = toolArgs.safeParse(args);
+  if (!parsed.success) return undefined;
+  const { path, filePath } = parsed.data;
+  if (typeof path !== "string" || filePath !== undefined) return parsed.data;
+  return { ...parsed.data, filePath: resolve(directory, path) };
 }
 
 async function registerToolHook(host: V2Host, micode: Micode): Promise<void> {
@@ -343,7 +480,7 @@ async function registerToolHook(host: V2Host, micode: Micode): Promise<void> {
       const content = await micode.onToolResult({
         tool: input.tool,
         sessionID: input.sessionID,
-        args: recordArgs(input.input),
+        args: toV1Args(input.input, host.location.directory),
         output: input.result.content,
       });
       input.result = { ...input.result, content };
@@ -382,8 +519,15 @@ export function normalizeEvent(event: unknown): HostEvent | undefined {
   return undefined;
 }
 
+/** One shared server hosts a micode instance per project and the stream is not project-scoped. */
+function isForeign(event: unknown, directory: string): boolean {
+  const parsed = located.safeParse(event);
+  return parsed.success && parsed.data.location.directory !== directory;
+}
+
 async function relayEvents(host: V2Host, micode: Micode, signal: AbortSignal): Promise<void> {
   for await (const event of host.event.subscribe({ signal })) {
+    if (isForeign(event, host.location.directory)) continue;
     const normalized = normalizeEvent(event);
     if (!normalized) continue;
     try {
@@ -411,7 +555,7 @@ export async function setup(host: V2Host): Promise<Plugin.Cleanup> {
   const parseModel: ParseModel = (ref) => Model.Ref.parse(ref);
   const micode = await createMicode({
     directory: host.location.directory,
-    host: createV2Host(host.session),
+    host: createV2Host(host),
   });
 
   try {
@@ -419,7 +563,6 @@ export async function setup(host: V2Host): Promise<Plugin.Cleanup> {
     await registerAgents(host, micode, parseModel);
     await registerCommands(host, micode);
     await registerMcp(host, micode);
-    await registerPermissions(host, micode);
     await registerSessionHooks(host, micode);
     await registerToolHook(host, micode);
   } catch (error) {
