@@ -433,6 +433,22 @@ describe("v2 setup", () => {
     expect(drain(logs.info, /Session Recovery|Recovery Complete/)).toHaveLength(2);
   });
 
+  it("ignores events from other projects on the shared server", async () => {
+    const h = createHost();
+    cleanup = await setup(h.host);
+    const failure = (sessionID: string, directory: string) => ({
+      type: "session.execution.failed",
+      location: { directory },
+      data: { sessionID, error: { type: "x", message: "content cannot be empty" } },
+    });
+    h.emit(failure("s_other", "/tmp/another-project"));
+    h.emit(failure("s_mine", "/tmp/micode-v2-test"));
+    await waitUntil(async () => h.sessions.prompted.length === 1);
+    expect(h.sessions.interrupted).toEqual(["s_mine"]);
+    expect(h.sessions.prompted.map((p) => p.sessionID)).toEqual(["s_mine"]);
+    expect(drain(logs.info, /Session Recovery|Recovery Complete/)).toHaveLength(2);
+  });
+
   it("logs when the event stream itself breaks", async () => {
     const h = createHost();
     const broken = {

@@ -43,6 +43,8 @@ const STEP_ENDED = "session.step.ended";
 const EXECUTION_FAILED = "session.execution.failed";
 
 const envelope = z.object({ type: z.string() });
+/** `Event.Payload.location` (the project the event belongs to); absent on server-wide events. */
+const located = z.object({ location: z.object({ directory: z.string() }) });
 const sessionDeleted = z.object({ data: z.object({ sessionID: z.string() }) });
 const stepEnded = z.object({
   data: z.object({
@@ -419,8 +421,15 @@ export function normalizeEvent(event: unknown): HostEvent | undefined {
   return undefined;
 }
 
+/** One shared server hosts a micode instance per project and the stream is not project-scoped. */
+function isForeign(event: unknown, directory: string): boolean {
+  const parsed = located.safeParse(event);
+  return parsed.success && parsed.data.location.directory !== directory;
+}
+
 async function relayEvents(host: V2Host, micode: Micode, signal: AbortSignal): Promise<void> {
   for await (const event of host.event.subscribe({ signal })) {
+    if (isForeign(event, host.location.directory)) continue;
     const normalized = normalizeEvent(event);
     if (!normalized) continue;
     try {
