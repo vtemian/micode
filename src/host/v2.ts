@@ -85,6 +85,7 @@ const extras = z.object({
   variant: z.string().optional(),
   thinking: z.unknown().optional(),
   maxTokens: z.number().optional(),
+  steps: z.number().optional(),
   tools: z.record(z.string(), z.boolean()).optional(),
   permission: z.record(z.string(), z.union([effect, z.record(z.string(), effect)])).optional(),
 });
@@ -309,7 +310,8 @@ export function toAgentInfo(
   if (config.mode !== undefined) agent.mode = config.mode;
   if (config.prompt !== undefined) agent.system = config.prompt;
   if (model !== undefined) agent.model = model;
-  if (config.maxSteps !== undefined) agent.steps = config.maxSteps;
+  const steps = extra.steps ?? config.maxSteps;
+  if (steps !== undefined) agent.steps = steps;
   // The last matching rule wins on v2. A fresh record starts with `*: allow`, so micode's rules go after it,
   // its allows before the agent's own rules; the host appends the user's global rules after every plugin
   // transform, so those win over everything micode sets.

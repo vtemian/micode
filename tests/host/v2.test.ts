@@ -766,6 +766,15 @@ describe("toAgentInfo", () => {
     ]);
   });
 
+  it("maps the v1 steps field, preferring it over the deprecated maxSteps", () => {
+    const stepsOnly = blankAgent("x");
+    toAgentInfo(stepsOnly, { steps: 7 }, undefined);
+    expect(stepsOnly.steps).toBe(7);
+    const both = blankAgent("y");
+    toAgentInfo(both, { steps: 7, maxSteps: 3 }, undefined);
+    expect(both.steps).toBe(7);
+  });
+
   it("leaves host defaults alone for fields the config does not set", () => {
     const agent = blankAgent("x");
     toAgentInfo(agent, { description: "only this" }, undefined);
