@@ -94,8 +94,7 @@ describe("file-ops-tracker", () => {
     });
 
     it("should return hook with tool.execute.after handler", () => {
-      const mockCtx = { directory: "/test" } as any;
-      const hook = createFileOpsTrackerHook(mockCtx);
+      const hook = createFileOpsTrackerHook();
       expect(hook["tool.execute.after"]).toBeDefined();
     });
   });

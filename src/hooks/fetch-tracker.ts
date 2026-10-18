@@ -1,5 +1,4 @@
 // src/hooks/fetch-tracker.ts
-import type { Workspace } from "@/host/port";
 
 import { config } from "@/utils/config";
 import { extractErrorMessage } from "@/utils/errors";
@@ -171,7 +170,7 @@ interface FetchTrackerHooks {
   cleanupSession: (sessionID: string) => void;
 }
 
-export function createFetchTrackerHook(_ctx: Workspace): FetchTrackerHooks {
+export function createFetchTrackerHook(): FetchTrackerHooks {
   return {
     "tool.execute.after": async (input, output) => {
       try {

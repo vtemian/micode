@@ -176,7 +176,8 @@ describe("system prompt scoping", () => {
   let logs: LogCapture;
 
   async function waitUntil(condition: () => Promise<boolean>): Promise<void> {
-    for (let attempt = 0; attempt < 100; attempt++) {
+    const deadline = Date.now() + 3000;
+    while (Date.now() < deadline) {
       if (await condition()) return;
       await new Promise((r) => setTimeout(r, 5));
     }

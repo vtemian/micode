@@ -2,7 +2,6 @@
 // Auto-indexes artifacts when written to thoughts/ directories
 
 import { readFileSync } from "node:fs";
-import type { Workspace } from "@/host/port";
 import { getArtifactIndex } from "@/tools/artifact-index";
 import { log } from "@/utils/logger";
 
@@ -99,7 +98,7 @@ interface ArtifactAutoIndexHooks {
   ) => Promise<void>;
 }
 
-export function createArtifactAutoIndexHook(_ctx: Workspace): ArtifactAutoIndexHooks {
+export function createArtifactAutoIndexHook(): ArtifactAutoIndexHooks {
   return {
     "tool.execute.after": async (
       input: { tool: string; args?: Record<string, unknown> },

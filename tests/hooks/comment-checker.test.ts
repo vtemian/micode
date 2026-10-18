@@ -3,13 +3,9 @@ import { describe, expect, it } from "bun:test";
 import { createCommentCheckerHook } from "../../src/hooks/comment-checker";
 
 describe("comment-checker", () => {
-  function createMockCtx() {
-    return { directory: "/test" } as any;
-  }
-
   describe("createCommentCheckerHook", () => {
     it("should return a hook with tool.execute.after handler", () => {
-      const hook = createCommentCheckerHook(createMockCtx());
+      const hook = createCommentCheckerHook();
       expect(hook["tool.execute.after"]).toBeDefined();
       expect(typeof hook["tool.execute.after"]).toBe("function");
     });
@@ -17,7 +13,7 @@ describe("comment-checker", () => {
 
   describe("tool.execute.after", () => {
     it("should only process Edit tool calls", async () => {
-      const hook = createCommentCheckerHook(createMockCtx());
+      const hook = createCommentCheckerHook();
       const output = { output: "success" };
 
       await hook["tool.execute.after"](
@@ -30,7 +26,7 @@ describe("comment-checker", () => {
     });
 
     it("should detect obvious 'what not why' comments", async () => {
-      const hook = createCommentCheckerHook(createMockCtx());
+      const hook = createCommentCheckerHook();
       const output = { output: "Edit applied" };
 
       await hook["tool.execute.after"](
@@ -46,7 +42,7 @@ describe("comment-checker", () => {
     });
 
     it("should detect section divider comments", async () => {
-      const hook = createCommentCheckerHook(createMockCtx());
+      const hook = createCommentCheckerHook();
       const output = { output: "Edit applied" };
 
       await hook["tool.execute.after"](
@@ -61,7 +57,7 @@ describe("comment-checker", () => {
     });
 
     it("should detect empty comments", async () => {
-      const hook = createCommentCheckerHook(createMockCtx());
+      const hook = createCommentCheckerHook();
       const output = { output: "Edit applied" };
 
       await hook["tool.execute.after"](
@@ -76,7 +72,7 @@ describe("comment-checker", () => {
     });
 
     it("should detect 'end of' comments", async () => {
-      const hook = createCommentCheckerHook(createMockCtx());
+      const hook = createCommentCheckerHook();
       const output = { output: "Edit applied" };
 
       await hook["tool.execute.after"](
@@ -91,7 +87,7 @@ describe("comment-checker", () => {
     });
 
     it("should not flag TODO comments", async () => {
-      const hook = createCommentCheckerHook(createMockCtx());
+      const hook = createCommentCheckerHook();
       const output = { output: "Edit applied" };
 
       await hook["tool.execute.after"](
@@ -106,7 +102,7 @@ describe("comment-checker", () => {
     });
 
     it("should not flag eslint directive comments", async () => {
-      const hook = createCommentCheckerHook(createMockCtx());
+      const hook = createCommentCheckerHook();
       const output = { output: "Edit applied" };
 
       await hook["tool.execute.after"](
@@ -121,7 +117,7 @@ describe("comment-checker", () => {
     });
 
     it("should not flag URL reference comments", async () => {
-      const hook = createCommentCheckerHook(createMockCtx());
+      const hook = createCommentCheckerHook();
       const output = { output: "Edit applied" };
 
       await hook["tool.execute.after"](
@@ -136,14 +132,14 @@ describe("comment-checker", () => {
     });
 
     it("ignores the snake_case new_string key, which neither host sends", async () => {
-      const hook = createCommentCheckerHook(createMockCtx());
+      const hook = createCommentCheckerHook();
       const output = { output: "File edited" };
       await hook["tool.execute.after"]({ tool: "edit", args: { new_string: "// increment x\nx++;" } }, output);
       expect(output.output).toBe("File edited");
     });
 
     it("should skip when newString is missing", async () => {
-      const hook = createCommentCheckerHook(createMockCtx());
+      const hook = createCommentCheckerHook();
       const output = { output: "Edit applied" };
 
       await hook["tool.execute.after"]({ tool: "edit", args: {} }, output);
@@ -152,7 +148,7 @@ describe("comment-checker", () => {
     });
 
     it("should skip when args is undefined", async () => {
-      const hook = createCommentCheckerHook(createMockCtx());
+      const hook = createCommentCheckerHook();
       const output = { output: "Edit applied" };
 
       await hook["tool.execute.after"]({ tool: "edit" }, output);
@@ -161,7 +157,7 @@ describe("comment-checker", () => {
     });
 
     it("should detect excessive consecutive comments", async () => {
-      const hook = createCommentCheckerHook(createMockCtx());
+      const hook = createCommentCheckerHook();
       const output = { output: "Edit applied" };
 
       // 7 consecutive non-valid comments (exceeds MAX_CONSECUTIVE_COMMENTS=5)
@@ -183,7 +179,7 @@ describe("comment-checker", () => {
     });
 
     it("should limit displayed issues to MAX_ISSUES_SHOWN and show overflow", async () => {
-      const hook = createCommentCheckerHook(createMockCtx());
+      const hook = createCommentCheckerHook();
       const output = { output: "Edit applied" };
 
       // Many bad comments to exceed MAX_ISSUES_SHOWN (3)
@@ -203,7 +199,7 @@ describe("comment-checker", () => {
     });
 
     it("should handle clean code with no issues", async () => {
-      const hook = createCommentCheckerHook(createMockCtx());
+      const hook = createCommentCheckerHook();
       const output = { output: "Edit applied" };
 
       await hook["tool.execute.after"](
@@ -218,7 +214,7 @@ describe("comment-checker", () => {
     });
 
     it("should handle lowercase 'edit' tool name", async () => {
-      const hook = createCommentCheckerHook(createMockCtx());
+      const hook = createCommentCheckerHook();
       const output = { output: "Edit applied" };
 
       await hook["tool.execute.after"](

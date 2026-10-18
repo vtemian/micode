@@ -1,5 +1,4 @@
 // src/hooks/file-ops-tracker.ts
-import type { Workspace } from "@/host/port";
 
 interface FileOps {
   read: Set<string>;
@@ -70,7 +69,7 @@ interface FileOpsTrackerHooks {
   ) => Promise<void>;
 }
 
-export function createFileOpsTrackerHook(_ctx: Workspace): FileOpsTrackerHooks {
+export function createFileOpsTrackerHook(): FileOpsTrackerHooks {
   return {
     "tool.execute.after": async (
       input: { tool: string; sessionID: string; args?: Record<string, unknown> },

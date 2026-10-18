@@ -1,5 +1,3 @@
-import type { Workspace } from "@/host/port";
-
 const MAX_COMMENT_PREVIEW_LENGTH = 60;
 const MAX_CONSECUTIVE_COMMENTS = 5;
 const MAX_ISSUES_SHOWN = 3;
@@ -101,7 +99,7 @@ interface CommentCheckerHooks {
   ) => Promise<void>;
 }
 
-export function createCommentCheckerHook(_ctx: Workspace): CommentCheckerHooks {
+export function createCommentCheckerHook(): CommentCheckerHooks {
   return {
     // Check after file edits
     "tool.execute.after": async (
