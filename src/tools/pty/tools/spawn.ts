@@ -1,6 +1,9 @@
 // src/tools/pty/tools/spawn.ts
 
+import { resolve } from "node:path";
+
 import { z } from "zod";
+import type { Workspace } from "@/host/port";
 import { defineTool, type MicodeTool } from "@/tools/define";
 import type { PTYManager } from "@/tools/pty/manager";
 
@@ -36,7 +39,7 @@ Examples:
 - Start a Python REPL: command="python3", title="Python REPL"
 - Run tests in watch mode: command="npm", args=["test", "--", "--watch"]`;
 
-export function createPtySpawnTool(manager: PTYManager): MicodeTool {
+export function createPtySpawnTool(manager: PTYManager, workspace: Workspace): MicodeTool {
   return defineTool({
     description: DESCRIPTION,
     args: {
@@ -54,7 +57,8 @@ export function createPtySpawnTool(manager: PTYManager): MicodeTool {
       const info = manager.spawn({
         command: args.command,
         args: args.args,
-        workdir: args.workdir,
+        // A relative or missing workdir means the project micode was loaded for, never the host's cwd.
+        workdir: resolve(workspace.directory, args.workdir ?? "."),
         env: args.env,
         title: args.title,
         parentSessionId: ctx.sessionID,

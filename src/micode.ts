@@ -28,12 +28,12 @@ import { buildMcpServers } from "@/plugin-config";
 import { deleteSessionModel, setSessionModel } from "@/session-model";
 import {
   artifact_search,
-  ast_grep_replace,
-  ast_grep_search,
   btca_ask,
   checkAstGrepAvailable,
   checkBtcaAvailable,
+  createAstGrepTools,
   createBatchReadTool,
+  createLookAtTool,
   createMindmodelLookupTool,
   createOcttoTools,
   createPTYManager,
@@ -41,7 +41,6 @@ import {
   createSessionStore,
   createSpawnAgentTool,
   loadBunPty,
-  look_at,
   milestone_artifact_search,
 } from "@/tools";
 import type { MicodeTools } from "@/tools/define";
@@ -357,18 +356,18 @@ function createHooks(
   };
 }
 
-async function createPty(): Promise<PTYManager> {
+async function createPty(workspace: Workspace): Promise<PTYManager> {
   // bun-pty loads with graceful degradation; see https://github.com/vtemian/micode/issues/20
   const manager = createPTYManager();
-  const bunPty = await loadBunPty();
+  const bunPty = await loadBunPty(workspace.directory);
   if (bunPty) manager.init(bunPty.spawn);
   return manager;
 }
 
-function createOctto(host: SessionHost): OcttoAssembly {
+function createOctto(host: SessionHost, workspace: Workspace): OcttoAssembly {
   const store = createSessionStore();
   const byParent = new Map<string, Set<string>>();
-  const tools = createOcttoTools(store, host, {
+  const tools = createOcttoTools(store, host, workspace, {
     onCreated: (parent, id) => {
       const ids = byParent.get(parent) ?? new Set<string>();
       ids.add(id);
@@ -410,16 +409,15 @@ function assembleTools(
       .map(([name]) => name),
   );
   return {
-    ast_grep_search,
-    ast_grep_replace,
+    ...createAstGrepTools(workspace),
     btca_ask,
-    look_at,
+    look_at: createLookAtTool(workspace),
     artifact_search,
     milestone_artifact_search,
     spawn_agent: createSpawnAgentTool(host, overrides),
     batch_read: createBatchReadTool(workspace),
     ...createMindmodelLookupTool(workspace),
-    ...(pty.available ? createPtyTools(pty) : {}),
+    ...(pty.available ? createPtyTools(pty, workspace) : {}),
     ...octtoTools,
   };
 }
@@ -522,8 +520,8 @@ export async function createMicode({ directory, host }: MicodeOptions): Promise<
   const usage = createSessionUsage(loadModelContextLimits());
   const sessions = createSessionState();
   const hooks = createHooks(workspace, host, usage, userConfig, sessions.internal);
-  const pty = await createPty();
-  const octto = createOctto(host);
+  const pty = await createPty(workspace);
+  const octto = createOctto(host, workspace);
 
   return {
     tools: assembleTools(workspace, host, userConfig, pty, octto.tools),

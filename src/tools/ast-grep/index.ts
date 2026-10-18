@@ -1,6 +1,7 @@
 import * as v from "valibot";
 import { z } from "zod";
-import { defineTool } from "@/tools/define";
+import type { Workspace } from "@/host/port";
+import { defineTool, type MicodeTool } from "@/tools/define";
 import { findExecutable, runCommand } from "@/utils/process";
 
 /**
@@ -76,6 +77,26 @@ interface Match {
   replacement?: string;
 }
 
+export interface SgCall {
+  readonly args: readonly string[];
+  readonly cwd: string;
+}
+
+export interface SearchArgs {
+  readonly pattern: string;
+  readonly lang: string;
+  readonly paths?: readonly string[];
+}
+
+export interface ReplaceArgs extends SearchArgs {
+  readonly rewrite: string;
+  readonly apply?: boolean;
+}
+
+const JSON_FLAG = "--json=compact";
+const UPDATE_ALL_FLAG = "--update-all";
+const PATHS_DESCRIPTION = "Paths to search, relative to the project directory (default: the project directory)";
+
 interface SgResult {
   matches: Match[];
   error?: string;
@@ -95,9 +116,9 @@ function parseMatchOutput(stdout: string): SgResult {
   return { matches: result.output };
 }
 
-async function runSg(args: string[]): Promise<SgResult> {
+async function runSg(call: SgCall): Promise<SgResult> {
   try {
-    const { stdout, stderr, exitCode } = await runCommand("sg", args);
+    const { stdout, stderr, exitCode } = await runCommand("sg", call.args, { cwd: call.cwd });
 
     const isNoFilesFound = exitCode !== 0 && !stdout.trim() && stderr.includes("No files found");
     if (isNoFilesFound) {
@@ -151,68 +172,77 @@ function formatMatches(matches: Match[], isDryRun = false): string {
   return lines.join("\n");
 }
 
-export const ast_grep_search = defineTool({
-  description:
-    "Search code patterns using AST-aware matching. " +
-    "Use meta-variables: $VAR (single node), $$$ (multiple nodes). " +
-    "Patterns must be complete AST nodes. " +
-    "Examples: 'console.log($MSG)', 'def $FUNC($$$):', 'async function $NAME($$$)'",
-  args: {
-    pattern: z.string().describe("AST pattern with meta-variables"),
-    lang: z.enum(LANGUAGES).describe("Target language"),
-    paths: z.array(z.string()).optional().describe("Paths to search"),
-  },
-  execute: async (args) => {
-    const sgArgs = ["run", "-p", args.pattern, "--lang", args.lang, "--json=compact"];
-    if (args.paths?.length) {
-      sgArgs.push(...args.paths);
-    } else {
-      sgArgs.push(".");
-    }
+function targets(workspace: Workspace, paths: readonly string[] | undefined): string[] {
+  return paths?.length ? [...paths] : [workspace.directory];
+}
 
-    const sgOutput = await runSg(sgArgs);
-    if (sgOutput.error) return `Error: ${sgOutput.error}`;
-    return formatMatches(sgOutput.matches);
-  },
-});
+/** sg runs from the workspace so relative paths and the default target are the project micode was loaded for. */
+export function searchCall(workspace: Workspace, args: SearchArgs): SgCall {
+  return {
+    cwd: workspace.directory,
+    args: ["run", "-p", args.pattern, "--lang", args.lang, JSON_FLAG, ...targets(workspace, args.paths)],
+  };
+}
 
-export const ast_grep_replace = defineTool({
-  description:
-    "Replace code patterns with AST-aware rewriting. " +
-    "Dry-run by default. Use meta-variables in rewrite to preserve matched content. " +
-    "Example: pattern='console.log($MSG)' rewrite='logger.info($MSG)'",
-  args: {
-    pattern: z.string().describe("AST pattern to match"),
-    rewrite: z.string().describe("Replacement pattern"),
-    lang: z.enum(LANGUAGES).describe("Target language"),
-    paths: z.array(z.string()).optional().describe("Paths to search"),
-    apply: z.boolean().optional().describe("Apply changes (default: false, dry-run)"),
-  },
-  execute: async (args) => {
-    const sgArgs = ["run", "-p", args.pattern, "-r", args.rewrite, "--lang", args.lang, "--json=compact"];
+export function replaceCall(workspace: Workspace, args: ReplaceArgs): SgCall {
+  const apply = args.apply ? [UPDATE_ALL_FLAG] : [];
+  const rewrite = ["-r", args.rewrite, "--lang", args.lang, JSON_FLAG, ...apply];
+  return { cwd: workspace.directory, args: ["run", "-p", args.pattern, ...rewrite, ...targets(workspace, args.paths)] };
+}
 
-    if (args.apply) {
-      sgArgs.push("--update-all");
-    }
+function createSearchTool(workspace: Workspace): MicodeTool {
+  return defineTool({
+    description:
+      "Search code patterns using AST-aware matching. " +
+      "Use meta-variables: $VAR (single node), $$$ (multiple nodes). " +
+      "Patterns must be complete AST nodes. " +
+      "Examples: 'console.log($MSG)', 'def $FUNC($$$):', 'async function $NAME($$$)'",
+    args: {
+      pattern: z.string().describe("AST pattern with meta-variables"),
+      lang: z.enum(LANGUAGES).describe("Target language"),
+      paths: z.array(z.string()).optional().describe(PATHS_DESCRIPTION),
+    },
+    execute: async (args) => {
+      const sgOutput = await runSg(searchCall(workspace, args));
+      if (sgOutput.error) return `Error: ${sgOutput.error}`;
+      return formatMatches(sgOutput.matches);
+    },
+  });
+}
 
-    if (args.paths?.length) {
-      sgArgs.push(...args.paths);
-    } else {
-      sgArgs.push(".");
-    }
+function describeReplacement(matches: Match[], apply: boolean | undefined): string {
+  const output = formatMatches(matches, !apply);
+  if (matches.length === 0) return output;
+  if (apply) return `Applied ${matches.length} replacements:\n${output}`;
+  return `${output}\n\n(Dry run - use apply=true to apply changes)`;
+}
 
-    const sgOutput = await runSg(sgArgs);
-    if (sgOutput.error) return `Error: ${sgOutput.error}`;
+function createReplaceTool(workspace: Workspace): MicodeTool {
+  return defineTool({
+    description:
+      "Replace code patterns with AST-aware rewriting. " +
+      "Dry-run by default. Use meta-variables in rewrite to preserve matched content. " +
+      "Example: pattern='console.log($MSG)' rewrite='logger.info($MSG)'",
+    args: {
+      pattern: z.string().describe("AST pattern to match"),
+      rewrite: z.string().describe("Replacement pattern"),
+      lang: z.enum(LANGUAGES).describe("Target language"),
+      paths: z.array(z.string()).optional().describe(PATHS_DESCRIPTION),
+      apply: z.boolean().optional().describe("Apply changes (default: false, dry-run)"),
+    },
+    execute: async (args) => {
+      const sgOutput = await runSg(replaceCall(workspace, args));
+      if (sgOutput.error) return `Error: ${sgOutput.error}`;
+      return describeReplacement(sgOutput.matches, args.apply);
+    },
+  });
+}
 
-    const isDryRun = !args.apply;
-    const output = formatMatches(sgOutput.matches, isDryRun);
+export interface AstGrepTools {
+  readonly ast_grep_search: MicodeTool;
+  readonly ast_grep_replace: MicodeTool;
+}
 
-    if (isDryRun && sgOutput.matches.length > 0) {
-      return `${output}\n\n(Dry run - use apply=true to apply changes)`;
-    }
-    if (args.apply && sgOutput.matches.length > 0) {
-      return `Applied ${sgOutput.matches.length} replacements:\n${output}`;
-    }
-    return output;
-  },
-});
+export function createAstGrepTools(workspace: Workspace): AstGrepTools {
+  return { ast_grep_search: createSearchTool(workspace), ast_grep_replace: createReplaceTool(workspace) };
+}

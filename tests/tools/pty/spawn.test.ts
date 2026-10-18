@@ -1,6 +1,10 @@
 // tests/tools/pty/spawn.test.ts
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { spawn } from "bun-pty";
 
 import { createPTYManager, type PTYManager } from "../../../src/tools/pty/manager";
@@ -13,7 +17,7 @@ describe("pty_spawn tool", () => {
   beforeEach(() => {
     manager = createPTYManager();
     manager.init(spawn);
-    pty_spawn = createPtySpawnTool(manager);
+    pty_spawn = createPtySpawnTool(manager, { directory: process.cwd() });
   });
 
   afterEach(() => {
@@ -52,5 +56,21 @@ describe("pty_spawn tool", () => {
     expect(result).toContain("ID: pty_");
     expect(result).toContain("Command: sleep 10");
     expect(result).toContain("Status: running");
+  });
+
+  it("defaults the workdir to the workspace and resolves a relative workdir against it", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "micode-pty-workspace-"));
+    mkdirSync(join(directory, "sub"));
+    try {
+      const tool = createPtySpawnTool(manager, { directory });
+      const ctx = { sessionID: "test-session", progress: () => {} };
+      const plain = await tool.execute({ command: "sleep", args: ["10"] }, ctx);
+      expect(plain).toContain(`Workdir: ${directory}\n`);
+      const nested = await tool.execute({ command: "sleep", args: ["10"], workdir: "sub" }, ctx);
+      expect(nested).toContain(`Workdir: ${join(directory, "sub")}\n`);
+    } finally {
+      manager.cleanupAll();
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 });

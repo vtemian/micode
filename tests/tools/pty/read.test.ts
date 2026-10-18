@@ -16,7 +16,7 @@ describe("pty_read tool", () => {
     manager = createPTYManager();
     manager.init(spawn);
     pty_read = createPtyReadTool(manager);
-    pty_spawn = createPtySpawnTool(manager);
+    pty_spawn = createPtySpawnTool(manager, { directory: process.cwd() });
   });
 
   afterEach(() => {

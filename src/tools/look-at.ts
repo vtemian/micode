@@ -1,9 +1,10 @@
 import { readFileSync, statSync } from "node:fs";
-import { basename, extname } from "node:path";
+import { basename, extname, resolve } from "node:path";
 import { z } from "zod";
+import type { Workspace } from "@/host/port";
 import { config } from "@/utils/config";
 import { extractErrorMessage } from "@/utils/errors";
-import { defineTool } from "./define";
+import { defineTool, type MicodeTool } from "./define";
 
 const BYTES_PER_KB = 1024;
 const MAX_SIGNATURE_LENGTH = 80;
@@ -175,48 +176,43 @@ function extractGenericStructure(lines: string[]): string {
   return `## File Preview (${total} lines)\n\n### First ${MAX_PREVIEW_LINES} lines:\n${preview}\n\n### Last ${-TAIL_PREVIEW_LINES} lines:\n${tail}`;
 }
 
-export const look_at = defineTool({
-  description: `Extract key information from a file to save context tokens.
+function describeFile(filePath: string): string {
+  const stats = statSync(filePath);
+  const ext = extname(filePath).toLowerCase();
+  const name = basename(filePath);
+  const content = readFileSync(filePath, "utf-8");
+  const lines = content.split("\n");
+
+  if (stats.size < config.limits.largeFileBytes && lines.length <= config.limits.maxLinesNoExtract) {
+    return `## ${name} (${lines.length} lines)\n\n${content}`;
+  }
+
+  const header = `## ${name}\n**Size**: ${Math.round(stats.size / BYTES_PER_KB)}KB | **Lines**: ${lines.length}\n\n`;
+  const structure = EXTRACTABLE_EXTENSIONS.includes(ext)
+    ? extractStructure(content, ext)
+    : extractGenericStructure(lines);
+  return `${header}${structure}\n\n---\n*Use Read tool with line offset/limit for specific sections*`;
+}
+
+export function createLookAtTool(workspace: Workspace): MicodeTool {
+  return defineTool({
+    description: `Extract key information from a file to save context tokens.
 For large files, returns structure/outline instead of full content.
 Use when you need to understand a file without loading all content.
 Ideal for: large files, getting file structure, quick overview.`,
-  args: {
-    filePath: z.string().describe("Path to the file"),
-    extract: z
-      .string()
-      .optional()
-      .describe("What to extract: 'structure', 'imports', 'exports', 'all' (default: auto)"),
-  },
-  execute: async (args) => {
-    try {
-      const stats = statSync(args.filePath);
-      const ext = extname(args.filePath).toLowerCase();
-      const name = basename(args.filePath);
-
-      // Read file
-      const content = readFileSync(args.filePath, "utf-8");
-      const lines = content.split("\n");
-
-      // For small files, return full content
-      if (stats.size < config.limits.largeFileBytes && lines.length <= config.limits.maxLinesNoExtract) {
-        return `## ${name} (${lines.length} lines)\n\n${content}`;
+    args: {
+      filePath: z.string().describe("Path to the file, relative to the project directory or absolute"),
+      extract: z
+        .string()
+        .optional()
+        .describe("What to extract: 'structure', 'imports', 'exports', 'all' (default: auto)"),
+    },
+    execute: async (args) => {
+      try {
+        return describeFile(resolve(workspace.directory, args.filePath));
+      } catch (e) {
+        return `Error: ${extractErrorMessage(e)}`;
       }
-
-      // For large files, extract structure
-      let output = `## ${name}\n`;
-      output += `**Size**: ${Math.round(stats.size / BYTES_PER_KB)}KB | **Lines**: ${lines.length}\n\n`;
-
-      if (EXTRACTABLE_EXTENSIONS.includes(ext)) {
-        output += extractStructure(content, ext);
-      } else {
-        output += extractGenericStructure(lines);
-      }
-
-      output += `\n\n---\n*Use Read tool with line offset/limit for specific sections*`;
-
-      return output;
-    } catch (e) {
-      return `Error: ${extractErrorMessage(e)}`;
-    }
-  },
-});
+    },
+  });
+}

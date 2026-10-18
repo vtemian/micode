@@ -38,7 +38,7 @@ function deserializeState(content: string, filePath: string): BrainstormState | 
   return result.output as BrainstormState;
 }
 
-export function createStatePersistence(baseDir = STATE_DIR): StatePersistence {
+export function createStatePersistence(baseDir: string = STATE_DIR): StatePersistence {
   function getFilePath(sessionId: string): string {
     validateSessionId(sessionId);
     return join(baseDir, `${sessionId}.json`);

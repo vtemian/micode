@@ -16,7 +16,7 @@ describe("pty_kill tool", () => {
     manager = createPTYManager();
     manager.init(spawn);
     pty_kill = createPtyKillTool(manager);
-    pty_spawn = createPtySpawnTool(manager);
+    pty_spawn = createPtySpawnTool(manager, { directory: process.cwd() });
   });
 
   afterEach(() => {

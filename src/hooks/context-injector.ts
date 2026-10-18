@@ -93,7 +93,7 @@ async function tryLoadFile(filepath: string, key: string, target: Map<string, st
 }
 
 async function walkUpForContext(ctx: Workspace, cache: ContextCache, filePath: string): Promise<Map<string, string>> {
-  const absPath = resolve(filePath);
+  const absPath = resolve(ctx.directory, filePath);
   const projectRoot = resolve(ctx.directory);
 
   const cacheKey = dirname(absPath);

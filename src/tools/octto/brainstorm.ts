@@ -1,6 +1,8 @@
 // src/tools/octto/brainstorm.ts
+import { join } from "node:path";
+
 import { z } from "zod";
-import type { SessionHost } from "@/host/port";
+import type { SessionHost, Workspace } from "@/host/port";
 import type { Answer, ReviewAnswer, SessionStore } from "@/octto/session";
 import { QUESTION_TYPES, QUESTIONS, STATUSES } from "@/octto/session";
 import { BRANCH_STATUSES, type BrainstormState, createStateStore, type StateStore } from "@/octto/state";
@@ -378,9 +380,10 @@ This is the recommended way to run a brainstorm - just create_brainstorm then aw
 export function createBrainstormTools(
   sessions: SessionStore,
   host: SessionHost,
+  workspace: Workspace,
   tracker?: OcttoSessionTracker,
 ): OcttoTools {
-  const store = createStateStore();
+  const store = createStateStore(join(workspace.directory, config.octto.stateDir));
 
   return {
     create_brainstorm: buildCreateBrainstormTool(store, sessions, tracker),
