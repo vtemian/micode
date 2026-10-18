@@ -1230,6 +1230,25 @@ describe("opencode config sources and model shapes", () => {
     expect(loadModelContextLimits(dir).get("openai/gpt-4o")).toBe(1000);
   });
 
+  it("reads context limits from the OpenCode 2 `providers` key", () => {
+    writeFileSync(
+      join(dir, "opencode.jsonc"),
+      JSON.stringify({ providers: { ollama: { models: { "qwen3:8b": { limit: { context: 32768 } } } } } }),
+    );
+    expect(loadModelContextLimits(dir).get("ollama/qwen3:8b")).toBe(32768);
+  });
+
+  it("prefers `providers` over `provider` for the same provider id", () => {
+    writeFileSync(
+      join(dir, "opencode.json"),
+      JSON.stringify({
+        provider: { p: { models: { m: { limit: { context: 1000 } } } } },
+        providers: { p: { models: { m: { limit: { context: 2000 } } } } },
+      }),
+    );
+    expect(loadModelContextLimits(dir).get("p/m")).toBe(2000);
+  });
+
   it("rejects a default model without a provider prefix", () => {
     writeFileSync(join(dir, "opencode.json"), JSON.stringify({ model: "gpt-5" }));
     const settings = loadOpencodeSettings(dir);

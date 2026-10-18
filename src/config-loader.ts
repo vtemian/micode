@@ -91,7 +91,10 @@ export function loadOpencodeSettings(configDir?: string): OpencodeSettings {
   const merged: Record<string, unknown> = {};
   for (const file of OPENCODE_CONFIG_FILES) Object.assign(merged, readConfigObject(baseDir, file, warnings));
   const model = parseField(merged.model, parseModelRef, warnings, "model is not a provider/model ref");
-  const provider = parseField(merged.provider, parseProviderRecord, warnings, "provider must be an object");
+  const legacy = parseField(merged.provider, parseProviderRecord, warnings, "provider must be an object");
+  const native = parseField(merged.providers, parseProviderRecord, warnings, "providers must be an object");
+  // OpenCode 2 reads both keys; its native `providers` wins on conflict.
+  const provider = legacy || native ? { ...legacy, ...native } : undefined;
   return { model, provider, warnings };
 }
 
