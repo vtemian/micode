@@ -212,6 +212,17 @@ async function messages(v1: V1Context, sessionID: string): Promise<readonly V1Me
   return unwrap(response, "Failed to read session messages");
 }
 
+/** v1 falls back to the default agent when a prompt names none, so micode's own prompts name the session's. */
+async function lastAgent(v1: V1Context, sessionID: string): Promise<string | undefined> {
+  return lastMessage(await messages(v1, sessionID), USER_ROLE)?.info?.agent;
+}
+
+async function agentHint(v1: V1Context, sessionID: string, hint: PromptHint | undefined): Promise<PromptHint> {
+  if (hint?.agent) return hint;
+  const agent = await lastAgent(v1, sessionID);
+  return agent ? { ...hint, agent } : { ...hint };
+}
+
 async function runAgent(v1: V1Context, run: AgentRun): Promise<AgentReply> {
   const created = (await v1.client.session.create({
     body: { ...(run.parentID ? { parentID: run.parentID } : {}), ...(run.title ? { title: run.title } : {}) },
@@ -270,7 +281,7 @@ export function createV1Host(client: Client, directory: string): V1Host {
     prompt: async (sessionID, text, hint) => {
       const response = (await client.session.promptAsync({
         path: { id: sessionID },
-        body: promptBody(text, hint),
+        body: promptBody(text, await agentHint(v1, sessionID, hint)),
         query: v1.query,
       })) as Response<unknown>;
       if (response.error !== undefined) throw new Error(`Prompt failed: ${extractErrorMessage(response.error)}`);

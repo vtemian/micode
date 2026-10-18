@@ -334,6 +334,38 @@ describe("v1 host", () => {
       expect(await host.lastUserText("s1")).toBe("question");
     });
 
+    it("keeps the session's last agent on a prompt whose hint names none", async () => {
+      const log: Log = {};
+      const client = fakeClient(log);
+      client.session.messages = async () =>
+        ({
+          data: [
+            { info: { role: "user", agent: "commander" }, parts: [] },
+            { info: { role: "user", agent: "executor" }, parts: [] },
+            { info: { role: "assistant", agent: "executor" }, parts: [] },
+          ],
+        }) as never;
+      const host = createV1Host(client as any, "/work");
+
+      await host.prompt("s1", "continue", { model: MODEL });
+      await host.prompt("s1", "continue");
+
+      expect(log.promptAsync[0]).toMatchObject({ body: { agent: "executor", model: MODEL } });
+      expect(log.promptAsync[1]).toMatchObject({ body: { agent: "executor" } });
+    });
+
+    it("sends no agent when the session has none on record, and never reads messages for an explicit agent", async () => {
+      const log: Log = {};
+      const host = createV1Host(fakeClient(log) as any, "/work");
+
+      await host.prompt("s1", "continue");
+      expect((log.promptAsync[0] as { body: Record<string, unknown> }).body.agent).toBeUndefined();
+      expect(log.messages).toHaveLength(1);
+
+      await host.prompt("s1", "continue", { agent: "build" });
+      expect(log.messages).toHaveLength(1);
+    });
+
     it("surfaces HTTP errors from prompt and abort", async () => {
       const client = fakeClient({});
       client.session.promptAsync = async () => ({ error: "gone" }) as never;
