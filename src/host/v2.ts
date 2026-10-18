@@ -180,11 +180,23 @@ function extrasOf(config: AgentConfig): Extras {
   return {};
 }
 
+const EDIT_ACTION = "edit";
+
 /**
- * v1 permission keys and tool names that OpenCode 2 calls something else
- * (verified against the 2.0.31 binary: `action:"shell"`, `action:"subagent"`).
+ * v1 permission keys and tool names that OpenCode 2 calls something else. Verified against the
+ * 2.0.31 binary: the shell and subagent actions, and the write, edit and patch tools all
+ * declaring `permission: "edit"` (no tool ever asserts a "write" action).
  */
-const V2_ACTIONS: Readonly<Record<string, string>> = { bash: "shell", task: "subagent" };
+const V2_ACTIONS: Readonly<Record<string, string>> = {
+  bash: "shell",
+  task: "subagent",
+  write: EDIT_ACTION,
+  patch: EDIT_ACTION,
+  multiedit: EDIT_ACTION,
+};
+
+/** v1 hid these tools one by one; v2 gates them all through "edit", so only disabling both may deny it. */
+const EDIT_TOOLS = ["edit", "write"] as const;
 
 function toV2Action(action: string): string {
   return V2_ACTIONS[action] ?? action;
@@ -200,9 +212,13 @@ function permissionRules(permission: Extras["permission"]): Rule[] {
 }
 
 function toolRules(tools: Extras["tools"]): Rule[] {
-  return Object.entries(tools ?? {})
+  const toggles = tools ?? {};
+  const editsDisabled = EDIT_TOOLS.every((name) => toggles[name] === false);
+  const actions = Object.entries(toggles)
     .filter(([, enabled]) => !enabled)
-    .map(([name]) => ({ action: toV2Action(name), resource: ANY, effect: "deny" as const }));
+    .map(([name]) => toV2Action(name))
+    .filter((action) => action !== EDIT_ACTION || editsDisabled);
+  return [...new Set(actions)].map((action) => ({ action, resource: ANY, effect: "deny" as const }));
 }
 
 export function toAgentInfo(agent: AgentRecord, config: AgentConfig, model: V2ModelRef | undefined): void {
@@ -216,9 +232,9 @@ export function toAgentInfo(agent: AgentRecord, config: AgentConfig, model: V2Mo
   if (config.temperature !== undefined) agent.request.body.temperature = config.temperature;
   if (extra.maxTokens !== undefined) agent.request.body.maxTokens = extra.maxTokens;
   if (extra.thinking !== undefined) agent.request.body.thinking = extra.thinking;
-  const rules = [...permissionRules(extra.permission), ...toolRules(extra.tools)];
-  // The last matching rule wins on v2, so micode's rules go first and the user's own rules keep precedence.
-  if (rules.length > 0) agent.permissions = [...rules, ...agent.permissions];
+  // The last matching rule wins on v2. A fresh record starts with `*: allow`, so micode's rules go after it;
+  // the host appends the user's global rules after every plugin transform, so those still win over micode's.
+  agent.permissions.push(...permissionRules(extra.permission), ...toolRules(extra.tools));
 }
 
 function modelRefOf(config: AgentConfig, parseModel: ParseModel): V2ModelRef | undefined {

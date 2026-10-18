@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { agents } from "../../src/agents";
 import {
   createV2Host,
   DENY_ALL_TOOLS,
@@ -15,6 +16,14 @@ type Any = Record<string, any>;
 const MODEL = { providerID: "p", modelID: "m" };
 const NOTE = { title: "T", message: "M", variant: "info" as const, duration: 1 };
 
+/** `Agent.Info.default(id)` rules, copied verbatim from the OpenCode 2.0.31 binary. */
+const HOST_DEFAULT_RULES = [
+  { action: "*", resource: "*", effect: "allow" },
+  { action: "read", resource: "*.env", effect: "ask" },
+  { action: "read", resource: "*.env.*", effect: "ask" },
+  { action: "read", resource: "*.env.example", effect: "allow" },
+] as const;
+
 function blankAgent(id: string): Any {
   return {
     id,
@@ -22,8 +31,33 @@ function blankAgent(id: string): Any {
     request: { settings: {}, headers: {}, body: {} },
     mode: "primary",
     hidden: false,
-    permissions: [],
+    permissions: HOST_DEFAULT_RULES.map((rule) => ({ ...rule })),
   };
+}
+
+/** The rules micode appended after the host's defaults. */
+function added(agent: Any): Any[] {
+  return agent.permissions.slice(HOST_DEFAULT_RULES.length);
+}
+
+/** OpenCode 2.0.31's wildcard matcher (`rN`). */
+function wildcard(value: string, pattern: string): boolean {
+  let source = pattern
+    .replace(/[.+^${}()|[\]\\]/g, "\\$&")
+    .replace(/\*/g, ".*")
+    .replace(/\?/g, ".");
+  if (source.endsWith(" .*")) source = `${source.slice(0, -3)}( .*)?`;
+  return new RegExp(`^${source}$`, "s").test(value);
+}
+
+/** OpenCode 2.0.31's evaluator (`O5`): the last matching rule wins, and no match means "ask". */
+function evaluate(rules: readonly Any[], action: string, resource: string): string {
+  return rules.findLast((rule) => wildcard(action, rule.action) && wildcard(resource, rule.resource))?.effect ?? "ask";
+}
+
+/** What the host's config plugin does after every plugin transform: push the user's global rules. */
+function withGlobals(agent: Any, globals: readonly Any[]): Any[] {
+  return [...agent.permissions, ...globals];
 }
 
 function parseModel(ref: string): any {
@@ -493,30 +527,59 @@ describe("toAgentInfo", () => {
       model: { providerID: "p", id: "m" },
     });
     expect(agent.request.body).toEqual({ temperature: 0.3, maxTokens: 1000 });
-    expect(agent.permissions).toEqual([
+    // `write: false` alone maps to nothing: v2 has no "write" action and governs writes through "edit".
+    expect(added(agent)).toEqual([
       { action: "edit", resource: "*", effect: "deny" },
       { action: "shell", resource: "*", effect: "allow" },
-      { action: "write", resource: "*", effect: "deny" },
     ]);
   });
 
   it("expands per-command bash rules into resource patterns", () => {
     const agent = blankAgent("x");
     toAgentInfo(agent, { permission: { bash: { "git *": "allow", "rm *": "deny" } } } as any, undefined);
-    expect(agent.permissions).toEqual([
+    expect(added(agent)).toEqual([
       { action: "shell", resource: "git *", effect: "allow" },
       { action: "shell", resource: "rm *", effect: "deny" },
     ]);
   });
 
-  it("puts micode's rules before the user's so the user's own rules win", () => {
+  it("puts micode's rules after the host defaults so its denies beat the default allow", () => {
     const agent = blankAgent("x");
-    agent.permissions = [{ action: "edit", resource: "*", effect: "allow" }];
+    toAgentInfo(agent, { permission: { edit: "deny" }, tools: { bash: false } }, undefined);
+    expect(agent.permissions.slice(0, HOST_DEFAULT_RULES.length)).toEqual([...HOST_DEFAULT_RULES]);
+    expect(evaluate(agent.permissions, "edit", "/repo/src/a.ts")).toBe("deny");
+    expect(evaluate(agent.permissions, "shell", "rm -rf build")).toBe("deny");
+    expect(evaluate(agent.permissions, "read", "/repo/.env")).toBe("ask");
+  });
+
+  it("lets the user's global rules, which the host appends later, win over micode's", () => {
+    const agent = blankAgent("x");
     toAgentInfo(agent, { permission: { edit: "deny" } }, undefined);
-    expect(agent.permissions).toEqual([
-      { action: "edit", resource: "*", effect: "deny" },
-      { action: "edit", resource: "*", effect: "allow" },
-    ]);
+    const rules = withGlobals(agent, [{ action: "edit", resource: "*", effect: "allow" }]);
+    expect(evaluate(rules, "edit", "/repo/src/a.ts")).toBe("allow");
+  });
+
+  it("denies edits only when both the edit and write tools are disabled", () => {
+    const readOnly = blankAgent("x");
+    toAgentInfo(readOnly, { tools: { write: false, edit: false } }, undefined);
+    expect(added(readOnly)).toEqual([{ action: "edit", resource: "*", effect: "deny" }]);
+
+    // ledger-creator: no edit tool, but it must still write ledgers (v2's write tool asserts "edit").
+    const writer = blankAgent("y");
+    toAgentInfo(writer, { tools: { edit: false }, permission: { edit: "allow" } }, undefined);
+    expect(evaluate(writer.permissions, "edit", "/repo/thoughts/ledgers/CONTINUITY_x.md")).toBe("allow");
+  });
+
+  it("keeps the read-only micode agents from editing or running shell", () => {
+    for (const name of ["codebase-locator", "codebase-analyzer", "pattern-finder", "mm-code-clusterer"]) {
+      const agent = blankAgent(name);
+      toAgentInfo(agent, agents[name], undefined);
+      expect([name, evaluate(agent.permissions, "edit", "/repo/a.ts")]).toEqual([name, "deny"]);
+      expect([name, evaluate(agent.permissions, "shell", "ls")]).toEqual([name, "deny"]);
+    }
+    const ledger = blankAgent("ledger-creator");
+    toAgentInfo(ledger, agents["ledger-creator"], undefined);
+    expect(evaluate(ledger.permissions, "edit", "/repo/thoughts/ledgers/CONTINUITY_x.md")).toBe("allow");
   });
 
   it("warns and ignores unreadable extra fields", () => {
@@ -524,7 +587,7 @@ describe("toAgentInfo", () => {
     try {
       const agent = blankAgent("x");
       toAgentInfo(agent, { permission: { bash: 42 } } as any, undefined);
-      expect(agent.permissions).toEqual([]);
+      expect(added(agent)).toEqual([]);
       expect(drain(logs.warn, /ignoring unreadable agent fields/)).toHaveLength(1);
       expect(logs.unread()).toEqual([]);
     } finally {
@@ -532,12 +595,13 @@ describe("toAgentInfo", () => {
     }
   });
 
-  it("translates the v1 task tool into the v2 subagent action", () => {
+  it("translates the v1 bash and task tools into the v2 shell and subagent actions", () => {
     const agent = blankAgent("x");
-    toAgentInfo(agent, { tools: { task: false, write: false } }, undefined);
-    expect(agent.permissions).toEqual([
+    toAgentInfo(agent, { tools: { task: false, bash: false, spawn_agent: false } }, undefined);
+    expect(added(agent)).toEqual([
       { action: "subagent", resource: "*", effect: "deny" },
-      { action: "write", resource: "*", effect: "deny" },
+      { action: "shell", resource: "*", effect: "deny" },
+      { action: "spawn_agent", resource: "*", effect: "deny" },
     ]);
   });
 
@@ -550,7 +614,7 @@ describe("toAgentInfo", () => {
     expect(agent.system).toBeUndefined();
     expect(agent.steps).toBeUndefined();
     expect(agent.request.body).toEqual({});
-    expect(agent.permissions).toEqual([]);
+    expect(added(agent)).toEqual([]);
   });
 });
 
