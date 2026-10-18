@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createAutoCompactHook } from "../../src/hooks/auto-compact";
@@ -75,12 +75,28 @@ describe("auto-compact", () => {
     // The pre-compaction figure no longer describes the session, so truncation must not keep using it.
     expect(usage.get("ses_abcdefgh123")).toBeUndefined();
     expect(calls.prompted[0]).toBe("ses_abcdefgh123:Context was compacte");
-    const ledger = await readFile(join(dir, "thoughts/ledgers/CONTINUITY_ses_abcd.md"), "utf-8");
-    expect(ledger).toContain("session: ses_abcd");
+    const ledger = await readFile(join(dir, "thoughts/ledgers/CONTINUITY_ses_abcdefgh123.md"), "utf-8");
+    expect(ledger).toContain("session: ses_abcdefgh123");
     expect(ledger).toContain("## Session Summary");
     expect(calls.notified.map((n) => n.title)).toEqual(["Auto Compacting", "Compaction Complete"]);
     expect(calls.notified[0].message).toContain("90%");
     expect(calls.notified[0].message).toContain("threshold: 80%");
+  });
+
+  it("writes a separate ledger for sessions whose ids share a prefix", async () => {
+    const calls = newCalls();
+    const usage = createSessionUsage(new Map([["p/m", LIMIT]]));
+    const hook = createAutoCompactHook({ directory: dir }, fakeHost(calls), usage, { compactionThreshold: 0.8 });
+
+    for (const id of ["ses_abcd111111", "ses_abcd222222"]) {
+      const event = usageEvent(id, 900);
+      usage.onEvent(event);
+      await hook.onEvent(event);
+    }
+    await waitUntil(() => calls.prompted.length === 2);
+
+    const files = (await readdir(join(dir, "thoughts/ledgers"))).sort();
+    expect(files).toEqual(["CONTINUITY_ses_abcd111111.md", "CONTINUITY_ses_abcd222222.md"]);
   });
 
   it("does not send a continue prompt when the host resumes the turn after compaction itself", async () => {
@@ -185,7 +201,7 @@ describe("auto-compact", () => {
     await hook.onEvent(event);
     await waitUntil(() => calls.prompted.length === 1);
 
-    await expect(readFile(join(dir, "thoughts/ledgers/CONTINUITY_ses_empt.md"), "utf-8")).rejects.toThrow();
+    await expect(readFile(join(dir, "thoughts/ledgers/CONTINUITY_ses_empty_summary.md"), "utf-8")).rejects.toThrow();
   });
 
   it("reports a failed auto-continue as a warning, not a failed compaction", async () => {
@@ -206,7 +222,9 @@ describe("auto-compact", () => {
 
     expect(calls.notified.map((n) => n.title)).toEqual(["Auto Compacting", "Compaction Complete", "Continue Failed"]);
     expect(calls.notified[2].message).toContain("session busy");
-    await expect(readFile(join(dir, "thoughts/ledgers/CONTINUITY_ses_cont.md"), "utf-8")).resolves.toContain("stuff");
+    await expect(readFile(join(dir, "thoughts/ledgers/CONTINUITY_ses_contfail.md"), "utf-8")).resolves.toContain(
+      "stuff",
+    );
   });
 
   it("does not leak an unhandled rejection when notify throws, and releases the in-progress flag", async () => {
