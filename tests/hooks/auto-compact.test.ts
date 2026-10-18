@@ -81,6 +81,22 @@ describe("auto-compact", () => {
     expect(calls.notified[0].message).toContain("threshold: 80%");
   });
 
+  it("does not send a continue prompt when the host resumes the turn after compaction itself", async () => {
+    const calls = newCalls();
+    const usage = createSessionUsage(new Map([["p/m", LIMIT]]));
+    const host: SessionHost = { ...fakeHost(calls), resumesAfterCompaction: true };
+    const hook = createAutoCompactHook({ directory: dir }, host, usage, { compactionThreshold: 0.8 });
+    const event = usageEvent("ses_resumes1", 900);
+
+    usage.onEvent(event);
+    await hook.onEvent(event);
+    await waitUntil(() => calls.notified.length === 2);
+
+    expect(calls.compacted).toEqual(["ses_resumes1"]);
+    expect(calls.notified.map((n) => n.title)).toEqual(["Auto Compacting", "Compaction Complete"]);
+    expect(calls.prompted).toEqual([]);
+  });
+
   it("does nothing below the threshold", async () => {
     const calls = newCalls();
     const usage = createSessionUsage(new Map([["p/m", LIMIT]]));

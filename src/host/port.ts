@@ -44,6 +44,11 @@ export interface PromptHint {
  * `remove` and `notify` are best-effort and never throw; every other method rejects on failure.
  */
 export interface SessionHost {
+  /**
+   * The host resumes the interrupted turn itself once a compaction finishes (OpenCode 2), so micode must not
+   * send its own continue prompt. Unset on v1, which stops after compacting.
+   */
+  readonly resumesAfterCompaction?: boolean;
   /** Create a session, run one prompt to completion and return the reply. The session is kept. */
   runAgent(run: AgentRun): Promise<AgentReply>;
   /** Best-effort delete; never throws. */

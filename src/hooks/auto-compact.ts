@@ -82,7 +82,7 @@ async function compactSession(
       variant: "success",
       duration: config.timeouts.toastSuccessMs,
     });
-    await autoContinue(host, sessionID, model);
+    if (!host.resumesAfterCompaction) await autoContinue(host, sessionID, model);
   } catch (error) {
     await host.notify({
       title: "Compaction Failed",
