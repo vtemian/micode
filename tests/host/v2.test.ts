@@ -271,9 +271,8 @@ describe("v2 setup", () => {
     expect(typeof commander?.system).toBe("string");
     // The user's own micode.json may override the model; only the branded-ref shape is micode's.
     expect(commander?.model).toMatchObject({ providerID: expect.any(String), id: expect.any(String) });
-    expect(commander?.request.body.temperature).toBeDefined();
-    expect(commander?.request.body.maxTokens).toBe(64000);
-    expect(commander?.request.body.thinking).toMatchObject({ type: "enabled" });
+    // OpenCode 2 never applies agent.request.body; generation settings travel through the context hook.
+    expect(commander?.request.body).toEqual({});
     expect(commander?.permissions).toEqual(
       expect.arrayContaining([{ action: "spawn_agent", resource: "*", effect: "deny" }]),
     );
@@ -355,6 +354,47 @@ describe("v2 setup", () => {
     expect(ctx.system.map((p) => p.text)).not.toContain("Instructions from: /x/CLAUDE.md\nno");
     expect(ctx.system).toContainEqual(kept);
     expect(ctx.options).toMatchObject({ thinking: { type: "enabled" } });
+  });
+
+  async function contextOptions(h: ReturnType<typeof createHost>, agent: string, providerID: string): Promise<Any> {
+    const ctx: Any = {
+      sessionID: `s_${agent}_${providerID}`,
+      agent,
+      model: { providerID, id: "m" },
+      system: [],
+      messages: [],
+      tools: {},
+      options: {},
+    };
+    await h.hooks.get("session.context")!(ctx);
+    return ctx.options;
+  }
+
+  it("applies the agent's generation settings, with thinking only on anthropic models", async () => {
+    const h = createHost();
+    cleanup = await setup(h.host);
+    const { temperature, maxTokens, thinking } = agents.commander as Any;
+    expect(await contextOptions(h, "commander", "anthropic")).toEqual({ temperature, maxTokens, thinking });
+    expect(await contextOptions(h, "commander", "openai")).toEqual({ temperature, maxTokens });
+  });
+
+  it("leaves the options alone for agents micode does not own", async () => {
+    const h = createHost();
+    cleanup = await setup(h.host);
+    expect(await contextOptions(h, "build", "anthropic")).toEqual({});
+  });
+
+  it("lets the think-keyword budget override the agent's thinking", async () => {
+    const h = createHost();
+    cleanup = await setup(h.host);
+    await h.hooks.get("session.prompt")!({
+      sessionID: "s_commander_anthropic",
+      prompt: { text: "think hard" },
+      delivery: "queue",
+    });
+    const options = await contextOptions(h, "commander", "anthropic");
+    expect(options.thinking).toEqual({ type: "enabled", budgetTokens: expect.any(Number) });
+    expect(options.maxTokens).toBe((agents.commander as Any).maxTokens);
   });
 
   it("pushes the compaction instruction onto the system prompt", async () => {
@@ -614,7 +654,7 @@ describe("toAgentInfo", () => {
       steps: 5,
       model: { providerID: "p", id: "m" },
     });
-    expect(agent.request.body).toEqual({ temperature: 0.3, maxTokens: 1000 });
+    expect(agent.request.body).toEqual({});
     // `write: false` alone maps to nothing: v2 has no "write" action and governs writes through "edit".
     expect(added(agent)).toEqual([
       { action: "edit", resource: "*", effect: "deny" },

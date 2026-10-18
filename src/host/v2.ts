@@ -40,6 +40,7 @@ const ANY = "*";
 const TEXT = "text";
 const USER_ROLE = "user";
 const ARGUMENTS_PLACEHOLDER = "$ARGUMENTS";
+const ANTHROPIC = "anthropic";
 const SESSION_DELETED = "session.deleted";
 const STEP_ENDED = "session.step.ended";
 const EXECUTION_FAILED = "session.execution.failed";
@@ -246,10 +247,6 @@ export function toAgentInfo(
   if (config.prompt !== undefined) agent.system = config.prompt;
   if (model !== undefined) agent.model = model;
   if (config.maxSteps !== undefined) agent.steps = config.maxSteps;
-  // v2 agents have no temperature/maxTokens/thinking fields; they travel in the raw provider body.
-  if (config.temperature !== undefined) agent.request.body.temperature = config.temperature;
-  if (extra.maxTokens !== undefined) agent.request.body.maxTokens = extra.maxTokens;
-  if (extra.thinking !== undefined) agent.request.body.thinking = extra.thinking;
   // The last matching rule wins on v2. A fresh record starts with `*: allow`, so micode's rules go after it,
   // its allows before the agent's own rules; the host appends the user's global rules after every plugin
   // transform, so those win over everything micode sets.
@@ -344,6 +341,18 @@ function toSystemParts(original: readonly SystemPart[], texts: readonly string[]
   return texts.map((text) => original.find((part) => part.text === text) ?? { type: TEXT, text });
 }
 
+/** v2 never applies `agent.request.body`, so per-agent generation settings ride on each request's options. */
+function generationOptions(micode: Micode, agent: string, providerID: string): Record<string, unknown> {
+  if (!Object.hasOwn(micode.agents, agent)) return {};
+  const config = micode.agents[agent];
+  const { maxTokens, thinking } = extrasOf(config);
+  return {
+    ...(config.temperature === undefined ? {} : { temperature: config.temperature }),
+    ...(maxTokens === undefined ? {} : { maxTokens }),
+    ...(thinking !== undefined && providerID === ANTHROPIC ? { thinking } : {}),
+  };
+}
+
 async function applyContext(micode: Micode, input: SessionContext): Promise<void> {
   micode.onRequest({
     sessionID: input.sessionID,
@@ -358,7 +367,11 @@ async function applyContext(micode: Micode, input: SessionContext): Promise<void
     userText: lastUser ? textOf(lastUser) : undefined,
   });
   input.system.splice(0, input.system.length, ...toSystemParts(input.system, system));
-  Object.assign(input.options, micode.requestOptions(input.sessionID));
+  Object.assign(
+    input.options,
+    generationOptions(micode, input.agent, input.model.providerID),
+    micode.requestOptions(input.sessionID),
+  );
 }
 
 async function registerSessionHooks(host: V2Host, micode: Micode): Promise<void> {

@@ -146,7 +146,8 @@ describe("micode on OpenCode 2", () => {
     const commander = agents.find((a) => (a.name ?? a.id) === "commander");
     expect(commander?.mode).toBe("primary");
     expect(typeof commander?.system).toBe("string");
-    expect(commander?.request?.body?.temperature).toBeDefined();
+    // OpenCode 2 never applies request.body; generation settings go through the context hook instead.
+    expect(commander?.request?.body?.temperature).toBeUndefined();
     // OpenCode 2 names the shell action "shell"; the v1 "bash" permission must have been translated.
     expect(commander?.permissions).toEqual(
       expect.arrayContaining([{ action: "shell", resource: "*", effect: "allow" }]),
