@@ -192,12 +192,16 @@ interface PromptBody {
   readonly tools?: Record<string, boolean>;
 }
 
+/**
+ * v1 turns each `tools` entry into a session permission rule matched with wildcards, so one `*` rule
+ * disables every tool, MCP tools included, while an empty map disables none.
+ */
 function promptBody(text: string, hint: PromptHint | undefined, denyTools = false): PromptBody {
   return {
     parts: [{ type: "text", text }],
     ...(hint?.model ? { model: hint.model } : {}),
     ...(hint?.agent ? { agent: hint.agent } : {}),
-    ...(denyTools ? { tools: {} } : {}),
+    ...(denyTools ? { tools: { [WILDCARD]: false } } : {}),
   };
 }
 
