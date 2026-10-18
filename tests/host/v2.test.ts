@@ -313,10 +313,14 @@ describe("v2 setup", () => {
     expect(h.mcp.get("context7")).toEqual({ type: "local", command: ["mine"] });
   });
 
-  it("adds mcp servers in the v2 shape", async () => {
+  it("adds mcp servers in the v2 shape, callable by name rather than only through Code Mode", async () => {
     const h = createHost();
     cleanup = await setup(h.host);
-    expect(h.mcp.get("context7")).toEqual({ type: "local", command: ["npx", "-y", "@upstash/context7-mcp@latest"] });
+    expect(h.mcp.get("context7")).toEqual({
+      type: "local",
+      command: ["npx", "-y", "@upstash/context7-mcp@latest"],
+      codemode: false,
+    });
   });
 
   it("allows the micode actions through agent rules, never by rewriting the host's verdict", async () => {

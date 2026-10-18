@@ -380,6 +380,8 @@ function toMcpServer(server: McpLocalConfig): McpServer {
     type: "local",
     command: [...server.command],
     ...(server.environment ? { environment: server.environment } : {}),
+    // Like micode's own tools: the agent prompts call `context7_*` by name, which Code Mode would hide.
+    codemode: false,
   };
 }
 
