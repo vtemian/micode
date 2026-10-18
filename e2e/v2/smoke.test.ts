@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -8,6 +8,15 @@ const PORT = 44199;
 const BOOT_TIMEOUT_MS = 120_000;
 const READY_TIMEOUT_MS = 30_000;
 const POLL_MS = 200;
+
+/** Every temp dir the run creates, removed in afterAll even when the server never booted. */
+const scratch: string[] = [];
+
+async function tempDir(prefix: string): Promise<string> {
+  const dir = await mkdtemp(join(tmpdir(), prefix));
+  scratch.push(dir);
+  return dir;
+}
 
 interface Server {
   proc: ReturnType<typeof Bun.spawn>;
@@ -44,7 +53,7 @@ async function waitFor(pred: () => string | undefined, timeoutMs: number): Promi
 }
 
 async function startServer(): Promise<Server> {
-  const home = await mkdtemp(join(tmpdir(), "micode-v2-"));
+  const home = await tempDir("micode-v2-");
   await mkdir(join(home, ".config", "opencode"), { recursive: true });
   // v2 config: `plugins` (plural) and a directory entry resolved through the root index.js.
   await writeFile(
@@ -53,7 +62,7 @@ async function startServer(): Promise<Server> {
   );
   // The harness image has no npx, so the bundled context7 MCP server cannot start; keep it off like the v1 tier.
   await writeFile(join(home, ".config", "opencode", "micode.json"), JSON.stringify({ features: { context7: false } }));
-  const project = await mkdtemp(join(tmpdir(), "micode-v2-project-"));
+  const project = await tempDir("micode-v2-project-");
   const log: string[] = [];
   const proc = Bun.spawn(["opencode", "serve", "--port", String(PORT), "--print-logs", "--log-level", "info"], {
     cwd: project,
@@ -96,8 +105,12 @@ describe("micode on OpenCode 2", () => {
       await new Promise((r) => setTimeout(r, POLL_MS));
     }
   });
-  afterAll(() => {
-    server?.proc.kill();
+  afterAll(async () => {
+    if (server) {
+      server.proc.kill();
+      await server.proc.exited;
+    }
+    await Promise.all(scratch.map((dir) => rm(dir, { recursive: true, force: true })));
   });
 
   /** Responses are wrapped as `{ location, data }`. */
@@ -152,5 +165,15 @@ describe("micode on OpenCode 2", () => {
     expect(commander?.permissions).toEqual(
       expect.arrayContaining([{ action: "shell", resource: "*", effect: "allow" }]),
     );
+  });
+
+  it("keeps a read-only agent's denies in force under the host's last-match evaluation", async () => {
+    const agents = (await api(`/api/agent?directory=${encodeURIComponent(server.project)}`)) as Record<string, any>[];
+    const locator = agents.find((a) => (a.name ?? a.id) === "codebase-locator");
+    const rules = (locator?.permissions ?? []) as { action: string; resource: string; effect: string }[];
+    // The last rule whose action covers "edit"/"shell" decides; the record's leading `*: allow` must not.
+    const verdict = (action: string) => rules.findLast((r) => r.action === action || r.action === "*")?.effect;
+    expect(verdict("edit")).toBe("deny");
+    expect(verdict("shell")).toBe("deny");
   });
 });
