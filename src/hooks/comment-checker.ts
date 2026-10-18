@@ -1,4 +1,6 @@
 const MAX_COMMENT_PREVIEW_LENGTH = 60;
+/** The core hands both hosts' patch tools one call per file, with the lines it adds as `newString`. */
+const CHECKED_TOOLS: readonly string[] = ["Edit", "edit", "patch", "apply_patch"];
 const MAX_CONSECUTIVE_COMMENTS = 5;
 const MAX_ISSUES_SHOWN = 3;
 
@@ -106,8 +108,7 @@ export function createCommentCheckerHook(): CommentCheckerHooks {
       input: { tool: string; args?: Record<string, unknown> },
       output: { output?: string },
     ) => {
-      // Only check Edit tool
-      if (input.tool !== "Edit" && input.tool !== "edit") return;
+      if (!CHECKED_TOOLS.includes(input.tool)) return;
 
       // Both hosts' edit tools send the replacement as `newString`.
       const replacement = input.args?.newString;

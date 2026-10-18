@@ -38,7 +38,7 @@ interface ConstraintReviewerHooks {
 }
 
 // OpenCode's file-writing tools, named as both hosts register them.
-const REVIEWED_TOOLS: readonly string[] = ["write", "edit", "multiedit", "patch"];
+const REVIEWED_TOOLS: readonly string[] = ["write", "edit", "multiedit", "patch", "apply_patch"];
 
 export function createConstraintReviewerHook(ctx: Workspace, review: Reviewer): ConstraintReviewerHooks {
   let mindmodel: LoadedMindmodel | null | undefined;
@@ -110,7 +110,7 @@ async function reviewToolOutput(
     return;
   }
 
-  // Both hosts' write/edit tools pass `filePath` (the v2 adapter adds it alongside `path`).
+  // Write/edit pass `filePath` (the v2 adapter adds it alongside `path`); the core sets it per patched file.
   const filePath = input.args?.filePath;
   if (typeof filePath !== "string" || !filePath) return;
 

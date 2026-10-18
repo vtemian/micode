@@ -5,6 +5,17 @@ interface FileOps {
   modified: Set<string>;
 }
 
+type FileOperation = "read" | "write" | "edit";
+
+/** Both hosts' patch tools (`apply_patch` on v1, `patch` on v2) change files like an edit. */
+const TRACKED_TOOLS: Readonly<Record<string, FileOperation>> = {
+  read: "read",
+  write: "write",
+  edit: "edit",
+  patch: "edit",
+  apply_patch: "edit",
+};
+
 // Per-session file operation tracking
 const sessionFileOps = new Map<string, FileOps>();
 
@@ -17,7 +28,7 @@ function getOrCreateOps(sessionID: string): FileOps {
   return ops;
 }
 
-export function trackFileOp(sessionID: string, operation: "read" | "write" | "edit", filePath: string): void {
+export function trackFileOp(sessionID: string, operation: FileOperation, filePath: string): void {
   const ops = getOrCreateOps(sessionID);
   if (operation === "read") {
     ops.read.add(filePath);
@@ -75,18 +86,15 @@ export function createFileOpsTrackerHook(): FileOpsTrackerHooks {
       input: { tool: string; sessionID: string; args?: Record<string, unknown> },
       _output: { output?: string },
     ) => {
-      const toolName = input.tool.toLowerCase();
-
-      // Only track read, write, edit tools
-      if (!["read", "write", "edit"].includes(toolName)) {
-        return;
-      }
+      const tool = input.tool.toLowerCase();
+      const operation = Object.hasOwn(TRACKED_TOOLS, tool) ? TRACKED_TOOLS[tool] : undefined;
+      if (!operation) return;
 
       // Extract file path from args
       const filePath = input.args?.filePath as string | undefined;
       if (!filePath) return;
 
-      trackFileOp(input.sessionID, toolName as "read" | "write" | "edit", filePath);
+      trackFileOp(input.sessionID, operation, filePath);
     },
   };
 }

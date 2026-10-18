@@ -200,6 +200,27 @@ categories:
     expect(reviewed).toHaveLength(1);
   });
 
+  it("reviews the file a v1 apply_patch call touched", async () => {
+    setupMindmodel(testDir);
+
+    const { createConstraintReviewerHook } = await import("../../src/hooks/constraint-reviewer");
+
+    const reviewed: string[] = [];
+    const hook = createConstraintReviewerHook(createMockCtx(testDir), async (prompt) => {
+      reviewed.push(prompt);
+      return '{"status": "PASS", "violations": [], "summary": "OK"}';
+    });
+
+    const file = join(testDir, "test.ts");
+    await hook["tool.execute.after"](
+      { tool: "apply_patch", sessionID: "test", args: { patchText: "...", filePath: file } },
+      { output: "x" },
+    );
+
+    expect(reviewed).toHaveLength(1);
+    expect(reviewed[0]).toContain(file);
+  });
+
   it("should not modify output when review passes", async () => {
     setupMindmodel(testDir);
 

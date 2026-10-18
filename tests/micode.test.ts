@@ -118,6 +118,26 @@ describe("createMicode", () => {
     expect(instruction).toContain("### Modified\n- (none)");
   });
 
+  it("tracks every file a patch tool touches as modified, on both hosts' tool names", async () => {
+    const patchText = [
+      "*** Begin Patch",
+      "*** Update File: src/a.ts",
+      "@@",
+      "+const a = 1;",
+      "*** Add File: /abs/b.ts",
+      "+const b = 2;",
+      "*** End Patch",
+    ].join("\n");
+    for (const tool of ["patch", "apply_patch"]) {
+      const sessionID = `s-${tool}`;
+      const out = await micode.onToolResult({ tool, sessionID, args: { patchText }, output: "Success." });
+      expect(out).toBe("Success.");
+      const instruction = micode.compactionInstruction(sessionID);
+      expect(instruction).toContain(`- \`${join(dir, "src/a.ts")}\``);
+      expect(instruction).toContain("- `/abs/b.ts`");
+    }
+  });
+
   it("passes tool output through unchanged when no hook touches it", async () => {
     const out = await micode.onToolResult({ tool: "bash", sessionID: "s1", args: {}, output: "plain" });
     expect(out).toBe("plain");

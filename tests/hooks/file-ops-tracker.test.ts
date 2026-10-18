@@ -97,5 +97,18 @@ describe("file-ops-tracker", () => {
       const hook = createFileOpsTrackerHook();
       expect(hook["tool.execute.after"]).toBeDefined();
     });
+
+    it("tracks files changed through either host's patch tool as modified", async () => {
+      const hook = createFileOpsTrackerHook();
+      for (const tool of ["patch", "apply_patch"]) {
+        await hook["tool.execute.after"](
+          { tool, sessionID: testSessionID, args: { filePath: `/x/${tool}.ts` } },
+          { output: "Success." },
+        );
+      }
+      const ops = getFileOps(testSessionID);
+      expect([...ops.modified]).toEqual(["/x/patch.ts", "/x/apply_patch.ts"]);
+      expect(ops.read.size).toBe(0);
+    });
   });
 });

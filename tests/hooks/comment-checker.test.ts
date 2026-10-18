@@ -227,5 +227,14 @@ describe("comment-checker", () => {
 
       expect(output.output).toContain("Comment Check");
     });
+
+    it("checks the lines both hosts' patch tools add", async () => {
+      const hook = createCommentCheckerHook();
+      for (const tool of ["patch", "apply_patch"]) {
+        const output = { output: "Success." };
+        await hook["tool.execute.after"]({ tool, args: { newString: "// increment x\nx++;" } }, output);
+        expect(output.output).toContain("Comment Check");
+      }
+    });
   });
 });

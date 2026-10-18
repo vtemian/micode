@@ -1,4 +1,4 @@
-import { basename } from "node:path";
+import { basename, resolve } from "node:path";
 
 import type { AgentConfig, McpLocalConfig } from "@opencode-ai/sdk";
 
@@ -56,6 +56,7 @@ import type { PTYManager } from "@/tools/pty";
 import { config } from "@/utils/config";
 import { extractErrorMessage } from "@/utils/errors";
 import { log } from "@/utils/logger";
+import { patchedFiles } from "@/utils/patch";
 
 export { ConstraintViolationError };
 
@@ -136,6 +137,16 @@ function thinkingOptions(): Record<string, unknown> {
 }
 
 const ALLOWED_ACTIONS = ["edit", "bash", "webfetch", "external_directory"] as const;
+/** OpenCode's patch tool: `apply_patch` on v1, `patch` on v2; gpt models get it instead of edit/write. */
+const PATCH_TOOLS: readonly string[] = ["patch", "apply_patch"];
+
+type ToolArgs = ToolResultEvent["args"];
+
+interface ToolCall {
+  readonly tool: string;
+  readonly sessionID: string;
+  readonly args: ToolArgs;
+}
 
 const COMMANDS: readonly MicodeCommand[] = [
   {
@@ -534,16 +545,35 @@ function createSystemPrompt(hooks: CoreHooks, sessions: SessionState): Micode["s
   };
 }
 
-function createToolResultPipeline(hooks: CoreHooks): Micode["onToolResult"] {
+/**
+ * A patch names its files only inside `patchText`, so the file hooks run once per file it leaves on
+ * disk, each seeing it as `filePath` (resolved like the hosts resolve it) and its added lines as `newString`.
+ */
+function targetsOf(result: ToolResultEvent, directory: string): readonly ToolArgs[] {
+  const patch = result.args?.patchText;
+  if (!PATCH_TOOLS.includes(result.tool) || typeof patch !== "string") return [result.args];
+  return patchedFiles(patch).map((file) => ({
+    ...result.args,
+    filePath: resolve(directory, file.path),
+    newString: file.added,
+  }));
+}
+
+async function runFileHooks(hooks: CoreHooks, input: ToolCall, output: { output?: string }): Promise<void> {
+  await hooks.comments["tool.execute.after"](input, output);
+  await hooks.context["tool.execute.after"](input, output);
+  await hooks.artifacts["tool.execute.after"](input, output);
+  await hooks.fileOps["tool.execute.after"](input, output);
+  await hooks.fetch["tool.execute.after"](input, output);
+  await hooks.reviewer["tool.execute.after"](input, output);
+}
+
+function createToolResultPipeline(hooks: CoreHooks, directory: string): Micode["onToolResult"] {
   return async (result) => {
     const output = { output: await hooks.truncation.onToolResult(result) };
-    const input = { tool: result.tool, sessionID: result.sessionID, args: result.args };
-    await hooks.comments["tool.execute.after"](input, output);
-    await hooks.context["tool.execute.after"](input, output);
-    await hooks.artifacts["tool.execute.after"](input, output);
-    await hooks.fileOps["tool.execute.after"](input, output);
-    await hooks.fetch["tool.execute.after"](input, output);
-    await hooks.reviewer["tool.execute.after"](input, output);
+    for (const args of targetsOf(result, directory)) {
+      await runFileHooks(hooks, { tool: result.tool, sessionID: result.sessionID, args }, output);
+    }
     return output.output ?? "";
   };
 }
@@ -617,7 +647,7 @@ export async function createMicode({ directory, host }: MicodeOptions): Promise<
       sessions.resumed.add(sessionID);
       return compactionPrompt(sessionID);
     },
-    onToolResult: createToolResultPipeline(hooks),
+    onToolResult: createToolResultPipeline(hooks, directory),
     onEvent: createEventRouter(hooks, usage, sessions, pty, octto),
     dispose: async () => {
       pty.cleanupAll();
