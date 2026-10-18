@@ -72,6 +72,8 @@ describe("auto-compact", () => {
     await waitUntil(() => calls.prompted.length === 1);
 
     expect(calls.compacted).toEqual(["ses_abcdefgh123"]);
+    // The pre-compaction figure no longer describes the session, so truncation must not keep using it.
+    expect(usage.get("ses_abcdefgh123")).toBeUndefined();
     expect(calls.prompted[0]).toBe("ses_abcdefgh123:Context was compacte");
     const ledger = await readFile(join(dir, "thoughts/ledgers/CONTINUITY_ses_abcd.md"), "utf-8");
     expect(ledger).toContain("session: ses_abcd");

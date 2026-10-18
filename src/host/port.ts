@@ -73,6 +73,8 @@ export type HostEvent =
       readonly sessionID: string;
       readonly input: number;
       readonly cacheRead: number;
+      /** Tokens written to the prompt cache this turn; they occupy context like any other input. */
+      readonly cacheWrite?: number;
       readonly model?: ModelRef;
     }
   | {

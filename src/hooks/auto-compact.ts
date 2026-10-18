@@ -61,6 +61,7 @@ async function compactSession(
   workspace: Workspace,
   host: SessionHost,
   state: AutoCompactState,
+  usage: SessionUsageTracker,
   run: CompactionRun,
 ): Promise<void> {
   const { sessionID, model } = run;
@@ -74,6 +75,7 @@ async function compactSession(
     });
     const summary = await host.compact(sessionID, model);
     state.lastCompactTime.set(sessionID, Date.now());
+    usage.reset(sessionID);
     state.onCompacted?.(sessionID);
     await writeLedger(workspace, sessionID, summary);
     await host.notify({
@@ -139,7 +141,7 @@ export function createAutoCompactHook(
       if (state.inProgress.has(event.sessionID) || coolingDown(state, event.sessionID)) return;
       // Compaction runs to completion in the background; the event loop must not wait on it
       const run = { sessionID: event.sessionID, model: current.model, ratio: current.ratio, threshold };
-      void compactSession(workspace, host, state, run).catch((error: unknown) => {
+      void compactSession(workspace, host, state, usage, run).catch((error: unknown) => {
         // Last line of defense: a throwing notify must not become an unhandled rejection
         log.error("auto-compact", "Compaction flow failed", error);
       });

@@ -247,13 +247,21 @@ describe("v1 host", () => {
             info: {
               sessionID: "s1",
               role: "assistant",
-              tokens: { input: 10, cache: { read: 5 } },
+              tokens: { input: 10, cache: { read: 5, write: 3 } },
               providerID: "p",
               modelID: "m",
             },
           },
         }),
-      ).toEqual({ type: "assistant.usage", sessionID: "s1", input: 10, cacheRead: 5, model: MODEL });
+      ).toEqual({ type: "assistant.usage", sessionID: "s1", input: 10, cacheRead: 5, cacheWrite: 3, model: MODEL });
+      expect(
+        host.relay({
+          type: "message.updated",
+          properties: {
+            info: { sessionID: "s1", role: "assistant", tokens: { input: 0, cache: { read: 0, write: 7 } } },
+          },
+        }),
+      ).toEqual({ type: "assistant.usage", sessionID: "s1", input: 0, cacheRead: 0, cacheWrite: 7 });
       expect(host.relay({ type: "session.error", properties: { sessionID: "s1", error: "boom" } })).toEqual({
         type: "session.error",
         sessionID: "s1",

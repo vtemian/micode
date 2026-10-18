@@ -22,7 +22,7 @@ interface MessageInfo {
   readonly role?: string;
   readonly summary?: boolean;
   readonly sessionID?: string;
-  readonly tokens?: { readonly input?: number; readonly cache?: { readonly read?: number } };
+  readonly tokens?: { readonly input?: number; readonly cache?: { readonly read?: number; readonly write?: number } };
   readonly providerID?: string;
   readonly modelID?: string;
   readonly error?: unknown;
@@ -114,8 +114,9 @@ function normalizeMessageUpdated(info: MessageInfo | undefined): HostEvent | und
   if (info.summary === true) return undefined;
   const input = info.tokens?.input ?? 0;
   const cacheRead = info.tokens?.cache?.read ?? 0;
-  if (input + cacheRead === 0) return undefined;
-  return { type: "assistant.usage", sessionID: info.sessionID, input, cacheRead, model: modelOf(info) };
+  const cacheWrite = info.tokens?.cache?.write ?? 0;
+  if (input + cacheRead + cacheWrite === 0) return undefined;
+  return { type: "assistant.usage", sessionID: info.sessionID, input, cacheRead, cacheWrite, model: modelOf(info) };
 }
 
 function propertiesOf(event: V1Event): Record<string, unknown> {

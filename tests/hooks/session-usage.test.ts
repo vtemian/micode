@@ -22,6 +22,21 @@ describe("session usage", () => {
     });
   });
 
+  it("counts cache writes toward the context in use", () => {
+    const usage = createSessionUsage();
+    usage.onEvent({ type: "assistant.usage", sessionID: "s1", input: 10, cacheRead: 5, cacheWrite: 85 });
+    expect(usage.get("s1")?.used).toBe(100);
+  });
+
+  it("forgets a session's usage on reset until the next usage event", () => {
+    const usage = createSessionUsage();
+    usage.onEvent({ type: "assistant.usage", sessionID: "s1", input: 10, cacheRead: 5 });
+    usage.reset("s1");
+    expect(usage.get("s1")).toBeUndefined();
+    usage.onEvent({ type: "assistant.usage", sessionID: "s1", input: 3, cacheRead: 0 });
+    expect(usage.get("s1")?.used).toBe(3);
+  });
+
   it("ignores zero-token events and unknown sessions", () => {
     const usage = createSessionUsage();
     usage.onEvent({ type: "assistant.usage", sessionID: "s1", input: 0, cacheRead: 0 });
