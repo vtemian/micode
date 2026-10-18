@@ -422,7 +422,12 @@ describe("v2 setup", () => {
     expect(ctx.options).toMatchObject({ thinking: { type: "enabled" } });
   });
 
-  async function contextOptions(h: ReturnType<typeof createHost>, agent: string, providerID: string): Promise<Any> {
+  async function contextOptions(
+    h: ReturnType<typeof createHost>,
+    agent: string,
+    providerID: string,
+    preset: Record<string, unknown> = {},
+  ): Promise<Any> {
     const ctx: Any = {
       sessionID: `s_${agent}_${providerID}`,
       agent,
@@ -430,7 +435,7 @@ describe("v2 setup", () => {
       system: [],
       messages: [],
       tools: {},
-      options: {},
+      options: { ...preset },
     };
     await h.hooks.get("session.context")!(ctx);
     return ctx.options;
@@ -442,6 +447,26 @@ describe("v2 setup", () => {
     const { temperature, maxTokens, thinking } = agents.commander as Any;
     expect(await contextOptions(h, "commander", "anthropic")).toEqual({ temperature, maxTokens, thinking });
     expect(await contextOptions(h, "commander", "openai")).toEqual({ temperature, maxTokens });
+  });
+
+  it("keeps generation settings already on the request", async () => {
+    const h = createHost();
+    cleanup = await setup(h.host);
+    const { maxTokens, thinking } = agents.commander as Any;
+    const preset = { temperature: 0.9, thinking: { type: "disabled" } };
+    expect(await contextOptions(h, "commander", "anthropic", preset)).toEqual({ ...preset, maxTokens });
+    expect(thinking).not.toEqual(preset.thinking);
+  });
+
+  it("never raises the host's output-limit-derived maxTokens, only lowers it", async () => {
+    const h = createHost();
+    cleanup = await setup(h.host);
+    const commander = (agents.commander as Any).maxTokens;
+    const initializer = (agents["project-initializer"] as Any).maxTokens;
+    expect((await contextOptions(h, "commander", "openai", { maxTokens: 8192 })).maxTokens).toBe(8192);
+    expect(initializer).toBeLessThan(commander);
+    const lowered = await contextOptions(h, "project-initializer", "openai", { maxTokens: commander });
+    expect(lowered.maxTokens).toBe(initializer);
   });
 
   it("leaves the options alone for agents micode does not own", async () => {

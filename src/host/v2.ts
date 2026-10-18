@@ -429,6 +429,17 @@ function generationOptions(micode: Micode, agent: string, providerID: string): R
   };
 }
 
+/**
+ * Micode's agent defaults only fill what the request leaves unset. The host pre-fills `maxTokens` from the
+ * model's output limit and the remaining context (2.0.31), so micode's value may lower it, never raise it.
+ */
+function fillGeneration(options: SessionContext["options"], defaults: Record<string, unknown>): void {
+  const { maxTokens, ...rest } = defaults;
+  for (const [key, value] of Object.entries(rest)) options[key] ??= value;
+  if (typeof maxTokens !== "number") return;
+  options.maxTokens = typeof options.maxTokens === "number" ? Math.min(options.maxTokens, maxTokens) : maxTokens;
+}
+
 async function applyContext(micode: Micode, input: SessionContext): Promise<void> {
   micode.onRequest({
     sessionID: input.sessionID,
@@ -447,11 +458,9 @@ async function applyContext(micode: Micode, input: SessionContext): Promise<void
     userText: lastUser ? textOf(lastUser) : undefined,
   });
   input.system.splice(0, input.system.length, ...toSystemParts(input.system, system));
-  Object.assign(
-    input.options,
-    generationOptions(micode, input.agent, input.model.providerID),
-    micode.requestOptions(input.sessionID),
-  );
+  fillGeneration(input.options, generationOptions(micode, input.agent, input.model.providerID));
+  // A think keyword is the user's request for this very turn, so it wins over anything already set.
+  Object.assign(input.options, micode.requestOptions(input.sessionID));
 }
 
 async function registerSessionHooks(host: V2Host, micode: Micode): Promise<void> {
