@@ -2,6 +2,38 @@
 // Valibot schemas for micode.json and opencode.json config validation
 import * as v from "valibot";
 
+// --- model references ---
+
+// Mirrors OpenCode's own ModelSelection short form: "provider/model", optionally "#variant".
+const MODEL_REF_PATTERN = /^[^/#]+\/[^#]+$/u;
+const VARIANT_SEPARATOR = "#";
+
+function stripVariant(ref: string): string {
+  const index = ref.indexOf(VARIANT_SEPARATOR);
+  return index === -1 ? ref : ref.slice(0, index);
+}
+
+const ModelStringSchema = v.pipe(v.string(), v.trim(), v.transform(stripVariant), v.regex(MODEL_REF_PATTERN));
+
+// OpenCode 2's explicit form: { providerID, model, variant? }.
+const ModelObjectSchema = v.pipe(
+  v.object({
+    providerID: v.pipe(v.string(), v.nonEmpty()),
+    model: v.pipe(v.string(), v.nonEmpty()),
+    variant: v.optional(v.string()),
+  }),
+  v.transform((selection) => `${selection.providerID}/${selection.model}`),
+  v.regex(MODEL_REF_PATTERN),
+);
+
+const ModelRefSchema = v.union([ModelStringSchema, ModelObjectSchema]);
+
+/** Normalizes a v1 string or v2 object model selection to "provider/model"; undefined when malformed. */
+export function parseModelRef(raw: unknown): string | undefined {
+  const result = v.safeParse(ModelRefSchema, raw);
+  return result.success ? result.output : undefined;
+}
+
 // --- micode.json schemas ---
 
 const ThinkingSchema = v.object({
@@ -44,19 +76,33 @@ export const RawMicodeConfigSchema = v.object({
 // Safe properties that users can override in agent configs
 const SAFE_AGENT_PROPERTIES = ["model", "temperature", "maxTokens", "steps", "maxSteps", "thinking"] as const;
 
-/**
- * Validate and sanitize an individual agent override.
- * Only picks safe properties; extra keys from user config are discarded.
- */
-export function sanitizeAgentOverride(raw: unknown): v.InferOutput<typeof AgentOverrideSchema> | null {
-  if (!raw || typeof raw !== "object") return null;
+type AgentOverrideOutput = v.InferOutput<typeof AgentOverrideSchema>;
 
-  const record = raw as Record<string, unknown>;
+function pickSafeProperties(record: Record<string, unknown>): Record<string, unknown> {
   const picked: Record<string, unknown> = {};
   for (const prop of SAFE_AGENT_PROPERTIES) {
-    if (prop in record) {
-      picked[prop] = record[prop];
-    }
+    if (prop in record) picked[prop] = record[prop];
+  }
+  return picked;
+}
+
+/**
+ * Validate and sanitize an individual agent override.
+ * Only picks safe properties; extra keys from user config are discarded. A malformed model ref
+ * (no provider prefix, empty) is dropped with a warning so the agent falls back to the default.
+ */
+export function sanitizeAgentOverride(raw: unknown, name = "", warnings: string[] = []): AgentOverrideOutput | null {
+  if (!raw || typeof raw !== "object") return null;
+
+  const picked = pickSafeProperties(raw as Record<string, unknown>);
+  if (picked.model !== undefined) {
+    const model = parseModelRef(picked.model);
+    if (model === undefined) {
+      warnings.push(
+        `Model ${JSON.stringify(picked.model)} for agent "${name}" is not a provider/model ref. Using default.`,
+      );
+      delete picked.model;
+    } else picked.model = model;
   }
 
   const result = v.safeParse(AgentOverrideSchema, picked);
@@ -69,10 +115,11 @@ export function sanitizeAgentOverride(raw: unknown): v.InferOutput<typeof AgentO
  */
 export function sanitizeAgentsRecord(
   raw: Record<string, unknown>,
-): Record<string, v.InferOutput<typeof AgentOverrideSchema>> {
-  const sanitized: Record<string, v.InferOutput<typeof AgentOverrideSchema>> = {};
+  warnings: string[] = [],
+): Record<string, AgentOverrideOutput> {
+  const sanitized: Record<string, AgentOverrideOutput> = {};
   for (const [name, agentRaw] of Object.entries(raw)) {
-    const override = sanitizeAgentOverride(agentRaw);
+    const override = sanitizeAgentOverride(agentRaw, name, warnings);
     if (override) sanitized[name] = override;
   }
   return sanitized;
@@ -134,10 +181,13 @@ const ProviderConfigSchema = v.object({
   models: v.optional(v.record(v.string(), v.unknown())),
 });
 
-export const OpencodeConfigSchema = v.object({
-  model: v.optional(v.string()),
-  provider: v.optional(v.record(v.string(), v.unknown())),
-});
+const ProviderRecordSchema = v.record(v.string(), v.unknown());
+
+/** Validates the provider record on its own so a bad sibling field cannot discard it. */
+export function parseProviderRecord(raw: unknown): Record<string, unknown> | undefined {
+  const result = v.safeParse(ProviderRecordSchema, raw);
+  return result.success ? result.output : undefined;
+}
 
 /**
  * Validate and extract provider models from opencode.json

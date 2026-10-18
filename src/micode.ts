@@ -1,7 +1,13 @@
 import type { AgentConfig, McpLocalConfig } from "@opencode-ai/sdk";
 
 import { agents, PRIMARY_AGENT_NAME } from "@/agents";
-import { loadMicodeConfig, loadModelContextLimits, type MicodeConfig, mergeAgentConfigs } from "@/config-loader";
+import {
+  loadMicodeConfig,
+  loadModelContextLimits,
+  loadOpencodeSettings,
+  type MicodeConfig,
+  mergeAgentConfigs,
+} from "@/config-loader";
 import {
   ConstraintViolationError,
   clearFileOps,
@@ -263,6 +269,10 @@ async function warnMissingTools(): Promise<void> {
   if (!btca.available) log.warn(LOG_SCOPE, btca.message ?? "btca unavailable");
 }
 
+function warnOpencodeSettings(): void {
+  for (const warning of loadOpencodeSettings().warnings) log.warn(LOG_SCOPE, `opencode config: ${warning}`);
+}
+
 function warnUnknownFragmentAgents(userConfig: MicodeConfig | null): void {
   if (!userConfig?.fragments) return;
   const known = new Set(Object.keys(agents));
@@ -517,6 +527,7 @@ export async function createMicode({ directory, host }: MicodeOptions): Promise<
   const workspace: Workspace = { directory };
   const userConfig = await loadMicodeConfig();
   warnUnknownFragmentAgents(userConfig);
+  warnOpencodeSettings();
   const usage = createSessionUsage(loadModelContextLimits());
   const sessions = createSessionState();
   const hooks = createHooks(workspace, host, usage, userConfig, sessions.internal);
