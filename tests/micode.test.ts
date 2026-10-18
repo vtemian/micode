@@ -227,7 +227,7 @@ describe("system prompt scoping", () => {
     }
   });
 
-  it("injects the ledger after auto-compact compacts the session", async () => {
+  it("injects the session's own ledger after auto-compact compacts it", async () => {
     const compacted: string[] = [];
     const host = {
       ...fakeHost(),
@@ -239,7 +239,7 @@ describe("system prompt scoping", () => {
     const core = await createMicode({ directory: dir, host });
     try {
       await core.onEvent({ type: "assistant.usage", sessionID: "s1", input: 190_000, cacheRead: 0, model: MODEL });
-      await waitUntil(async () => (await prompt(core, "s1")).includes(LEDGER_MARK));
+      await waitUntil(async () => (await prompt(core, "s1")).includes('<continuity-ledger session="s1">'));
       expect(compacted).toEqual(["s1"]);
     } finally {
       await core.dispose();

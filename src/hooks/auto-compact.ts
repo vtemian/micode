@@ -8,7 +8,6 @@ import { log } from "@/utils/logger";
 
 import type { SessionUsageTracker } from "./session-usage";
 
-const SESSION_ID_PREFIX_LENGTH = 8;
 const PERCENT_MULTIPLIER = 100;
 const MAX_ERROR_MESSAGE_LENGTH = 100;
 const CONTINUE_PROMPT =
@@ -47,9 +46,8 @@ async function writeLedger(workspace: Workspace, sessionID: string, summary: str
   try {
     const ledgerDir = join(workspace.directory, config.paths.ledgerDir);
     await mkdir(ledgerDir, { recursive: true });
-    const sessionName = sessionID.slice(0, SESSION_ID_PREFIX_LENGTH);
-    const ledgerPath = join(ledgerDir, `${config.paths.ledgerPrefix}${sessionName}.md`);
-    const frontmatter = `---\nsession: ${sessionName}\nupdated: ${new Date().toISOString()}\n---`;
+    const ledgerPath = join(ledgerDir, `${config.paths.ledgerPrefix}${sessionID}.md`);
+    const frontmatter = `---\nsession: ${sessionID}\nupdated: ${new Date().toISOString()}\n---`;
     await writeFile(ledgerPath, `${frontmatter}\n\n${summary}\n`, "utf-8");
   } catch (error) {
     // Don't fail the compaction flow if the ledger write fails
