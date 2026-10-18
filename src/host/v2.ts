@@ -14,10 +14,7 @@ import { log } from "@/utils/logger";
 import type { AgentReply, AgentRun, HostEvent, ModelRef, SessionHost } from "./port";
 
 /** The slice of the v2 plugin context micode uses. Tests fake exactly this. */
-export type V2Host = Pick<
-  Plugin.Context,
-  "location" | "tool" | "agent" | "command" | "mcp" | "permission" | "event" | "session"
->;
+export type V2Host = Pick<Plugin.Context, "location" | "tool" | "agent" | "command" | "mcp" | "event" | "session">;
 
 /** v2 permission vocabulary for a run that may not call tools (reviewer, probe). */
 export const DENY_ALL_TOOLS = [{ action: "*", resource: "*", effect: "deny" }] as const;
@@ -221,7 +218,23 @@ function toolRules(tools: Extras["tools"]): Rule[] {
   return [...new Set(actions)].map((action) => ({ action, resource: ANY, effect: "deny" as const }));
 }
 
-export function toAgentInfo(agent: AgentRecord, config: AgentConfig, model: V2ModelRef | undefined): void {
+function isBlanketDeny(rule: Rule, action: string): boolean {
+  return rule.action === action && rule.resource === ANY && rule.effect === "deny";
+}
+
+/** micode's allow-by-default actions, minus the ones this agent denies outright. */
+function allowRules(allowed: readonly string[], own: readonly Rule[]): Rule[] {
+  return [...new Set(allowed.map(toV2Action))]
+    .filter((action) => !own.some((rule) => isBlanketDeny(rule, action)))
+    .map((action) => ({ action, resource: ANY, effect: "allow" as const }));
+}
+
+export function toAgentInfo(
+  agent: AgentRecord,
+  config: AgentConfig,
+  model: V2ModelRef | undefined,
+  allowed: readonly string[] = [],
+): void {
   const extra = extrasOf(config);
   if (config.description !== undefined) agent.description = config.description;
   if (config.mode !== undefined) agent.mode = config.mode;
@@ -232,9 +245,11 @@ export function toAgentInfo(agent: AgentRecord, config: AgentConfig, model: V2Mo
   if (config.temperature !== undefined) agent.request.body.temperature = config.temperature;
   if (extra.maxTokens !== undefined) agent.request.body.maxTokens = extra.maxTokens;
   if (extra.thinking !== undefined) agent.request.body.thinking = extra.thinking;
-  // The last matching rule wins on v2. A fresh record starts with `*: allow`, so micode's rules go after it;
-  // the host appends the user's global rules after every plugin transform, so those still win over micode's.
-  agent.permissions.push(...permissionRules(extra.permission), ...toolRules(extra.tools));
+  // The last matching rule wins on v2. A fresh record starts with `*: allow`, so micode's rules go after it,
+  // its allows before the agent's own rules; the host appends the user's global rules after every plugin
+  // transform, so those win over everything micode sets.
+  const own = [...permissionRules(extra.permission), ...toolRules(extra.tools)];
+  agent.permissions.push(...allowRules(allowed, own), ...own);
 }
 
 function modelRefOf(config: AgentConfig, parseModel: ParseModel): V2ModelRef | undefined {
@@ -257,7 +272,9 @@ async function registerAgents(host: V2Host, micode: Micode, parseModel: ParseMod
     model: modelRefOf(config, parseModel),
   }));
   await host.agent.transform((editor) => {
-    for (const { name, config, model } of prepared) editor.update(name, (agent) => toAgentInfo(agent, config, model));
+    for (const { name, config, model } of prepared) {
+      editor.update(name, (agent) => toAgentInfo(agent, config, model, micode.allowedActions));
+    }
     editor.default(micode.defaultAgent);
   });
 }
@@ -296,13 +313,6 @@ async function registerMcp(host: V2Host, micode: Micode): Promise<void> {
       if (editor.get(name)) continue; // the user's own entry wins, as in v1
       editor.set(name, toMcpServer(server));
     }
-  });
-}
-
-async function registerPermissions(host: V2Host, micode: Micode): Promise<void> {
-  const allowed = new Set(micode.allowedActions.map(toV2Action));
-  await host.permission.hook("evaluate", (evaluation) => {
-    if (evaluation.effect === "ask" && allowed.has(evaluation.action)) evaluation.effect = "allow";
   });
 }
 
@@ -435,7 +445,6 @@ export async function setup(host: V2Host): Promise<Plugin.Cleanup> {
     await registerAgents(host, micode, parseModel);
     await registerCommands(host, micode);
     await registerMcp(host, micode);
-    await registerPermissions(host, micode);
     await registerSessionHooks(host, micode);
     await registerToolHook(host, micode);
   } catch (error) {

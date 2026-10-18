@@ -299,23 +299,37 @@ describe("v2 setup", () => {
     expect(h.mcp.get("context7")).toEqual({ type: "local", command: ["npx", "-y", "@upstash/context7-mcp@latest"] });
   });
 
-  it("allows the micode actions when the host would ask", async () => {
+  it("allows the micode actions through agent rules, never by rewriting the host's verdict", async () => {
     const h = createHost();
     cleanup = await setup(h.host);
-    const evaluate = h.hooks.get("permission.evaluate")!;
-    // v1 names the shell action "bash"; OpenCode 2 names it "shell".
-    const ask = { action: "shell", resources: ["*"], effect: "ask", sessionID: "s1" };
-    await evaluate(ask);
-    expect(ask.effect).toBe("allow");
-    const legacy = { action: "bash", resources: ["*"], effect: "ask", sessionID: "s1" };
-    await evaluate(legacy);
-    expect(legacy.effect).toBe("ask");
-    const other = { action: "read", resources: ["x.env"], effect: "ask", sessionID: "s1" };
-    await evaluate(other);
-    expect(other.effect).toBe("ask");
-    const denied = { action: "shell", resources: ["*"], effect: "deny", sessionID: "s1" };
-    await evaluate(denied);
-    expect(denied.effect).toBe("deny");
+    expect(h.hooks.has("permission.evaluate")).toBe(false);
+    const commander = h.agents.get("commander")!;
+    for (const action of ["edit", "shell", "webfetch", "external_directory"]) {
+      expect([action, evaluate(commander.permissions, action, "*")]).toEqual([action, "allow"]);
+    }
+  });
+
+  it("leaves a user's global ask in force", async () => {
+    const h = createHost();
+    cleanup = await setup(h.host);
+    const ask = [
+      { action: "shell", resource: "*", effect: "ask" },
+      { action: "external_directory", resource: "*", effect: "ask" },
+    ];
+    const rules = withGlobals(h.agents.get("commander")!, ask);
+    expect(evaluate(rules, "shell", "rm -rf build")).toBe("ask");
+    expect(evaluate(rules, "external_directory", "/elsewhere/a.ts")).toBe("ask");
+  });
+
+  it("keeps per-agent denies ahead of micode's allows", async () => {
+    const h = createHost();
+    cleanup = await setup(h.host);
+    const locator = h.agents.get("codebase-locator")!;
+    expect(evaluate(locator.permissions, "edit", "/repo/a.ts")).toBe("deny");
+    expect(evaluate(locator.permissions, "shell", "ls")).toBe("deny");
+    expect(evaluate(locator.permissions, "webfetch", "https://x")).toBe("allow");
+    expect(locator.permissions).not.toContainEqual({ action: "edit", resource: "*", effect: "allow" });
+    expect(locator.permissions).not.toContainEqual({ action: "shell", resource: "*", effect: "allow" });
   });
 
   it("filters project instructions and injects request options in the context hook", async () => {
@@ -550,6 +564,19 @@ describe("toAgentInfo", () => {
     expect(evaluate(agent.permissions, "edit", "/repo/src/a.ts")).toBe("deny");
     expect(evaluate(agent.permissions, "shell", "rm -rf build")).toBe("deny");
     expect(evaluate(agent.permissions, "read", "/repo/.env")).toBe("ask");
+  });
+
+  it("places micode's allows before the agent's own rules and skips the ones the agent denies", () => {
+    const agent = blankAgent("x");
+    const allowed = ["edit", "bash", "webfetch", "external_directory"];
+    toAgentInfo(agent, { permission: { edit: "deny", bash: { "git *": "allow" } } }, undefined, allowed);
+    expect(added(agent)).toEqual([
+      { action: "shell", resource: "*", effect: "allow" },
+      { action: "webfetch", resource: "*", effect: "allow" },
+      { action: "external_directory", resource: "*", effect: "allow" },
+      { action: "edit", resource: "*", effect: "deny" },
+      { action: "shell", resource: "git *", effect: "allow" },
+    ]);
   });
 
   it("lets the user's global rules, which the host appends later, win over micode's", () => {
