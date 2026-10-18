@@ -278,6 +278,30 @@ describe("v2 setup", () => {
     expect(typeof out.content).toBe("string");
   });
 
+  it("handles a progress update the host rejects (the call was interrupted)", async () => {
+    const h = createHost();
+    cleanup = await setup(h.host);
+    const unhandled: unknown[] = [];
+    const record = (reason: unknown) => unhandled.push(reason);
+    process.on("unhandledRejection", record);
+    try {
+      const rejecting = async () => {
+        throw new Error("call interrupted");
+      };
+      const out = await h.tools
+        .get("spawn_agent")
+        ?.execute(
+          { agents: [{ agent: "probe", prompt: "q", description: "d" }] },
+          { sessionID: "s1", progress: rejecting },
+        );
+      expect(out.content).toContain("answer");
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(unhandled).toEqual([]);
+    } finally {
+      process.off("unhandledRejection", record);
+    }
+  });
+
   it("upserts the agents, sets the default and maps v1 fields", async () => {
     const h = createHost();
     cleanup = await setup(h.host);

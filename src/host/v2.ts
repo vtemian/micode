@@ -4,7 +4,7 @@ import type { Plugin } from "@opencode/plugin";
 import type { AgentEditor } from "@opencode/plugin/promise/agent";
 import type { MCPEditor } from "@opencode/plugin/promise/mcp";
 import type { SessionContext } from "@opencode/plugin/promise/session";
-import type { Info as ToolInfo } from "@opencode/plugin/promise/tool";
+import type { ToolContext, Info as ToolInfo } from "@opencode/plugin/promise/tool";
 import type { AgentConfig, McpLocalConfig } from "@opencode-ai/sdk";
 import { z } from "zod";
 
@@ -223,6 +223,13 @@ export function createV2Host(
   };
 }
 
+/** Title updates are cosmetic; one rejected after the call was interrupted must not surface as unhandled. */
+function reportProgress(context: ToolContext, title: string): void {
+  context.progress({ title }).catch((error: unknown) => {
+    log.debug(LOG_SCOPE, `progress update dropped: ${extractErrorMessage(error)}`);
+  });
+}
+
 function toV2Tool(name: string, core: MicodeTool): V2Tool {
   return {
     name,
@@ -234,7 +241,7 @@ function toV2Tool(name: string, core: MicodeTool): V2Tool {
     execute: async (input: unknown, context) => ({
       content: await core.execute(input, {
         sessionID: context.sessionID,
-        progress: (title) => void context.progress({ title }),
+        progress: (title) => reportProgress(context, title),
       }),
     }),
   };
