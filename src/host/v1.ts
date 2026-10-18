@@ -4,7 +4,6 @@ import { type ToolDefinition, tool } from "@opencode-ai/plugin/tool";
 import { createMicode, type Micode } from "@/micode";
 import { mergeMcpServers, mergePluginAgents } from "@/plugin-config";
 import type { MicodeTool } from "@/tools/define";
-import { config } from "@/utils/config";
 import { extractErrorMessage } from "@/utils/errors";
 
 import type { AgentReply, AgentRun, HostEvent, ModelRef, Notification, PromptHint, SessionHost } from "./port";
@@ -56,7 +55,6 @@ export interface V1Host extends SessionHost {
 interface Pending {
   readonly resolve: () => void;
   readonly reject: (error: Error) => void;
-  readonly timeoutId: ReturnType<typeof setTimeout>;
 }
 
 interface CompactionWaiters {
@@ -173,17 +171,12 @@ function createCompactionWaiters(): CompactionWaiters {
   const pending = new Map<string, Pending>();
   return {
     wait: (sessionID) =>
-      new Promise((resolve, reject) => {
-        const timeoutId = setTimeout(() => {
-          pending.delete(sessionID);
-          reject(new Error("Compaction timed out"));
-        }, config.compaction.timeoutMs);
-        pending.set(sessionID, { resolve, reject, timeoutId });
+      new Promise<void>((resolve, reject) => {
+        pending.set(sessionID, { resolve, reject });
       }),
     settle: (sessionID, error) => {
       const entry = pending.get(sessionID);
       if (!entry) return;
-      clearTimeout(entry.timeoutId);
       pending.delete(sessionID);
       if (error) entry.reject(new Error(error));
       else entry.resolve();
@@ -234,22 +227,28 @@ async function runAgent(v1: V1Context, run: AgentRun): Promise<AgentReply> {
   return { sessionID, text: joinTextParts(reply.parts) };
 }
 
+async function summarize(v1: V1Context, sessionID: string, model: ModelRef): Promise<void> {
+  const response = (await v1.client.session.summarize({
+    path: { id: sessionID },
+    body: model,
+    query: v1.query,
+  })) as Response<unknown>;
+  if (response.error !== undefined) throw new Error(extractErrorMessage(response.error));
+}
+
 async function compact(v1: V1Context, sessionID: string, model: ModelRef): Promise<string> {
-  // Register the waiter BEFORE calling summarize to avoid missing the completion event.
+  // Register the waiter BEFORE calling summarize so completion, error and deletion events are all seen.
   const done = v1.waiters.wait(sessionID);
-  try {
-    const started = (await v1.client.session.summarize({
-      path: { id: sessionID },
-      body: model,
-      query: v1.query,
-    })) as Response<unknown>;
-    if (started.error !== undefined) throw new Error(extractErrorMessage(started.error));
-  } catch (error) {
-    // Settle the waiter so its timeout cannot reject a promise nobody awaits.
-    v1.waiters.settle(sessionID, `Compaction request failed: ${extractErrorMessage(error)}`);
-  }
+  // v1 summarize blocks until the compaction loop ends, so its successful return is completion too.
+  // Both branches settle instead of throwing, so the detached chain can never reject unhandled.
+  void summarize(v1, sessionID, model).then(
+    () => v1.waiters.settle(sessionID),
+    (error: unknown) => v1.waiters.settle(sessionID, `Compaction request failed: ${extractErrorMessage(error)}`),
+  );
   await done;
-  return joinTextParts(lastMessage(await messages(v1, sessionID), ASSISTANT_ROLE, true)?.parts);
+  const summary = lastMessage(await messages(v1, sessionID), ASSISTANT_ROLE, true);
+  if (summary?.info?.error) throw new Error(`Compaction failed: ${extractErrorMessage(summary.info.error)}`);
+  return joinTextParts(summary?.parts);
 }
 
 export function createV1Host(client: Client, directory: string): V1Host {

@@ -122,7 +122,10 @@ describe("v1 host", () => {
     });
 
     it("also settles on a completed summary message, but not on its creation", async () => {
-      const host = createV1Host(fakeClient({}) as any, "/work");
+      const client = fakeClient({});
+      // A summarize call that never returns isolates the event path.
+      client.session.summarize = () => new Promise(() => {});
+      const host = createV1Host(client as any, "/work");
       const pending = host.compact("ses_1", MODEL);
       let settled = false;
       void pending.then(() => {
@@ -172,6 +175,54 @@ describe("v1 host", () => {
       await expect(host.compact("ses_1", MODEL)).rejects.toThrow("socket hang up");
       // A later completion event must find nothing pending (no stale timer, no second rejection).
       expect(host.relay({ type: "session.compacted", properties: { sessionID: "ses_1" } })).toBeUndefined();
+    });
+
+    it("resolves when a slow blocking summarize succeeds without any completion event", async () => {
+      const client = fakeClient({});
+      client.session.summarize = async () => {
+        await new Promise((r) => setTimeout(r, 20));
+        return { data: true };
+      };
+      const host = createV1Host(client as any, "/work");
+      expect(await host.compact("ses_1", MODEL)).toBe("the summary");
+    });
+
+    it("rejects when summarize returns but the stored summary carries an error", async () => {
+      const client = fakeClient({});
+      client.session.messages = async () =>
+        ({
+          data: [{ info: { role: "assistant", summary: true, error: { message: "context overflow" } }, parts: [] }],
+        }) as never;
+      const host = createV1Host(client as any, "/work");
+      await expect(host.compact("ses_1", MODEL)).rejects.toThrow("context overflow");
+    });
+
+    it("rejects without an unhandled rejection when the session is deleted mid-summarize", async () => {
+      const client = fakeClient({});
+      let finish = (): void => {};
+      client.session.summarize = () =>
+        new Promise((resolve) => {
+          finish = () => resolve({ data: true });
+        });
+      const host = createV1Host(client as any, "/work");
+      const unhandled: unknown[] = [];
+      const onUnhandled = (reason: unknown): void => {
+        unhandled.push(reason);
+      };
+      process.on("unhandledRejection", onUnhandled);
+      try {
+        // Bun's rejects matcher drains the promise eagerly, so capture the outcome with a plain handler.
+        const outcome = host.compact("ses_1", MODEL).catch((error: unknown) => error);
+        await new Promise((r) => setTimeout(r, 0));
+        host.relay({ type: "session.deleted", properties: { info: { id: "ses_1" } } });
+        expect(String(await outcome)).toContain("Session deleted");
+        // The blocking call returning after the deletion must find nothing left to settle.
+        finish();
+        await new Promise((r) => setTimeout(r, 10));
+        expect(unhandled).toEqual([]);
+      } finally {
+        process.off("unhandledRejection", onUnhandled);
+      }
     });
 
     it("rejects a pending compaction when the session is deleted", async () => {
