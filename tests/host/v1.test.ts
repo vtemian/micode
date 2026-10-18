@@ -81,9 +81,25 @@ describe("v1 host", () => {
       expect(log.create[0]).toEqual({ body: { parentID: "ses_parent", title: "t" }, query: { directory: "/work" } });
       expect(log.prompt[0]).toMatchObject({
         path: { id: "ses_child" },
-        body: { agent: "probe", tools: {}, model: MODEL, parts: [{ type: "text", text: "q" }] },
+        body: { agent: "probe", model: MODEL, parts: [{ type: "text", text: "q" }] },
       });
       expect(log.messages).toBeUndefined();
+    });
+
+    it("disables every tool, MCP ones included, with one wildcard rule for a tool-less run", async () => {
+      const log: Log = {};
+      const host = createV1Host(fakeClient(log) as any, "/work");
+
+      await host.runAgent({ agent: "probe", text: "q", denyTools: true });
+
+      expect((log.prompt[0] as { body: { tools: unknown } }).body.tools).toEqual({ "*": false });
+    });
+
+    it("sends no tool overrides when the run keeps its tools", async () => {
+      const log: Log = {};
+      const host = createV1Host(fakeClient(log) as any, "/work");
+      await host.runAgent({ agent: "probe", text: "q" });
+      expect((log.prompt[0] as { body: Record<string, unknown> }).body.tools).toBeUndefined();
     });
 
     it("throws when the host returns no session id", async () => {
@@ -316,6 +332,38 @@ describe("v1 host", () => {
       expect(log.delete[0]).toMatchObject({ path: { id: "s1" }, query: { directory: "/work" } });
       expect(log.toast[0]).toEqual({ body: { title: "T", message: "M", variant: "info", duration: 1 } });
       expect(await host.lastUserText("s1")).toBe("question");
+    });
+
+    it("keeps the session's last agent on a prompt whose hint names none", async () => {
+      const log: Log = {};
+      const client = fakeClient(log);
+      client.session.messages = async () =>
+        ({
+          data: [
+            { info: { role: "user", agent: "commander" }, parts: [] },
+            { info: { role: "user", agent: "executor" }, parts: [] },
+            { info: { role: "assistant", agent: "executor" }, parts: [] },
+          ],
+        }) as never;
+      const host = createV1Host(client as any, "/work");
+
+      await host.prompt("s1", "continue", { model: MODEL });
+      await host.prompt("s1", "continue");
+
+      expect(log.promptAsync[0]).toMatchObject({ body: { agent: "executor", model: MODEL } });
+      expect(log.promptAsync[1]).toMatchObject({ body: { agent: "executor" } });
+    });
+
+    it("sends no agent when the session has none on record, and never reads messages for an explicit agent", async () => {
+      const log: Log = {};
+      const host = createV1Host(fakeClient(log) as any, "/work");
+
+      await host.prompt("s1", "continue");
+      expect((log.promptAsync[0] as { body: Record<string, unknown> }).body.agent).toBeUndefined();
+      expect(log.messages).toHaveLength(1);
+
+      await host.prompt("s1", "continue", { agent: "build" });
+      expect(log.messages).toHaveLength(1);
     });
 
     it("surfaces HTTP errors from prompt and abort", async () => {
