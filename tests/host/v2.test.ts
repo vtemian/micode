@@ -655,7 +655,7 @@ describe("normalizeEvent", () => {
           tokens: { input: 10, output: 1, reasoning: 0, cache: { read: 5, write: 0 } },
         },
       }),
-    ).toEqual({ type: "assistant.usage", sessionID: "s1", input: 10, cacheRead: 5 });
+    ).toEqual({ type: "assistant.usage", sessionID: "s1", input: 10, cacheRead: 5, cacheWrite: 0 });
     expect(
       normalizeEvent({
         type: "session.execution.failed",
@@ -843,6 +843,20 @@ describe("createV2Host", () => {
   afterEach(() => {
     logs.restore();
     expect(logs.unread()).toEqual([]);
+  });
+
+  it("tells the core that OpenCode 2 resumes the turn after a compaction", () => {
+    const h = createHost();
+    expect(createV2Host(h.host).resumesAfterCompaction).toBe(true);
+  });
+
+  it("carries cache writes on usage events", () => {
+    expect(
+      normalizeEvent({
+        type: "session.step.ended",
+        data: { sessionID: "s1", tokens: { input: 10, output: 1, reasoning: 0, cache: { read: 5, write: 7 } } },
+      }),
+    ).toMatchObject({ type: "assistant.usage", cacheRead: 5, cacheWrite: 7 });
   });
 
   it("runs an agent: create under the parent, prompt, wait and read the reply", async () => {

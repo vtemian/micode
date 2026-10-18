@@ -30,7 +30,7 @@ Then run `/init` to generate `ARCHITECTURE.md` and `CODE_STYLE.md`.
 - Commands (`/init`, `/mindmodel`, `/ledger`, `/search`) switch the session's agent and keep it switched; pick another agent in the UI to switch back.
 - The default agent is set to `commander` on load. Switch agents in the UI to use another one.
 - Toast notifications (auto-compact, session recovery, context window) are written to the log instead of shown.
-- Constraint-review violations are appended to the tool output but cannot block the call.
+- Constraint-review violations are appended to the tool output but cannot block the call (OpenCode 2 ignores errors thrown after a tool ran).
 - Agent permissions are translated to OpenCode 2's action names (`bash` becomes `shell`, the `task` tool becomes `subagent`); disabled tools are denied rather than hidden. OpenCode 2 gates the write, edit and patch tools through one `edit` action, so an agent loses writes only when both its `edit` and `write` tools are disabled.
 - Your own global permission rules take precedence over micode's: a rule that asks before shell commands keeps prompting even for agents micode allows to run them.
 - Per-agent `temperature`, `maxTokens` and `thinking` (Anthropic models only) are applied to each request.

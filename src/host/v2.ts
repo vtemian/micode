@@ -61,7 +61,7 @@ const sessionDeleted = z.object({ data: z.object({ sessionID: z.string() }) });
 const stepEnded = z.object({
   data: z.object({
     sessionID: z.string(),
-    tokens: z.object({ input: z.number(), cache: z.object({ read: z.number() }) }),
+    tokens: z.object({ input: z.number(), cache: z.object({ read: z.number(), write: z.number().optional() }) }),
   }),
 });
 const executionFailed = z.object({ data: z.object({ sessionID: z.string(), error: z.unknown() }) });
@@ -199,6 +199,8 @@ export function createV2Host(
 ): SessionHost {
   const { session } = host;
   return {
+    // OpenCode 2 resumes the turn itself after a compaction; auto-compact must not prompt again.
+    resumesAfterCompaction: true,
     runAgent: (run) => runAgent(session, run),
     remove: async (sessionID) => {
       try {
@@ -499,7 +501,13 @@ function usageOf(event: unknown): HostEvent | undefined {
   const parsed = stepEnded.safeParse(event);
   if (!parsed.success) return undefined;
   const { sessionID, tokens } = parsed.data.data;
-  return { type: "assistant.usage", sessionID, input: tokens.input, cacheRead: tokens.cache.read };
+  return {
+    type: "assistant.usage",
+    sessionID,
+    input: tokens.input,
+    cacheRead: tokens.cache.read,
+    cacheWrite: tokens.cache.write,
+  };
 }
 
 function errorOf(event: unknown): HostEvent | undefined {
