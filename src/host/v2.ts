@@ -75,6 +75,10 @@ const compactionFailed = z.object({
 });
 const toolArgs = z.record(z.string(), z.unknown());
 
+/** How OpenCode 2.0.31 serializes turns into a compaction's `recent` text (newline-joined lines). */
+const RECENT_USER = "[User]: ";
+const RECENT_LINE = /\n\[(?:User|Assistant|Tool|Attached|Skill)/;
+
 const effect = z.enum(["allow", "deny", "ask"]);
 /** v1 AgentConfig types none of these; micode's agent configs carry them through its index signature. */
 const extras = z.object({
@@ -145,9 +149,27 @@ async function compact(host: SessionEvents, sessionID: string, timeoutMs: number
   }
 }
 
+type Compaction = Extract<SessionMessage, { type: "compaction"; status: "completed" }>;
+
+function isCompleted(message: SessionMessage): message is Compaction {
+  return message.type === "compaction" && message.status === "completed";
+}
+
+/** The last `[User]: ` turn in a compaction's serialized recent context, up to the next transcript line. */
+function recentUserText(recent: string): string | undefined {
+  const start = recent.lastIndexOf(RECENT_USER);
+  if (start === -1) return undefined;
+  const rest = recent.slice(start + RECENT_USER.length);
+  const end = rest.search(RECENT_LINE);
+  return (end === -1 ? rest : rest.slice(0, end)) || undefined;
+}
+
+/** session.context starts at the last completed compaction, so after one there may be no user row yet. */
 function lastUserText(messages: readonly SessionMessage[]): string | undefined {
   const user = messages.filter((m) => m.type === USER_ROLE).at(-1);
-  return user && "text" in user && typeof user.text === "string" ? user.text || undefined : undefined;
+  if (user) return "text" in user && typeof user.text === "string" ? user.text || undefined : undefined;
+  const compaction = messages.filter(isCompleted).at(-1);
+  return compaction ? recentUserText(compaction.recent) : undefined;
 }
 
 /** The session API takes a plain ref; only agent records need the branded `Model.Ref`. */

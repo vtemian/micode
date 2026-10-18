@@ -174,7 +174,14 @@ function createHost(directory = "/tmp/micode-v2-test") {
       remove: async ({ sessionID }: Any) => {
         sessions.removed.push(sessionID);
       },
+      // session.context starts at the last completed compaction; newer rows follow it.
       context: async () => [
+        {
+          type: "compaction",
+          status: "completed",
+          summary: "the summary",
+          recent: "[User]: older question\n[Assistant]: older answer",
+        },
         { type: "user", text: "question" },
         {
           type: "assistant",
@@ -184,7 +191,6 @@ function createHost(directory = "/tmp/micode-v2-test") {
             { type: "text", text: "answer" },
           ],
         },
-        { type: "compaction", status: "completed", summary: "the summary" },
       ],
     },
     event: {
@@ -935,6 +941,29 @@ describe("createV2Host", () => {
       ],
     } as unknown as V2Host["session"];
     expect((await createV2Host({ ...h.host, session }).runAgent({ agent: "a", text: "t" })).text).toBe("a\nb");
+  });
+
+  it("falls back to the user text kept in the compaction after a host-side compaction", async () => {
+    const h = createHost();
+    // The host serializes recent turns as `[User]: ...` / `[Assistant]: ...` lines joined by newlines.
+    const recent = [
+      "[User]: first ask",
+      "[Assistant]: done",
+      "[User]: fix the bug",
+      "in parser.ts",
+      "[Attached text/plain: notes.txt]",
+      '[Assistant tool call]: read({"path":"parser.ts"})',
+    ].join("\n");
+    const rows = [{ type: "compaction", status: "completed", summary: "s", recent }];
+    const session = { ...h.host.session, context: async () => rows } as unknown as V2Host["session"];
+    expect(await createV2Host({ ...h.host, session }).lastUserText("s1")).toBe("fix the bug\nin parser.ts");
+  });
+
+  it("finds no user text in a compaction without recent user turns", async () => {
+    const h = createHost();
+    const rows = [{ type: "compaction", status: "completed", summary: "s", recent: "[Assistant]: hi" }];
+    const session = { ...h.host.session, context: async () => rows } as unknown as V2Host["session"];
+    expect(await createV2Host({ ...h.host, session }).lastUserText("s1")).toBeUndefined();
   });
 
   it("returns no user text when the context has none", async () => {
