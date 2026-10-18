@@ -78,8 +78,14 @@ function createHost(directory = "/tmp/micode-v2-test") {
   const mcp = new Map<string, Any>();
   const hooks = new Map<string, (input: Any) => Promise<void> | void>();
   let defaultAgent: string | undefined;
-  const queue: Any[] = [];
-  let push: (() => void) | undefined;
+  // Every subscriber gets its own queue, like the host's PubSub, so two back-to-back emits both arrive.
+  const subscribers = new Set<{ queue: Any[]; wake?: () => void }>();
+  const emit = (event: Any) => {
+    for (const subscriber of subscribers) {
+      subscriber.queue.push(event);
+      subscriber.wake?.();
+    }
+  };
   const sessions = {
     created: [] as Any[],
     prompted: [] as Any[],
@@ -159,8 +165,10 @@ function createHost(directory = "/tmp/micode-v2-test") {
         sessions.interrupted.push(sessionID);
         return { interrupted: true };
       },
+      // The host queues the compaction and reports the outcome later as an event.
       compact: async ({ sessionID }: Any) => {
         sessions.compacted.push(sessionID);
+        setTimeout(() => emit({ type: "session.compaction.ended", data: { sessionID, text: "the summary" } }), 1);
         return {};
       },
       remove: async ({ sessionID }: Any) => {
@@ -180,19 +188,24 @@ function createHost(directory = "/tmp/micode-v2-test") {
       ],
     },
     event: {
-      // Events are queued so two back-to-back emits both reach the consumer.
       subscribe: ({ signal }: { signal: AbortSignal }) => ({
         async *[Symbol.asyncIterator]() {
-          while (!signal.aborted) {
-            if (queue.length === 0) {
-              await new Promise<void>((resolve) => {
-                push = resolve;
-                signal.addEventListener("abort", () => resolve(), { once: true });
-              });
+          const subscriber: { queue: Any[]; wake?: () => void } = { queue: [] };
+          subscribers.add(subscriber);
+          try {
+            while (!signal.aborted) {
+              if (subscriber.queue.length === 0) {
+                await new Promise<void>((resolve) => {
+                  subscriber.wake = resolve;
+                  signal.addEventListener("abort", () => resolve(), { once: true });
+                });
+              }
+              if (signal.aborted) return;
+              const event = subscriber.queue.shift();
+              if (event !== undefined) yield event;
             }
-            if (signal.aborted) return;
-            const event = queue.shift();
-            if (event !== undefined) yield event;
+          } finally {
+            subscribers.delete(subscriber);
           }
         },
       }),
@@ -207,10 +220,7 @@ function createHost(directory = "/tmp/micode-v2-test") {
     hooks,
     sessions,
     defaultAgent: () => defaultAgent,
-    emit: (e: Any) => {
-      queue.push(e);
-      push?.();
-    },
+    emit,
   };
 }
 
@@ -794,7 +804,7 @@ describe("createV2Host", () => {
 
   it("runs an agent: create under the parent, prompt, wait and read the reply", async () => {
     const h = createHost();
-    const host = createV2Host(h.host.session);
+    const host = createV2Host(h.host);
     const created: string[] = [];
     const reply = await host.runAgent({
       agent: "probe",
@@ -821,7 +831,7 @@ describe("createV2Host", () => {
 
   it("omits model and permissions when the run does not ask for them", async () => {
     const h = createHost();
-    const host = createV2Host(h.host.session);
+    const host = createV2Host(h.host);
     await host.runAgent({ agent: "a", text: "t" });
     expect(h.sessions.created[0]).toEqual({ agent: "a" });
   });
@@ -839,12 +849,14 @@ describe("createV2Host", () => {
         },
       ],
     } as unknown as V2Host["session"];
-    await expect(createV2Host(session).runAgent({ agent: "a", text: "t" })).rejects.toThrow("model down");
+    await expect(createV2Host({ ...h.host, session }).runAgent({ agent: "a", text: "t" })).rejects.toThrow(
+      "model down",
+    );
   });
 
   it("prompts, interrupts, compacts, reads the last user text and removes through the session api", async () => {
     const h = createHost();
-    const host = createV2Host(h.host.session);
+    const host = createV2Host(h.host);
     await host.prompt("s1", "continue", { model: MODEL, agent: "build" });
     await host.interrupt("s1");
     expect(await host.compact("s1", MODEL)).toBe("the summary");
@@ -853,17 +865,58 @@ describe("createV2Host", () => {
     expect(h.sessions.prompted[0]).toEqual({ sessionID: "s1", text: "continue" });
     expect(h.sessions.interrupted).toEqual(["s1"]);
     expect(h.sessions.compacted).toEqual(["s1"]);
-    expect(h.sessions.waited).toEqual(["s1"]);
+    // v2 resumes the turn itself after compacting; waiting for idle would outlast the compaction.
+    expect(h.sessions.waited).toEqual([]);
     expect(h.sessions.removed).toEqual(["s1"]);
+  });
+
+  /** A session whose compaction outcome is whatever `outcome` emits once compaction is requested. */
+  function compactingWith(h: ReturnType<typeof createHost>, outcome: (sessionID: string) => Any[]) {
+    return {
+      ...h.host.session,
+      compact: async ({ sessionID }: Any) => {
+        setTimeout(() => {
+          for (const event of outcome(sessionID)) h.emit(event);
+        }, 1);
+        return {};
+      },
+    } as unknown as V2Host["session"];
+  }
+
+  it("resolves with this session's compaction summary and ignores other sessions'", async () => {
+    const h = createHost();
+    const session = compactingWith(h, (sessionID) => [
+      { type: "session.compaction.ended", data: { sessionID: "s_other", text: "not mine" } },
+      { type: "session.step.ended", data: { sessionID } },
+      { type: "session.compaction.ended", data: { sessionID, text: "mine" } },
+    ]);
+    expect(await createV2Host({ ...h.host, session }).compact("s1", MODEL)).toBe("mine");
   });
 
   it("rejects a failed compaction instead of returning an empty summary", async () => {
     const h = createHost();
+    const session = compactingWith(h, (sessionID) => [
+      { type: "session.compaction.failed", data: { sessionID, error: { type: "x", message: "too long" } } },
+    ]);
+    await expect(createV2Host({ ...h.host, session }).compact("s1", MODEL)).rejects.toThrow("too long");
+  });
+
+  it("rejects when the compaction never reports back in time", async () => {
+    const h = createHost();
+    const session = compactingWith(h, () => []);
+    const host = createV2Host({ ...h.host, session }, { compactionTimeoutMs: 20 });
+    await expect(host.compact("s1", MODEL)).rejects.toThrow("did not finish within 20ms");
+  });
+
+  it("rejects when the compaction request itself fails", async () => {
+    const h = createHost();
     const session = {
       ...h.host.session,
-      context: async () => [{ type: "compaction", status: "failed", error: { type: "x", message: "too long" } }],
+      compact: async () => {
+        throw new Error("busy");
+      },
     } as unknown as V2Host["session"];
-    await expect(createV2Host(session).compact("s1", MODEL)).rejects.toThrow("too long");
+    await expect(createV2Host({ ...h.host, session }).compact("s1", MODEL)).rejects.toThrow("busy");
   });
 
   it("joins multi-part replies with newlines like the v1 host", async () => {
@@ -881,14 +934,13 @@ describe("createV2Host", () => {
         },
       ],
     } as unknown as V2Host["session"];
-    expect((await createV2Host(session).runAgent({ agent: "a", text: "t" })).text).toBe("a\nb");
+    expect((await createV2Host({ ...h.host, session }).runAgent({ agent: "a", text: "t" })).text).toBe("a\nb");
   });
 
-  it("returns an empty summary and no user text when the context has neither", async () => {
+  it("returns no user text when the context has none", async () => {
     const h = createHost();
     const session = { ...h.host.session, context: async () => [] } as unknown as V2Host["session"];
-    const host = createV2Host(session);
-    expect(await host.compact("s1", MODEL)).toBe("");
+    const host = createV2Host({ ...h.host, session });
     expect(await host.lastUserText("s1")).toBeUndefined();
   });
 
@@ -900,7 +952,7 @@ describe("createV2Host", () => {
         throw new Error("gone");
       },
     } as unknown as V2Host["session"];
-    const host = createV2Host(session);
+    const host = createV2Host({ ...h.host, session });
     await host.remove("s1");
     await host.notify(NOTE);
     expect(logs.warn).toEqual(["[host] failed to remove session s1: gone"]);

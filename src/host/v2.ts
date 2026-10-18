@@ -10,6 +10,7 @@ import { z } from "zod";
 
 import { createMicode, type Micode } from "@/micode";
 import type { MicodeTool } from "@/tools/define";
+import { config } from "@/utils/config";
 import { extractErrorMessage } from "@/utils/errors";
 import { log } from "@/utils/logger";
 
@@ -18,10 +19,18 @@ import type { AgentReply, AgentRun, HostEvent, ModelRef, SessionHost } from "./p
 /** The slice of the v2 plugin context micode uses. Tests fake exactly this. */
 export type V2Host = Pick<Plugin.Context, "location" | "tool" | "agent" | "command" | "mcp" | "event" | "session">;
 
+/** The slice the session host needs: the session API and the event stream compaction reports on. */
+export type SessionEvents = Pick<V2Host, "session" | "event">;
+
+export interface V2HostOptions {
+  readonly compactionTimeoutMs?: number;
+}
+
 /** v2 permission vocabulary for a run that may not call tools (reviewer, probe). */
 export const DENY_ALL_TOOLS = [{ action: "*", resource: "*", effect: "deny" }] as const;
 
 type Session = V2Host["session"];
+type Events = V2Host["event"];
 type AgentRecord = Parameters<Parameters<AgentEditor["update"]>[1]>[0];
 type V2ModelRef = NonNullable<AgentRecord["model"]>;
 type Rule = AgentRecord["permissions"][number];
@@ -56,6 +65,14 @@ const stepEnded = z.object({
   }),
 });
 const executionFailed = z.object({ data: z.object({ sessionID: z.string(), error: z.unknown() }) });
+const compactionEnded = z.object({
+  type: z.literal("session.compaction.ended"),
+  data: z.object({ sessionID: z.string(), text: z.string() }),
+});
+const compactionFailed = z.object({
+  type: z.literal("session.compaction.failed"),
+  data: z.object({ sessionID: z.string(), error: z.object({ message: z.string() }) }),
+});
 const toolArgs = z.record(z.string(), z.unknown());
 
 const effect = z.enum(["allow", "deny", "ask"]);
@@ -90,18 +107,42 @@ export function lastAssistantText(messages: readonly SessionMessage[]): string {
     .join("\n");
 }
 
-type Compaction = Extract<SessionMessage, { type: "compaction" }>;
-
-function isCompaction(message: SessionMessage): message is Compaction {
-  return message.type === "compaction";
+/**
+ * Resolves with the summary from this session's `session.compaction.ended`, and rejects on its
+ * `session.compaction.failed` (a failed compaction must reject like v1 does, never resolve empty).
+ */
+async function compactionOutcome(events: Events, sessionID: string, signal: AbortSignal): Promise<string> {
+  for await (const event of events.subscribe({ signal })) {
+    const ended = compactionEnded.safeParse(event);
+    if (ended.success && ended.data.data.sessionID === sessionID) return ended.data.data.text;
+    const failed = compactionFailed.safeParse(event);
+    if (failed.success && failed.data.data.sessionID === sessionID) {
+      throw new Error(`Compaction failed: ${failed.data.data.error.message}`);
+    }
+  }
+  throw new Error("Compaction outcome never arrived");
 }
 
-/** A failed compaction must reject like v1 does, never resolve with an empty summary. */
-function lastSummary(messages: readonly SessionMessage[]): string {
-  const compaction = messages.filter(isCompaction).at(-1);
-  if (!compaction) return "";
-  if (compaction.status === "failed") throw new Error(`Compaction failed: ${compaction.error.message}`);
-  return compaction.status === "completed" ? compaction.summary : "";
+/**
+ * v2 queues compaction for the next step boundary and resumes the turn itself afterwards, so
+ * waiting for idle would only return once the agent stopped. A manual compaction that gets
+ * interrupted emits no outcome at all (2.0.31), hence the timeout.
+ */
+async function compact(host: SessionEvents, sessionID: string, timeoutMs: number): Promise<string> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  // Subscribe before requesting, so a fast outcome cannot slip past.
+  const outcome = compactionOutcome(host.event, sessionID, controller.signal).catch((error: unknown) => {
+    if (!controller.signal.aborted) throw error;
+    throw new Error(`Compaction did not finish within ${timeoutMs}ms`);
+  });
+  try {
+    const [, summary] = await Promise.all([host.session.compact({ sessionID }), outcome]);
+    return summary;
+  } finally {
+    clearTimeout(timer);
+    controller.abort();
+  }
 }
 
 function lastUserText(messages: readonly SessionMessage[]): string | undefined {
@@ -129,7 +170,11 @@ async function runAgent(session: Session, run: AgentRun): Promise<AgentReply> {
   return { sessionID, text: lastAssistantText(await session.context({ sessionID })) };
 }
 
-export function createV2Host(session: Session): SessionHost {
+export function createV2Host(
+  host: SessionEvents,
+  { compactionTimeoutMs = config.compaction.timeoutMs }: V2HostOptions = {},
+): SessionHost {
+  const { session } = host;
   return {
     runAgent: (run) => runAgent(session, run),
     remove: async (sessionID) => {
@@ -146,11 +191,7 @@ export function createV2Host(session: Session): SessionHost {
     interrupt: async (sessionID) => {
       await session.interrupt({ sessionID });
     },
-    compact: async (sessionID) => {
-      await session.compact({ sessionID });
-      await session.wait({ sessionID });
-      return lastSummary(await session.context({ sessionID }));
-    },
+    compact: (sessionID) => compact(host, sessionID, compactionTimeoutMs),
     lastUserText: async (sessionID) => lastUserText(await session.context({ sessionID })),
     notify: async (notification) => {
       // No server-side toast on v2; a TUI subplugin is a follow-up.
@@ -481,7 +522,7 @@ export async function setup(host: V2Host): Promise<Plugin.Cleanup> {
   const parseModel: ParseModel = (ref) => Model.Ref.parse(ref);
   const micode = await createMicode({
     directory: host.location.directory,
-    host: createV2Host(host.session),
+    host: createV2Host(host),
   });
 
   try {
