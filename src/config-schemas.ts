@@ -8,12 +8,24 @@ import * as v from "valibot";
 const MODEL_REF_PATTERN = /^[^/#]+\/[^#]+$/u;
 const VARIANT_SEPARATOR = "#";
 
-function stripVariant(ref: string): string {
-  const index = ref.indexOf(VARIANT_SEPARATOR);
-  return index === -1 ? ref : ref.slice(0, index);
+export interface ModelSelection {
+  readonly ref: string;
+  readonly variant?: string;
 }
 
-const ModelStringSchema = v.pipe(v.string(), v.trim(), v.transform(stripVariant), v.regex(MODEL_REF_PATTERN));
+function selectionOf(ref: string, variant: string | undefined): ModelSelection {
+  return variant ? { ref, variant } : { ref };
+}
+
+function splitVariant(raw: string): ModelSelection {
+  const index = raw.indexOf(VARIANT_SEPARATOR);
+  if (index === -1) return { ref: raw };
+  return selectionOf(raw.slice(0, index), raw.slice(index + 1));
+}
+
+const hasModelRef = (selection: ModelSelection): boolean => MODEL_REF_PATTERN.test(selection.ref);
+
+const ModelStringSchema = v.pipe(v.string(), v.trim(), v.transform(splitVariant), v.check(hasModelRef));
 
 // OpenCode 2's explicit form: { providerID, model, variant? }.
 const ModelObjectSchema = v.pipe(
@@ -22,16 +34,21 @@ const ModelObjectSchema = v.pipe(
     model: v.pipe(v.string(), v.nonEmpty()),
     variant: v.optional(v.string()),
   }),
-  v.transform((selection) => `${selection.providerID}/${selection.model}`),
-  v.regex(MODEL_REF_PATTERN),
+  v.transform((selection) => selectionOf(`${selection.providerID}/${selection.model}`, selection.variant)),
+  v.check(hasModelRef),
 );
 
-const ModelRefSchema = v.union([ModelStringSchema, ModelObjectSchema]);
+const ModelSelectionSchema = v.union([ModelStringSchema, ModelObjectSchema]);
 
-/** Normalizes a v1 string or v2 object model selection to "provider/model"; undefined when malformed. */
-export function parseModelRef(raw: unknown): string | undefined {
-  const result = v.safeParse(ModelRefSchema, raw);
+/** Normalizes a v1 string or v2 object model selection to a "provider/model" ref plus variant; undefined when malformed. */
+export function parseModelSelection(raw: unknown): ModelSelection | undefined {
+  const result = v.safeParse(ModelSelectionSchema, raw);
   return result.success ? result.output : undefined;
+}
+
+/** The "provider/model" ref of a selection; the variant is dropped. */
+export function parseModelRef(raw: unknown): string | undefined {
+  return parseModelSelection(raw)?.ref;
 }
 
 // --- micode.json schemas ---
@@ -43,6 +60,7 @@ const ThinkingSchema = v.object({
 
 const AgentOverrideSchema = v.object({
   model: v.optional(v.string()),
+  variant: v.optional(v.string()),
   temperature: v.optional(v.number()),
   maxTokens: v.optional(v.number()),
   steps: v.optional(v.number()),
@@ -74,7 +92,15 @@ export const RawMicodeConfigSchema = v.object({
 });
 
 // Safe properties that users can override in agent configs
-const SAFE_AGENT_PROPERTIES = ["model", "temperature", "maxTokens", "steps", "maxSteps", "thinking"] as const;
+const SAFE_AGENT_PROPERTIES = [
+  "model",
+  "variant",
+  "temperature",
+  "maxTokens",
+  "steps",
+  "maxSteps",
+  "thinking",
+] as const;
 
 type AgentOverrideOutput = v.InferOutput<typeof AgentOverrideSchema>;
 
@@ -86,6 +112,20 @@ function pickSafeProperties(record: Record<string, unknown>): Record<string, unk
   return picked;
 }
 
+function normalizeModel(picked: Record<string, unknown>, name: string, warnings: string[]): void {
+  if (picked.model === undefined) return;
+  const selection = parseModelSelection(picked.model);
+  if (selection === undefined) {
+    warnings.push(
+      `Model ${JSON.stringify(picked.model)} for agent "${name}" is not a provider/model ref. Using default.`,
+    );
+    delete picked.model;
+    return;
+  }
+  picked.model = selection.ref;
+  if (selection.variant) picked.variant = selection.variant;
+}
+
 /**
  * Validate and sanitize an individual agent override.
  * Only picks safe properties; extra keys from user config are discarded. A malformed model ref
@@ -95,15 +135,7 @@ export function sanitizeAgentOverride(raw: unknown, name = "", warnings: string[
   if (!raw || typeof raw !== "object") return null;
 
   const picked = pickSafeProperties(raw as Record<string, unknown>);
-  if (picked.model !== undefined) {
-    const model = parseModelRef(picked.model);
-    if (model === undefined) {
-      warnings.push(
-        `Model ${JSON.stringify(picked.model)} for agent "${name}" is not a provider/model ref. Using default.`,
-      );
-      delete picked.model;
-    } else picked.model = model;
-  }
+  normalizeModel(picked, name, warnings);
 
   const result = v.safeParse(AgentOverrideSchema, picked);
   if (!result.success) return null;

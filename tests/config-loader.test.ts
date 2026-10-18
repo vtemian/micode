@@ -1203,6 +1203,28 @@ describe("opencode config sources and model shapes", () => {
     expect(loadDefaultModel(dir)).toBe("openrouter/anthropic/claude");
   });
 
+  it("reports the default model's variant separately from its ref", () => {
+    writeFileSync(join(dir, "opencode.json"), JSON.stringify({ model: "openai/gpt-5#high" }));
+    const settings = loadOpencodeSettings(dir);
+    expect(settings.model).toBe("openai/gpt-5");
+    expect(settings.variant).toBe("high");
+  });
+
+  it("sets the variant on agent configs from the default model", () => {
+    const plugin = { commander: { description: "Main", model: "a/b" } };
+    const merged = mergeAgentConfigs(plugin, null, new Set(["a/b", "p/m"]), "p/m", undefined, "high");
+    expect(merged.commander.model).toBe("p/m");
+    expect(merged.commander.variant).toBe("high");
+  });
+
+  it("lets a per-agent model override replace the default variant", () => {
+    const userConfig = { agents: { commander: { model: "a/b", variant: "low" }, planner: { model: "a/b" } } };
+    const plugin = { commander: { description: "Main" }, planner: { description: "Plan" } };
+    const merged = mergeAgentConfigs(plugin, userConfig, new Set(["a/b", "p/m"]), "p/m", undefined, "high");
+    expect(merged.commander.variant).toBe("low");
+    expect(merged.planner.variant).toBeUndefined();
+  });
+
   it("reads the model from opencode.json when opencode.jsonc exists without one", () => {
     writeFileSync(join(dir, "opencode.json"), JSON.stringify({ model: "anthropic/claude-opus" }));
     writeFileSync(
@@ -1279,6 +1301,12 @@ describe("micode.json agent model overrides", () => {
     logs.restore();
     expect(logs.unread()).toEqual([]);
     rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("keeps the variant of a per-agent model override as a separate field", async () => {
+    writeFileSync(join(dir, "micode.json"), JSON.stringify({ agents: { executor: { model: "openai/gpt-4o#low" } } }));
+    const config = await loadMicodeConfig(dir);
+    expect(config?.agents?.executor).toEqual({ model: "openai/gpt-4o", variant: "low" });
   });
 
   it("drops a model without a provider prefix or an empty model, keeping the other fields", async () => {

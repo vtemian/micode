@@ -11,7 +11,7 @@ import {
   extractContextLimits,
   extractProviderIds,
   extractProviderModels,
-  parseModelRef,
+  parseModelSelection,
   parseProviderRecord,
   RawMicodeConfigSchema,
   sanitizeAgentsRecord,
@@ -34,6 +34,8 @@ export interface ProviderInfo {
 export interface OpencodeSettings {
   /** Default model as "provider/model". */
   readonly model?: string;
+  /** Variant of the default model (the part after "#", or the object form's `variant`). */
+  readonly variant?: string;
   readonly provider?: Record<string, unknown>;
   /** Problems found while reading; the affected file or field was skipped. */
   readonly warnings: readonly string[];
@@ -90,12 +92,12 @@ export function loadOpencodeSettings(configDir?: string): OpencodeSettings {
   const warnings: string[] = [];
   const merged: Record<string, unknown> = {};
   for (const file of OPENCODE_CONFIG_FILES) Object.assign(merged, readConfigObject(baseDir, file, warnings));
-  const model = parseField(merged.model, parseModelRef, warnings, "model is not a provider/model ref");
+  const selection = parseField(merged.model, parseModelSelection, warnings, "model is not a provider/model ref");
   const legacy = parseField(merged.provider, parseProviderRecord, warnings, "provider must be an object");
   const native = parseField(merged.providers, parseProviderRecord, warnings, "providers must be an object");
   // OpenCode 2 reads both keys; its native `providers` wins on conflict.
   const provider = legacy || native ? { ...legacy, ...native } : undefined;
-  return { model, provider, warnings };
+  return { model: selection?.ref, variant: selection?.variant, provider, warnings };
 }
 
 function parseField<T>(
@@ -161,6 +163,7 @@ const BUILTIN_MODELS = new Set(["opencode/big-pickle"]);
 
 export interface AgentOverride {
   readonly model?: string;
+  readonly variant?: string;
   readonly temperature?: number;
   readonly maxTokens?: number;
   readonly steps?: number;
@@ -257,13 +260,16 @@ export function mergeAgentConfigs(
   availableModels?: Set<string>,
   defaultModel?: string | null,
   configuredProviders?: Set<string>,
+  defaultVariant?: string | null,
 ): Record<string, AgentConfig> {
   const models = availableModels ?? loadAvailableModels();
   // Injected models without injected providers means a test pinning the exact
   // model list; production loads both from the same config file.
   const providers = configuredProviders ?? (availableModels ? new Set<string>() : loadConfiguredProviders());
   const shouldValidateModels = models.size > 0 || providers.size > 0;
-  const opencodeDefaultModel = defaultModel !== undefined ? defaultModel : loadDefaultModel();
+  const settings = defaultModel === undefined ? loadOpencodeSettings() : undefined;
+  const opencodeDefaultModel = defaultModel === undefined ? (settings?.model ?? null) : defaultModel;
+  const opencodeDefaultVariant = defaultVariant === undefined ? (settings?.variant ?? null) : defaultVariant;
 
   const isValidModel = (model: string): boolean => {
     if (BUILTIN_MODELS.has(model)) return true;
@@ -278,24 +284,31 @@ export function mergeAgentConfigs(
   const merged: Record<string, AgentConfig> = {};
 
   for (const [name, agentConfig] of Object.entries(pluginAgents)) {
-    merged[name] = mergeOneAgent(agentConfig, userConfig?.agents?.[name], name, opencodeDefaultModel, isValidModel);
+    const defaults = { model: opencodeDefaultModel, variant: opencodeDefaultVariant };
+    merged[name] = mergeOneAgent(agentConfig, userConfig?.agents?.[name], name, defaults, isValidModel);
   }
 
   return merged;
+}
+
+interface DefaultModel {
+  readonly model: string | null;
+  readonly variant: string | null;
 }
 
 function mergeOneAgent(
   agentConfig: AgentConfig,
   userOverride: AgentOverride | undefined,
   name: string,
-  opencodeDefaultModel: string | null,
+  defaults: DefaultModel,
   isValidModel: (model: string) => boolean,
 ): AgentConfig {
   let finalConfig: AgentConfig = { ...agentConfig };
 
   // Apply opencode default model if available and valid (overrides plugin default)
-  if (opencodeDefaultModel && isValidModel(opencodeDefaultModel)) {
-    finalConfig = { ...finalConfig, model: opencodeDefaultModel };
+  if (defaults.model && isValidModel(defaults.model)) {
+    finalConfig = { ...finalConfig, model: defaults.model };
+    if (defaults.variant) finalConfig = { ...finalConfig, variant: defaults.variant };
   }
 
   if (!userOverride) return finalConfig;
@@ -314,7 +327,9 @@ function applyUserOverride(
   }
 
   if (isValidModel(override.model)) {
-    return { ...config, ...override };
+    // The default model's variant belongs to that model, not to the override's.
+    const { variant: _inherited, ...rest } = config;
+    return { ...rest, ...override };
   }
 
   // Model is invalid - log warning and apply other overrides only
