@@ -34,6 +34,9 @@ interface ConstraintReviewerHooks {
   cleanupSession: (sessionID: string) => void;
 }
 
+// OpenCode's file-writing tools, named as both hosts register them.
+const REVIEWED_TOOLS: readonly string[] = ["write", "edit", "multiedit", "patch"];
+
 export function createConstraintReviewerHook(ctx: Workspace, review: Reviewer): ConstraintReviewerHooks {
   let mindmodel: LoadedMindmodel | null | undefined;
   const sessionState = new Map<string, ReviewState>();
@@ -92,7 +95,7 @@ async function reviewToolOutput(
   getSessionState: (sessionID: string) => ReviewState,
   review: Reviewer,
 ): Promise<void> {
-  if (!["Write", "Edit"].includes(input.tool)) return;
+  if (!REVIEWED_TOOLS.includes(input.tool)) return;
   if (!config.mindmodel.reviewEnabled) return;
   if (!mindmodel) return;
 
@@ -103,8 +106,9 @@ async function reviewToolOutput(
     return;
   }
 
-  const filePath = input.args?.file_path as string | undefined;
-  if (!filePath) return;
+  // Both hosts' write/edit tools pass `filePath` (the v2 adapter adds it alongside `path`).
+  const filePath = input.args?.filePath;
+  if (typeof filePath !== "string" || !filePath) return;
 
   try {
     const reviewPrompt = buildReviewPrompt(output.output || "", filePath, mindmodel);

@@ -66,7 +66,7 @@ categories:
     const hook = createConstraintReviewerHook(mockCtx, mockReviewer);
 
     const output = { output: "some code" };
-    await hook["tool.execute.after"]({ tool: "Write", sessionID: "test", args: { file_path: "test.ts" } }, output);
+    await hook["tool.execute.after"]({ tool: "write", sessionID: "test", args: { filePath: "test.ts" } }, output);
 
     // Should not modify output when no mindmodel
     expect(output.output).toBe("some code");
@@ -87,7 +87,7 @@ categories:
     const hook = createConstraintReviewerHook(mockCtx, mockReviewer);
 
     const output = { output: "some result" };
-    await hook["tool.execute.after"]({ tool: "Read", sessionID: "test", args: { file_path: "test.ts" } }, output);
+    await hook["tool.execute.after"]({ tool: "Read", sessionID: "test", args: { filePath: "test.ts" } }, output);
 
     expect(reviewCalled).toBe(false);
   });
@@ -109,9 +109,9 @@ categories:
     const output = { output: "some code" };
     await hook["tool.execute.after"](
       {
-        tool: "Write",
+        tool: "write",
         sessionID: "test",
-        args: { file_path: join(testDir, "test.ts") },
+        args: { filePath: join(testDir, "test.ts") },
       },
       output,
     );
@@ -136,14 +136,35 @@ categories:
     const output = { output: "edited code" };
     await hook["tool.execute.after"](
       {
-        tool: "Edit",
+        tool: "edit",
         sessionID: "test",
-        args: { file_path: join(testDir, "test.ts") },
+        args: { filePath: join(testDir, "test.ts") },
       },
       output,
     );
 
     expect(reviewCalled).toBe(true);
+  });
+
+  it("reviews multiedit but ignores a patch call that names no filePath", async () => {
+    setupMindmodel(testDir);
+
+    const { createConstraintReviewerHook } = await import("../../src/hooks/constraint-reviewer");
+
+    const reviewed: string[] = [];
+    const hook = createConstraintReviewerHook(createMockCtx(testDir), async (prompt) => {
+      reviewed.push(prompt);
+      return '{"status": "PASS", "violations": [], "summary": "OK"}';
+    });
+
+    const file = join(testDir, "test.ts");
+    await hook["tool.execute.after"](
+      { tool: "multiedit", sessionID: "test", args: { filePath: file } },
+      { output: "x" },
+    );
+    await hook["tool.execute.after"]({ tool: "patch", sessionID: "test", args: { patchText: "..." } }, { output: "y" });
+
+    expect(reviewed).toHaveLength(1);
   });
 
   it("should not modify output when review passes", async () => {
@@ -159,9 +180,9 @@ categories:
     const output = { output: "clean code" };
     await hook["tool.execute.after"](
       {
-        tool: "Write",
+        tool: "write",
         sessionID: "test",
-        args: { file_path: join(testDir, "test.ts") },
+        args: { filePath: join(testDir, "test.ts") },
       },
       output,
     );
@@ -196,9 +217,9 @@ categories:
     const output = { output: "bad code" };
     await hook["tool.execute.after"](
       {
-        tool: "Write",
+        tool: "write",
         sessionID: "test-session",
-        args: { file_path: join(testDir, "test.ts") },
+        args: { filePath: join(testDir, "test.ts") },
       },
       output,
     );
@@ -238,9 +259,9 @@ categories:
     const output1 = { output: "bad code" };
     await hook["tool.execute.after"](
       {
-        tool: "Write",
+        tool: "write",
         sessionID: "test-session",
-        args: { file_path: join(testDir, "test.ts") },
+        args: { filePath: join(testDir, "test.ts") },
       },
       output1,
     );
@@ -250,9 +271,9 @@ categories:
     try {
       await hook["tool.execute.after"](
         {
-          tool: "Write",
+          tool: "write",
           sessionID: "test-session",
-          args: { file_path: join(testDir, "test.ts") },
+          args: { filePath: join(testDir, "test.ts") },
         },
         output2,
       );
@@ -300,9 +321,9 @@ categories:
     const output = { output: "bad code that would normally be blocked" };
     await hook["tool.execute.after"](
       {
-        tool: "Write",
+        tool: "write",
         sessionID: "test-session",
-        args: { file_path: join(testDir, "test.ts") },
+        args: { filePath: join(testDir, "test.ts") },
       },
       output,
     );
@@ -336,9 +357,9 @@ categories:
     // First tool call - should skip review
     await hook["tool.execute.after"](
       {
-        tool: "Write",
+        tool: "write",
         sessionID: "test-session",
-        args: { file_path: join(testDir, "test.ts") },
+        args: { filePath: join(testDir, "test.ts") },
       },
       { output: "code 1" },
     );
@@ -348,9 +369,9 @@ categories:
     // Second tool call - should review again
     await hook["tool.execute.after"](
       {
-        tool: "Write",
+        tool: "write",
         sessionID: "test-session",
-        args: { file_path: join(testDir, "test2.ts") },
+        args: { filePath: join(testDir, "test2.ts") },
       },
       { output: "code 2" },
     );
@@ -374,7 +395,7 @@ categories:
     const hook = createConstraintReviewerHook(mockCtx, mockReviewer);
 
     const output = { output: "some code" };
-    await hook["tool.execute.after"]({ tool: "Write", sessionID: "test", args: {} }, output);
+    await hook["tool.execute.after"]({ tool: "write", sessionID: "test", args: {} }, output);
 
     expect(reviewCalled).toBe(false);
   });
@@ -395,9 +416,9 @@ categories:
     const output = { output: "some code" };
     await hook["tool.execute.after"](
       {
-        tool: "Write",
+        tool: "write",
         sessionID: "test",
-        args: { file_path: join(testDir, "test.ts") },
+        args: { filePath: join(testDir, "test.ts") },
       },
       output,
     );
@@ -426,7 +447,7 @@ categories:
     // First file - first retry
     const output1 = { output: "code" };
     await hook["tool.execute.after"](
-      { tool: "Write", sessionID: "test-session", args: { file_path: join(testDir, "file1.ts") } },
+      { tool: "write", sessionID: "test-session", args: { filePath: join(testDir, "file1.ts") } },
       output1,
     );
     expect(output1.output).toContain("constraint-violations");
@@ -434,7 +455,7 @@ categories:
     // Second file - should also be first retry (not blocked), since retry count is per-file
     const output2 = { output: "code" };
     await hook["tool.execute.after"](
-      { tool: "Write", sessionID: "test-session", args: { file_path: join(testDir, "file2.ts") } },
+      { tool: "write", sessionID: "test-session", args: { filePath: join(testDir, "file2.ts") } },
       output2,
     );
     expect(output2.output).toContain("constraint-violations");
@@ -442,7 +463,7 @@ categories:
     // First file again - should now be blocked (second retry)
     try {
       await hook["tool.execute.after"](
-        { tool: "Write", sessionID: "test-session", args: { file_path: join(testDir, "file1.ts") } },
+        { tool: "write", sessionID: "test-session", args: { filePath: join(testDir, "file1.ts") } },
         { output: "code" },
       );
       expect(true).toBe(false); // Should throw
@@ -467,7 +488,7 @@ categories:
 
     // Build up some state
     await hook["tool.execute.after"](
-      { tool: "Write", sessionID: "cleanup-test", args: { file_path: join(testDir, "test.ts") } },
+      { tool: "write", sessionID: "cleanup-test", args: { filePath: join(testDir, "test.ts") } },
       { output: "code" },
     );
 
@@ -477,7 +498,7 @@ categories:
     // After cleanup, retry count should be reset - so first edit should be a retry, not a block
     const output = { output: "code" };
     await hook["tool.execute.after"](
-      { tool: "Write", sessionID: "cleanup-test", args: { file_path: join(testDir, "test.ts") } },
+      { tool: "write", sessionID: "cleanup-test", args: { filePath: join(testDir, "test.ts") } },
       output,
     );
     // Should append violations (first retry), not throw

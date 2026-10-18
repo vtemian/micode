@@ -111,8 +111,9 @@ export function createCommentCheckerHook(_ctx: Workspace): CommentCheckerHooks {
       // Only check Edit tool
       if (input.tool !== "Edit" && input.tool !== "edit") return;
 
-      const replacement = input.args?.new_string as string | undefined;
-      if (!replacement) return;
+      // Both hosts' edit tools send the replacement as `newString`.
+      const replacement = input.args?.newString;
+      if (typeof replacement !== "string" || !replacement) return;
 
       const issues = analyzeComments(replacement);
 

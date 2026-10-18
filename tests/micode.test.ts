@@ -254,7 +254,7 @@ describe("system prompt scoping", () => {
     const core = await createMicode({ directory: dir, host });
     ref.core = core;
     try {
-      await core.onToolResult({ tool: "Write", sessionID: "s1", args: { file_path: "/x/a.ts" }, output: "ok" });
+      await core.onToolResult({ tool: "write", sessionID: "s1", args: { filePath: "/x/a.ts" }, output: "ok" });
       expect(seen).toEqual([["base"]]);
       // Once removed, the id is an ordinary session again.
       expect(await prompt(core, "ses_review")).toContain(ARCH_MARK);
