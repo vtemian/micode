@@ -35,26 +35,38 @@ async function findLatestFile(dir: string, files: string[]): Promise<string> {
   return latestFile;
 }
 
-export async function findCurrentLedger(directory: string): Promise<LedgerInfo | null> {
-  const ledgerDir = join(directory, config.paths.ledgerDir);
+async function readLedger(ledgerDir: string, file: string): Promise<LedgerInfo | null> {
+  const filePath = join(ledgerDir, file);
+  try {
+    const content = await readFile(filePath, "utf-8");
+    const sessionName = file.replace(config.paths.ledgerPrefix, "").replace(".md", "");
+    return { sessionName, filePath, content };
+  } catch {
+    // A missing or unreadable ledger just means there is nothing to resume from
+    return null;
+  }
+}
 
+async function findNewestLedger(ledgerDir: string): Promise<LedgerInfo | null> {
   try {
     const files = await readdir(ledgerDir);
     const ledgerFiles = files.filter((f) => f.startsWith(config.paths.ledgerPrefix) && f.endsWith(".md"));
-
     if (ledgerFiles.length === 0) return null;
 
-    // Get most recently modified ledger
-    const latestFile = await findLatestFile(ledgerDir, ledgerFiles);
-
-    const filePath = join(ledgerDir, latestFile);
-    const content = await readFile(filePath, "utf-8");
-    const sessionName = latestFile.replace(config.paths.ledgerPrefix, "").replace(".md", "");
-
-    return { sessionName, filePath, content };
+    return readLedger(ledgerDir, await findLatestFile(ledgerDir, ledgerFiles));
   } catch {
+    // No ledger directory yet
     return null;
   }
+}
+
+export async function findCurrentLedger(directory: string, sessionID?: string): Promise<LedgerInfo | null> {
+  const ledgerDir = join(directory, config.paths.ledgerDir);
+  if (sessionID) {
+    const own = await readLedger(ledgerDir, `${config.paths.ledgerPrefix}${sessionID}.md`);
+    if (own) return own;
+  }
+  return findNewestLedger(ledgerDir);
 }
 
 export function formatLedgerInjection(ledger: LedgerInfo): string {
@@ -76,10 +88,10 @@ interface LedgerLoaderHooks {
 export function createLedgerLoaderHook(ctx: Workspace): LedgerLoaderHooks {
   return {
     "chat.params": async (
-      _input: { sessionID: string },
+      input: { sessionID: string },
       output: { options?: Record<string, unknown>; system?: string },
     ) => {
-      const ledger = await findCurrentLedger(ctx.directory);
+      const ledger = await findCurrentLedger(ctx.directory, input.sessionID);
       if (!ledger) return;
 
       const injection = formatLedgerInjection(ledger);
