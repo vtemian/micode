@@ -1,4 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { agents } from "../../src/agents";
 import {
   createV2Host,
@@ -68,7 +71,7 @@ function parseModel(ref: string): any {
   return variant ? { providerID, id, variant } : { providerID, id };
 }
 
-function createHost() {
+function createHost(directory = "/tmp/micode-v2-test") {
   const tools = new Map<string, Any>();
   const agents = new Map<string, Any>();
   const commands = new Map<string, Any>();
@@ -89,7 +92,7 @@ function createHost() {
   const registration = { dispose: async () => {} };
 
   const host = {
-    location: { directory: "/tmp/micode-v2-test" },
+    location: { directory },
     tool: {
       transform: async (edit: (e: Any) => void) => {
         edit({ add: (t: Any) => tools.set(t.name, t) });
@@ -369,7 +372,7 @@ describe("v2 setup", () => {
     const event = {
       tool: "read",
       sessionID: "s1",
-      input: { filePath: "/x/a.ts" },
+      input: { path: "/x/a.ts" },
       status: "completed",
       result: { content: "body" },
     };
@@ -389,6 +392,28 @@ describe("v2 setup", () => {
     expect(failed.error).toEqual({ message: "boom" });
   });
 
+  it("feeds the built-in tools' v2 `path` argument to micode's file trackers", async () => {
+    const project = await mkdtemp(join(tmpdir(), "micode-v2-path-"));
+    try {
+      await mkdir(join(project, "src"));
+      await writeFile(join(project, "src", "README.md"), "module notes");
+      const h = createHost(project);
+      cleanup = await setup(h.host);
+      const after = h.hooks.get("tool.execute.after")!;
+      // OpenCode 2's read/write/edit take `path`, relative to the project or absolute; never `filePath`.
+      const relative = { tool: "read", sessionID: "s1", input: { path: "src/a.ts" }, status: "completed" };
+      const withResult = { ...relative, result: { content: "body" } };
+      await after(withResult);
+      expect(withResult.result.content).toContain("module notes");
+      expect(withResult.input).toEqual({ path: "src/a.ts" });
+      const absolute = { ...relative, input: { path: join(project, "src", "b.ts") }, result: { content: "body" } };
+      await after(absolute);
+      expect(absolute.result.content).toContain("module notes");
+    } finally {
+      await rm(project, { recursive: true, force: true });
+    }
+  });
+
   it("logs and keeps the tool result when post-processing throws", async () => {
     const h = createHost();
     cleanup = await setup(h.host);
@@ -398,7 +423,7 @@ describe("v2 setup", () => {
     const event = {
       tool: "read",
       sessionID: "s1",
-      input: { filePath: "/x/a.ts" },
+      input: { path: "/x/a.ts" },
       status: "completed",
       get result() {
         return { content: "body" };

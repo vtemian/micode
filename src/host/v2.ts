@@ -1,3 +1,5 @@
+import { resolve } from "node:path";
+
 import type { Plugin } from "@opencode/plugin";
 import type { AgentEditor } from "@opencode/plugin/promise/agent";
 import type { MCPEditor } from "@opencode/plugin/promise/mcp";
@@ -53,6 +55,7 @@ const stepEnded = z.object({
   }),
 });
 const executionFailed = z.object({ data: z.object({ sessionID: z.string(), error: z.unknown() }) });
+const toolArgs = z.record(z.string(), z.unknown());
 
 const effect = z.enum(["allow", "deny", "ask"]);
 /** v1 AgentConfig types none of these; micode's agent configs carry them through its index signature. */
@@ -369,8 +372,16 @@ async function registerSessionHooks(host: V2Host, micode: Micode): Promise<void>
   });
 }
 
-function recordArgs(args: unknown): Record<string, unknown> | undefined {
-  return typeof args === "object" && args !== null ? (args as Record<string, unknown>) : undefined;
+/**
+ * OpenCode 2's read/write/edit take `path` (project-relative or absolute; verified on 2.0.31), while
+ * micode's file trackers read v1's absolute `filePath`. The original keys are kept alongside.
+ */
+function toV1Args(args: unknown, directory: string): Record<string, unknown> | undefined {
+  const parsed = toolArgs.safeParse(args);
+  if (!parsed.success) return undefined;
+  const { path, filePath } = parsed.data;
+  if (typeof path !== "string" || filePath !== undefined) return parsed.data;
+  return { ...parsed.data, filePath: resolve(directory, path) };
 }
 
 async function registerToolHook(host: V2Host, micode: Micode): Promise<void> {
@@ -382,7 +393,7 @@ async function registerToolHook(host: V2Host, micode: Micode): Promise<void> {
       const content = await micode.onToolResult({
         tool: input.tool,
         sessionID: input.sessionID,
-        args: recordArgs(input.input),
+        args: toV1Args(input.input, host.location.directory),
         output: input.result.content,
       });
       input.result = { ...input.result, content };
