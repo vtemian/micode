@@ -1,4 +1,7 @@
 // src/hooks/constraint-reviewer.ts
+import { readFile } from "node:fs/promises";
+import { isAbsolute, join } from "node:path";
+
 import type { Workspace } from "@/host/port";
 
 import {
@@ -69,7 +72,7 @@ export function createConstraintReviewerHook(ctx: Workspace, review: Reviewer): 
       output: { output?: string },
     ) => {
       const mindmodel = await getMindmodel();
-      await reviewToolOutput(input, output, mindmodel, getSessionState, review);
+      await reviewToolOutput(ctx, input, output, mindmodel, getSessionState, review);
     },
 
     "chat.message": async (input: { sessionID: string }, output: { parts: Array<{ type: string; text?: string }> }) => {
@@ -89,6 +92,7 @@ function handleReviewError(error: unknown): void {
 }
 
 async function reviewToolOutput(
+  ctx: Workspace,
   input: { tool: string; sessionID: string; args?: Record<string, unknown> },
   output: { output?: string },
   mindmodel: LoadedMindmodel | null,
@@ -111,7 +115,9 @@ async function reviewToolOutput(
   if (typeof filePath !== "string" || !filePath) return;
 
   try {
-    const reviewPrompt = buildReviewPrompt(output.output || "", filePath, mindmodel);
+    const absolute = isAbsolute(filePath) ? filePath : join(ctx.directory, filePath);
+    const code = await readFile(absolute, "utf-8").catch(() => output.output || "");
+    const reviewPrompt = buildReviewPrompt(code, filePath, mindmodel);
     const reviewResponse = await review(reviewPrompt);
     const result = parseReviewResponse(reviewResponse);
 

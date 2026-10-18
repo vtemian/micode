@@ -57,6 +57,39 @@ categories:
     );
   }
 
+  async function collectPrompts(filePath: string, toolOutput: string, tool = "write"): Promise<string[]> {
+    const { createConstraintReviewerHook } = await import("../../src/hooks/constraint-reviewer");
+    const prompts: string[] = [];
+    const reviewer = async (prompt: string) => {
+      prompts.push(prompt);
+      return '{"status": "PASS", "violations": []}';
+    };
+    const hook = createConstraintReviewerHook(createMockCtx(testDir), reviewer);
+    await hook["tool.execute.after"]({ tool, sessionID: "test", args: { filePath } }, { output: toolOutput });
+    return prompts;
+  }
+
+  it("reviews the written file's content rather than the tool's status text", async () => {
+    setupMindmodel(testDir);
+    const filePath = join(testDir, "bad.ts");
+    writeFileSync(filePath, "const BAD = 1;\n");
+
+    const prompts = await collectPrompts(filePath, "Wrote file successfully.");
+
+    expect(prompts).toHaveLength(1);
+    expect(prompts[0]).toContain("const BAD = 1;");
+    expect(prompts[0]).not.toContain("Wrote file successfully.");
+  });
+
+  it("resolves a relative file path against the workspace directory", async () => {
+    setupMindmodel(testDir);
+    writeFileSync(join(testDir, "rel.ts"), "const REL = 2;\n");
+
+    const prompts = await collectPrompts("rel.ts", "Edit applied successfully.", "edit");
+
+    expect(prompts[0]).toContain("const REL = 2;");
+  });
+
   it("should skip review when no mindmodel exists", async () => {
     const { createConstraintReviewerHook } = await import("../../src/hooks/constraint-reviewer");
 
