@@ -347,13 +347,48 @@ describe("v1 server", () => {
       const { hooks } = await load();
       const cfg: any = { permission: { edit: "ask", doom_loop: "ask" } };
       await hooks.config?.(cfg);
-      expect(cfg.permission).toEqual({
-        edit: "ask",
-        bash: "allow",
-        webfetch: "allow",
-        external_directory: "allow",
-        doom_loop: "ask",
-      });
+      expect(Object.entries(cfg.permission)).toEqual(
+        Object.entries({
+          edit: "ask",
+          doom_loop: "ask",
+          bash: "allow",
+          webfetch: "allow",
+          external_directory: "allow",
+        }),
+      );
+      await hooks.dispose?.();
+    });
+
+    // OpenCode 1 turns permission keys into rules in key order and evaluates with findLast, so order is semantics.
+    it.each([
+      [
+        { "*": "allow", bash: "ask" },
+        { "*": "allow", bash: "ask", edit: "allow", webfetch: "allow", external_directory: "allow" },
+      ],
+      [
+        { "*": "ask", edit: "allow" },
+        { "*": "ask", edit: "allow", bash: "allow", webfetch: "allow", external_directory: "allow" },
+      ],
+      [
+        { "*": "deny", bash: "allow" },
+        { "*": "deny", bash: "allow", edit: "allow", webfetch: "allow", external_directory: "allow" },
+      ],
+      [{}, { edit: "allow", bash: "allow", webfetch: "allow", external_directory: "allow" }],
+    ])("keeps the user's permission order %j and appends allow only for unset actions", async (user, expected) => {
+      const { hooks } = await load();
+      const cfg: any = { permission: user };
+      await hooks.config?.(cfg);
+      expect(Object.entries(cfg.permission)).toEqual(Object.entries(expected));
+      await hooks.dispose?.();
+    });
+
+    it("treats a permission shorthand string as a wildcard rule that stays first", async () => {
+      const { hooks } = await load();
+      const cfg: any = { permission: "ask" };
+      await hooks.config?.(cfg);
+      expect(Object.entries(cfg.permission)).toEqual(
+        Object.entries({ "*": "ask", edit: "allow", bash: "allow", webfetch: "allow", external_directory: "allow" }),
+      );
       await hooks.dispose?.();
     });
 

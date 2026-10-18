@@ -12,6 +12,7 @@ import type { AgentReply, AgentRun, HostEvent, ModelRef, Notification, PromptHin
 type Client = PluginInput["client"];
 type V1Config = Parameters<NonNullable<Hooks["config"]>>[0];
 type V1Command = NonNullable<V1Config["command"]>[string];
+type V1Permission = NonNullable<V1Config["permission"]>;
 
 interface Part {
   readonly type: string;
@@ -75,6 +76,7 @@ const MESSAGE_UPDATED = "message.updated";
 const SESSION_COMPACTED = "session.compacted";
 const SESSION_ERROR = "session.error";
 const SESSION_DELETED = "session.deleted";
+const WILDCARD = "*";
 
 export function joinTextParts(parts: readonly Part[] | undefined): string {
   return (parts ?? [])
@@ -297,7 +299,7 @@ function textOf(parts: ReadonlyArray<{ type: string; text?: string }>): string {
     .join(" ");
 }
 
-function recordArgs(args: unknown): Record<string, unknown> | undefined {
+function asRecord(args: unknown): Record<string, unknown> | undefined {
   return typeof args === "object" && args !== null ? (args as Record<string, unknown>) : undefined;
 }
 
@@ -307,10 +309,20 @@ function toCommands(micode: Micode): Record<string, V1Command> {
   );
 }
 
+/**
+ * OpenCode 1 turns permission keys into rules in key order and picks the last match, so the user's
+ * order is kept as-is and micode's allows are appended only for actions the user did not set.
+ */
+function mergePermissions(actions: readonly string[], permission: unknown): V1Permission {
+  const user: Record<string, unknown> =
+    typeof permission === "string" ? { [WILDCARD]: permission } : { ...asRecord(permission) };
+  const allowed = actions.filter((action) => !(action in user)).map((action) => [action, "allow"]);
+  return { ...user, ...Object.fromEntries(allowed) } as V1Permission;
+}
+
 function applyConfig(micode: Micode, cfg: V1Config): void {
   // Allow micode's actions without prompting; a user's own explicit setting still wins, as on v2.
-  const allowed: Record<string, "allow"> = Object.fromEntries(micode.allowedActions.map((a) => [a, "allow"]));
-  cfg.permission = { ...allowed, ...cfg.permission };
+  cfg.permission = mergePermissions(micode.allowedActions, cfg.permission);
 
   // Our agents override OpenCode defaults; native agents keep their mode (#41). The primary agent goes last.
   const pluginAgents = mergePluginAgents(cfg.agent, micode.agents);
@@ -357,7 +369,7 @@ function hooksFor(micode: Micode, host: V1Host): Hooks {
       output.output = await micode.onToolResult({
         tool: input.tool,
         sessionID: input.sessionID,
-        args: recordArgs(args),
+        args: asRecord(args),
         output: output.output,
       });
     },
