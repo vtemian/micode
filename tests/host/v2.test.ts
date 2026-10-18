@@ -5,10 +5,12 @@ import {
   DENY_ALL_TOOLS,
   lastAssistantText,
   normalizeEvent,
+  registerAgents,
   setup,
   toAgentInfo,
   type V2Host,
 } from "../../src/host/v2";
+import type { Micode } from "../../src/micode";
 import { captureLogs, type LogCapture } from "../helpers/log-capture";
 
 type Any = Record<string, any>;
@@ -479,6 +481,37 @@ describe("v2 setup", () => {
 
     await waitUntil(async () => Object.keys(await context()).length === 0);
     expect(logs.error).toEqual([]);
+  });
+});
+
+describe("registerAgents", () => {
+  it("leaves a bad model reference to the host default and still registers every agent", async () => {
+    const { Model } = await import("@opencode/plugin");
+    const h = createHost();
+    const micode = {
+      agents: {
+        bare: { model: "gpt-5", prompt: "a" },
+        empty: { model: "", prompt: "b" },
+        good: { model: "openai/gpt-5", variant: "high", prompt: "c" },
+      },
+      defaultAgent: "good",
+      allowedActions: [],
+    } as unknown as Micode;
+    const logs = captureLogs();
+    try {
+      await registerAgents(h.host, micode, (ref) => Model.Ref.parse(ref));
+      expect([...h.agents.keys()]).toEqual(["bare", "empty", "good"]);
+      expect(h.agents.get("bare")?.model).toBeUndefined();
+      expect(h.agents.get("empty")?.model).toBeUndefined();
+      expect(h.agents.get("good")?.model).toEqual({ providerID: "openai", id: "gpt-5", variant: "high" });
+      expect(h.defaultAgent()).toBe("good");
+      expect(drain(logs.warn, /agent bare: ignoring model "gpt-5"/)).toHaveLength(1);
+      expect(drain(logs.warn, /agent empty: ignoring model ""/)).toHaveLength(1);
+      expect(logs.warn).toEqual([]);
+      expect(logs.unread()).toEqual([]);
+    } finally {
+      logs.restore();
+    }
   });
 });
 

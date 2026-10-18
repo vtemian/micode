@@ -252,10 +252,17 @@ export function toAgentInfo(
   agent.permissions.push(...allowRules(allowed, own), ...own);
 }
 
-function modelRefOf(config: AgentConfig, parseModel: ParseModel): V2ModelRef | undefined {
+/** A malformed override (no provider prefix, empty) must not stop micode loading; the host default applies. */
+function modelRefOf(name: string, config: AgentConfig, parseModel: ParseModel): V2ModelRef | undefined {
   if (config.model === undefined) return undefined;
   const { variant } = extrasOf(config);
-  return parseModel(variant ? `${config.model}#${variant}` : config.model);
+  const ref = variant ? `${config.model}#${variant}` : config.model;
+  try {
+    return parseModel(ref);
+  } catch (error: unknown) {
+    log.warn(LOG_SCOPE, `agent ${name}: ignoring model "${ref}" (${extractErrorMessage(error)}); using the default`);
+    return undefined;
+  }
 }
 
 async function registerTools(host: V2Host, micode: Micode): Promise<void> {
@@ -264,12 +271,16 @@ async function registerTools(host: V2Host, micode: Micode): Promise<void> {
   });
 }
 
-async function registerAgents(host: V2Host, micode: Micode, parseModel: ParseModel): Promise<void> {
+export async function registerAgents(
+  host: Pick<V2Host, "agent">,
+  micode: Pick<Micode, "agents" | "defaultAgent" | "allowedActions">,
+  parseModel: ParseModel,
+): Promise<void> {
   // Transforms replay synchronously, so resolve branded model refs up front and only assign inside.
   const prepared = Object.entries(micode.agents).map(([name, config]) => ({
     name,
     config,
-    model: modelRefOf(config, parseModel),
+    model: modelRefOf(name, config, parseModel),
   }));
   await host.agent.transform((editor) => {
     for (const { name, config, model } of prepared) {
