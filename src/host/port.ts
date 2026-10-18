@@ -6,6 +6,7 @@ export interface Workspace {
 export interface ModelRef {
   readonly providerID: string;
   readonly modelID: string;
+  readonly variant?: string;
 }
 
 export interface Notification {

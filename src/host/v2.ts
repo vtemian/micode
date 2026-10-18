@@ -174,8 +174,8 @@ function lastUserText(messages: readonly SessionMessage[]): string | undefined {
 }
 
 /** The session API takes a plain ref; only agent records need the branded `Model.Ref`. */
-function toSessionModel(model: ModelRef): { providerID: string; id: string } {
-  return { providerID: model.providerID, id: model.modelID };
+function toSessionModel(model: ModelRef): { providerID: string; id: string; variant?: string } {
+  return { providerID: model.providerID, id: model.modelID, ...(model.variant ? { variant: model.variant } : {}) };
 }
 
 async function runAgent(session: Session, run: AgentRun): Promise<AgentReply> {
@@ -433,7 +433,11 @@ async function applyContext(micode: Micode, input: SessionContext): Promise<void
   micode.onRequest({
     sessionID: input.sessionID,
     agent: input.agent,
-    model: { providerID: input.model.providerID, modelID: input.model.id },
+    model: {
+      providerID: input.model.providerID,
+      modelID: input.model.id,
+      ...(input.model.variant ? { variant: input.model.variant } : {}),
+    },
   });
   const lastUser = [...input.messages].reverse().find((m) => m.role === USER_ROLE);
   const system = await micode.systemPrompt({

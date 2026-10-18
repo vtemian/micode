@@ -380,6 +380,28 @@ describe("v2 setup", () => {
     expect(locator.permissions).not.toContainEqual({ action: "shell", resource: "*", effect: "allow" });
   });
 
+  it("spawns children on the parent's model variant", async () => {
+    const h = createHost();
+    cleanup = await setup(h.host);
+    const ctx = {
+      sessionID: "s_variant",
+      agent: "commander",
+      model: { providerID: "p", id: "m", variant: "high" },
+      system: [],
+      messages: [{ role: "user", content: [{ type: "text", text: "go" }] }],
+      tools: {},
+      options: {},
+    };
+    await h.hooks.get("session.context")!(ctx);
+    await h.tools
+      .get("spawn_agent")
+      ?.execute(
+        { agents: [{ agent: "probe", prompt: "q", description: "d" }] },
+        { sessionID: "s_variant", progress: async () => {} },
+      );
+    expect(h.sessions.created.at(-1)?.model).toEqual({ providerID: "p", id: "m", variant: "high" });
+  });
+
   it("filters project instructions and injects request options in the context hook", async () => {
     const h = createHost();
     cleanup = await setup(h.host);

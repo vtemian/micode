@@ -14,6 +14,7 @@
 export interface SessionModel {
   providerID: string;
   modelID: string;
+  variant?: string;
 }
 
 export const sessionModels = new Map<string, SessionModel>();
