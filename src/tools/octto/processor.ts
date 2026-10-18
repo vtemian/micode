@@ -4,10 +4,12 @@ import * as v from "valibot";
 import type { SessionHost } from "@/host/port";
 import type { Answer, QuestionType, SessionStore } from "@/octto/session";
 import { BRANCH_STATUSES, type BrainstormState, type StateStore } from "@/octto/state";
+import { extractErrorMessage } from "@/utils/errors";
 import { log } from "@/utils/logger";
 
 // Agent name constant - matches the agent exported from src/agents/probe.ts
 const PROBE_AGENT = "probe";
+const PROBE_FAILED_FINDING = "Could not get probe response";
 
 const ProbeQuestionSchema = v.object({
   type: v.string(),
@@ -88,16 +90,23 @@ function parseProbeResponse(responseText: string): ProbeResult {
 }
 
 async function runProbeAgent(host: SessionHost, state: BrainstormState, branchId: string): Promise<ProbeResult> {
-  const reply = await host.runAgent({
-    agent: PROBE_AGENT,
-    text: formatBranchContext(state, branchId),
-    title: `probe-${branchId}`,
-    denyTools: true,
-  });
+  let sessionID: string | undefined;
   try {
+    const reply = await host.runAgent({
+      agent: PROBE_AGENT,
+      text: formatBranchContext(state, branchId),
+      title: `probe-${branchId}`,
+      denyTools: true,
+      onCreated: (id) => {
+        sessionID = id;
+      },
+    });
     return parseProbeResponse(reply.text);
+  } catch (error) {
+    // A failed probe must still settle the branch, or the brainstorm waits on it forever.
+    return { done: true, finding: `${PROBE_FAILED_FINDING}: ${extractErrorMessage(error)}` };
   } finally {
-    await host.remove(reply.sessionID);
+    if (sessionID) await host.remove(sessionID);
   }
 }
 

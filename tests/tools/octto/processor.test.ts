@@ -28,6 +28,7 @@ function fakeHost(response: unknown): SessionHost & { runs: AgentRun[]; removed:
     removed,
     runAgent: async (run) => {
       runs.push(run);
+      run.onCreated?.("ses_probe");
       return { sessionID: "ses_probe", text: `Some prose first.\n${JSON.stringify(response)}` };
     },
     remove: async (id) => {
@@ -131,6 +132,7 @@ describe("octto probe processor", () => {
     const host = fakeHost(undefined);
     host.runAgent = async (run) => {
       host.runs.push(run);
+      run.onCreated?.("ses_probe");
       return { sessionID: "ses_probe", text: "no json here" };
     };
 
@@ -149,18 +151,49 @@ describe("octto probe processor", () => {
     expect(branch?.finding).toBe("Could not parse probe response");
   });
 
-  it("propagates a host failure after recording the answer so the caller can log it", async () => {
+  it("removes the probe session and completes the branch with a finding when the probe fails", async () => {
     const host = fakeHost(undefined);
-    host.runAgent = async () => {
+    host.runAgent = async (run) => {
+      run.onCreated?.("ses_failed_probe");
       throw new Error("provider down");
     };
 
-    await expect(
-      processAnswer(state, fakeSessions([]), SESSION_ID, BROWSER_SESSION_ID, QUESTION_ID, { selected: "lru" }, host),
-    ).rejects.toThrow("provider down");
+    await processAnswer(
+      state,
+      fakeSessions([]),
+      SESSION_ID,
+      BROWSER_SESSION_ID,
+      QUESTION_ID,
+      { selected: "lru" },
+      host,
+    );
 
-    const question = (await state.getSession(SESSION_ID))?.branches[BRANCH_ID]?.questions[0];
-    expect(question?.answer).toEqual({ selected: "lru" });
+    expect(host.removed).toEqual(["ses_failed_probe"]);
+    const branch = (await state.getSession(SESSION_ID))?.branches[BRANCH_ID];
+    expect(branch?.questions[0]?.answer).toEqual({ selected: "lru" });
+    expect(branch?.status).toBe("done");
+    expect(branch?.finding).toBe("Could not get probe response: provider down");
+  });
+
+  it("completes the branch without removing anything when the probe session was never created", async () => {
+    const host = fakeHost(undefined);
+    host.runAgent = async () => {
+      throw new Error("create failed");
+    };
+
+    await processAnswer(
+      state,
+      fakeSessions([]),
+      SESSION_ID,
+      BROWSER_SESSION_ID,
+      QUESTION_ID,
+      { selected: "lru" },
+      host,
+    );
+
+    expect(host.removed).toEqual([]);
+    const branch = (await state.getSession(SESSION_ID))?.branches[BRANCH_ID];
+    expect(branch?.finding).toBe("Could not get probe response: create failed");
   });
 
   it("ignores answers to questions that belong to no branch", async () => {
