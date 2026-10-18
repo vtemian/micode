@@ -72,6 +72,33 @@ describe("createMicode", () => {
     expect(system).toEqual(["base", "Instructions from: /x/OTHER.md\nkeep"]);
   });
 
+  it("drops only the CLAUDE.md and AGENTS.md blocks from an entry that joins several instruction files", async () => {
+    // OpenCode joins loaded instruction files into one entry, each block headed "Instructions from: <path>".
+    const system = await micode.systemPrompt({
+      sessionID: "s1",
+      system: [
+        "Instructions from: /x/CLAUDE.md\nrules\nInstructions from: /x/OTHER.md\nkeep",
+        "Instructions from: /x/OTHER.md\nkeep\nInstructions from: /x/AGENTS.md\nrules",
+        "<env>\n  Working directory: /x\n</env>\nInstructions from: /x/AGENTS.md\nrules",
+      ],
+    });
+    expect(system).toEqual([
+      "Instructions from: /x/OTHER.md\nkeep",
+      "Instructions from: /x/OTHER.md\nkeep",
+      "<env>\n  Working directory: /x\n</env>",
+    ]);
+  });
+
+  it("never drops unrelated blocks that merely mention CLAUDE.md", async () => {
+    const entries = [
+      "Read CLAUDE.md before editing.",
+      "Instructions from: /x/MY_CLAUDE.md\nkeep",
+      "Instructions from: /x/CLAUDE.md.bak\nkeep",
+      "Instructions from: /x/CLAUDE.md-notes/README.md\nkeep",
+    ];
+    expect(await micode.systemPrompt({ sessionID: "s1", system: entries })).toEqual(entries);
+  });
+
   it("enables extended thinking for the request after a think keyword", async () => {
     await micode.onPrompt({ sessionID: "s1", text: "let's think about it" });
     expect(micode.requestOptions("s1")).toMatchObject({ thinking: { type: "enabled" } });

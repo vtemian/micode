@@ -1,3 +1,5 @@
+import { basename } from "node:path";
+
 import type { AgentConfig, McpLocalConfig } from "@opencode-ai/sdk";
 
 import { agents, PRIMARY_AGENT_NAME } from "@/agents";
@@ -167,7 +169,10 @@ const LEDGER_TEMPLATE_PREFIX = "Update the continuity ledger.";
 const REVIEWER_AGENT = "mm-constraint-reviewer";
 const REVIEW_SKIPPED = '{"status": "PASS", "violations": [], "summary": "Review failed"}';
 const LOG_SCOPE = "micode";
-const INSTRUCTIONS_PREFIX = "Instructions from:";
+// Both hosts render each loaded instruction file as "Instructions from: <path>\n<content>" and may join
+// several files into one entry with "\n", so filtering works per block, not per entry.
+const INSTRUCTIONS_PREFIX = "Instructions from: ";
+const INSTRUCTIONS_BLOCK_START = /\n(?=Instructions from: )/;
 const PROJECT_INSTRUCTION_FILES = ["CLAUDE.md", "AGENTS.md"];
 
 interface SessionState {
@@ -213,10 +218,22 @@ function isLedgerResume(text: string): boolean {
   return trimmed.startsWith(LEDGER_COMMAND) || trimmed.startsWith(LEDGER_TEMPLATE_PREFIX);
 }
 
-function isProjectInstructions(entry: string): boolean {
-  if (!entry.startsWith(INSTRUCTIONS_PREFIX)) return false;
-  const path = entry.split("\n")[0];
-  return PROJECT_INSTRUCTION_FILES.some((file) => path.includes(file));
+function isProjectInstructions(block: string): boolean {
+  if (!block.startsWith(INSTRUCTIONS_PREFIX)) return false;
+  const path = block.slice(INSTRUCTIONS_PREFIX.length).split("\n")[0].trim();
+  return PROJECT_INSTRUCTION_FILES.includes(basename(path));
+}
+
+/** micode injects its own project context, so the host's CLAUDE.md/AGENTS.md blocks would duplicate it. */
+function withoutProjectInstructions(system: readonly string[]): string[] {
+  return system
+    .map((entry) =>
+      entry
+        .split(INSTRUCTIONS_BLOCK_START)
+        .filter((block) => !isProjectInstructions(block))
+        .join("\n"),
+    )
+    .filter((entry) => entry.length > 0);
 }
 
 function formatPaths(paths: readonly string[]): string {
@@ -503,7 +520,7 @@ function createSystemPrompt(hooks: CoreHooks, sessions: SessionState): Micode["s
   return async (request) => {
     const { sessionID } = request;
     if (sessions.internal.has(sessionID)) return [...request.system];
-    const output = { system: request.system.filter((entry) => !isProjectInstructions(entry)) };
+    const output = { system: withoutProjectInstructions(request.system) };
     if (hooks.mindmodel) {
       await injectMindmodel(hooks.mindmodel, sessionID, request.userText ?? sessions.userTextOf(sessionID), output);
     }
