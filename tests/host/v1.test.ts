@@ -432,11 +432,17 @@ describe("v1 server", () => {
 
   it("drops CLAUDE.md and AGENTS.md entries from the system prompt", async () => {
     const { hooks } = await load();
-    const output = {
-      system: ["base", "Instructions from: /x/CLAUDE.md\nrules", "Instructions from: /x/AGENTS.md\nrules", "other"],
-    };
+    const system = [
+      "base",
+      "Instructions from: /x/CLAUDE.md\nrules",
+      "Instructions from: /x/AGENTS.md\nrules",
+      "other",
+    ];
+    const output = { system };
     await hooks["experimental.chat.system.transform"]?.({ sessionID: "s1" } as any, output);
-    expect(output.system).toEqual(["base", "other"]);
+    // OpenCode 1.18 keeps using the array it passed in, so the hook must edit that array in place.
+    expect(output.system).toBe(system);
+    expect(system).toEqual(["base", "other"]);
     await hooks.dispose?.();
   });
 

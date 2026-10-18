@@ -345,7 +345,9 @@ function hooksFor(micode: Micode, host: V1Host): Hooks {
     },
     "experimental.chat.system.transform": async (input, output) => {
       if (!input.sessionID) return;
-      output.system = await micode.systemPrompt({ sessionID: input.sessionID, system: output.system });
+      const next = await micode.systemPrompt({ sessionID: input.sessionID, system: output.system });
+      // OpenCode 1 keeps the array it passed in, so a reassigned array would be ignored.
+      output.system.splice(0, output.system.length, ...next);
     },
     "experimental.session.compacting": async (input, output) => {
       output.prompt = micode.compactionInstruction(input.sessionID);
