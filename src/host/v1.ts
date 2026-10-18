@@ -310,14 +310,14 @@ function toCommands(micode: Micode): Record<string, V1Command> {
 }
 
 /**
- * OpenCode 1 turns permission keys into rules in key order and picks the last match, so the user's
- * order is kept as-is and micode's allows are appended only for actions the user did not set.
+ * OpenCode 1 turns permission keys into rules in key order and picks the last match. micode's allows
+ * (only for actions the user did not set) go first, so every user rule, explicit or wildcard, wins.
  */
 function mergePermissions(actions: readonly string[], permission: unknown): V1Permission {
   const user: Record<string, unknown> =
     typeof permission === "string" ? { [WILDCARD]: permission } : { ...asRecord(permission) };
   const allowed = actions.filter((action) => !(action in user)).map((action) => [action, "allow"]);
-  return { ...user, ...Object.fromEntries(allowed) } as V1Permission;
+  return { ...Object.fromEntries(allowed), ...user } as V1Permission;
 }
 
 function applyConfig(micode: Micode, cfg: V1Config): void {

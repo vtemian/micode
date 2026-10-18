@@ -343,53 +343,54 @@ describe("v1 server", () => {
   });
 
   describe("config", () => {
-    it("allows the four permission actions without prompting unless the user set them explicitly", async () => {
-      const { hooks } = await load();
-      const cfg: any = { permission: { edit: "ask", doom_loop: "ask" } };
-      await hooks.config?.(cfg);
-      expect(Object.entries(cfg.permission)).toEqual(
-        Object.entries({
-          edit: "ask",
-          doom_loop: "ask",
-          bash: "allow",
-          webfetch: "allow",
-          external_directory: "allow",
-        }),
-      );
-      await hooks.dispose?.();
-    });
-
     // OpenCode 1 turns permission keys into rules in key order and evaluates with findLast, so order is semantics.
-    it.each([
-      [
-        { "*": "allow", bash: "ask" },
-        { "*": "allow", bash: "ask", edit: "allow", webfetch: "allow", external_directory: "allow" },
-      ],
-      [
-        { "*": "ask", edit: "allow" },
-        { "*": "ask", edit: "allow", bash: "allow", webfetch: "allow", external_directory: "allow" },
-      ],
-      [
-        { "*": "deny", bash: "allow" },
-        { "*": "deny", bash: "allow", edit: "allow", webfetch: "allow", external_directory: "allow" },
-      ],
-      [{}, { edit: "allow", bash: "allow", webfetch: "allow", external_directory: "allow" }],
-    ])("keeps the user's permission order %j and appends allow only for unset actions", async (user, expected) => {
+    const ACTIONS = ["edit", "bash", "webfetch", "external_directory"];
+
+    /** Mirrors OpenCode 1.18 Permission.fromConfig + evaluate for string-valued keys: the last match wins. */
+    function evaluate(permission: Record<string, string>, action: string): string {
+      const rules = Object.entries(permission).filter(([key]) => key === "*" || key === action);
+      return rules.at(-1)?.[1] ?? "ask";
+    }
+
+    async function merged(user: unknown): Promise<Record<string, string>> {
       const { hooks } = await load();
       const cfg: any = { permission: user };
       await hooks.config?.(cfg);
-      expect(Object.entries(cfg.permission)).toEqual(Object.entries(expected));
       await hooks.dispose?.();
+      return cfg.permission;
+    }
+
+    it("puts micode's allows for unset actions before the user's rules, in the user's order", async () => {
+      expect(Object.entries(await merged({ edit: "ask", doom_loop: "ask" }))).toEqual(
+        Object.entries({
+          bash: "allow",
+          webfetch: "allow",
+          external_directory: "allow",
+          edit: "ask",
+          doom_loop: "ask",
+        }),
+      );
+      expect(Object.entries(await merged({ "*": "allow", bash: "ask" }))).toEqual(
+        Object.entries({ edit: "allow", webfetch: "allow", external_directory: "allow", "*": "allow", bash: "ask" }),
+      );
+      expect(Object.entries(await merged({}))).toEqual(
+        Object.entries({ edit: "allow", bash: "allow", webfetch: "allow", external_directory: "allow" }),
+      );
     });
 
-    it("treats a permission shorthand string as a wildcard rule that stays first", async () => {
-      const { hooks } = await load();
-      const cfg: any = { permission: "ask" };
-      await hooks.config?.(cfg);
-      expect(Object.entries(cfg.permission)).toEqual(
-        Object.entries({ "*": "ask", edit: "allow", bash: "allow", webfetch: "allow", external_directory: "allow" }),
-      );
-      await hooks.dispose?.();
+    it.each([
+      [{ "*": "deny" }, "deny"],
+      [{ "*": "ask" }, "ask"],
+      [{ "*": "allow", bash: "ask" }, "ask"],
+      [{ "*": "deny", bash: "allow" }, "allow"],
+      ["deny", "deny"],
+    ])("lets the user's rules win: %j evaluates bash to %s", async (user, expected) => {
+      expect(evaluate(await merged(user), "bash")).toBe(expected);
+    });
+
+    it("allows all four actions when the user set no permissions", async () => {
+      const permission = await merged({});
+      expect(ACTIONS.map((action) => evaluate(permission, action))).toEqual(["allow", "allow", "allow", "allow"]);
     });
 
     it("merges plugin agents over host agents and puts the primary agent last", async () => {
