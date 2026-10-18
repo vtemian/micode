@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import type { AgentRun, SessionHost } from "../src/host/port";
-import { createMicode, type Micode } from "../src/micode";
+import { createMicode, type Micode, trackInternalSessions } from "../src/micode";
 import { captureLogs, type LogCapture } from "./helpers/log-capture";
 
 function fakeHost(runs: AgentRun[] = []): SessionHost {
@@ -138,5 +138,156 @@ describe("createMicode", () => {
     } finally {
       await core.dispose();
     }
+  });
+});
+
+describe("system prompt scoping", () => {
+  const LEDGER_MARK = "LEDGER-MARK";
+  const ARCH_MARK = "ARCH-MARK";
+  const MODEL = { providerID: "p", modelID: "m" };
+  let dir: string;
+  let logs: LogCapture;
+
+  async function waitUntil(condition: () => Promise<boolean>): Promise<void> {
+    for (let attempt = 0; attempt < 100; attempt++) {
+      if (await condition()) return;
+      await new Promise((r) => setTimeout(r, 5));
+    }
+    throw new Error("condition not met");
+  }
+
+  async function prompt(core: Micode, sessionID: string): Promise<string> {
+    return (await core.systemPrompt({ sessionID, system: ["base"] })).join("\n");
+  }
+
+  beforeEach(async () => {
+    logs = captureLogs();
+    dir = await mkdtemp(join(tmpdir(), "micode-scoping-"));
+    await mkdir(join(dir, "thoughts", "ledgers"), { recursive: true });
+    await writeFile(join(dir, "thoughts", "ledgers", "CONTINUITY_abc.md"), `# Ledger\n${LEDGER_MARK}\n`);
+    await writeFile(join(dir, "ARCHITECTURE.md"), `# Architecture\n${ARCH_MARK}\n`);
+  });
+
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true });
+    const unexpected = [...logs.warn, ...logs.info].filter((l) => !/ast-grep|btca|pty\.loader|BUN_PTY/i.test(l));
+    logs.restore();
+    expect(unexpected).toEqual([]);
+    expect(logs.unread()).toEqual([]);
+  });
+
+  it("gives a fresh session the project context but not the continuity ledger", async () => {
+    const core = await createMicode({ directory: dir, host: fakeHost() });
+    try {
+      await core.onPrompt({ sessionID: "s1", text: "add a feature" });
+      const system = await prompt(core, "s1");
+      expect(system).toContain(ARCH_MARK);
+      expect(system).not.toContain(LEDGER_MARK);
+    } finally {
+      await core.dispose();
+    }
+  });
+
+  it("injects the ledger once the host compacts the session with micode's instruction", async () => {
+    const core = await createMicode({ directory: dir, host: fakeHost() });
+    try {
+      core.compactionInstruction("s1");
+      expect(await prompt(core, "s1")).toContain(LEDGER_MARK);
+      expect(await prompt(core, "s2")).not.toContain(LEDGER_MARK);
+    } finally {
+      await core.dispose();
+    }
+  });
+
+  it("injects the ledger after auto-compact compacts the session", async () => {
+    const compacted: string[] = [];
+    const host = {
+      ...fakeHost(),
+      compact: async (sessionID: string) => {
+        compacted.push(sessionID);
+        return "summary";
+      },
+    };
+    const core = await createMicode({ directory: dir, host });
+    try {
+      await core.onEvent({ type: "assistant.usage", sessionID: "s1", input: 190_000, cacheRead: 0, model: MODEL });
+      await waitUntil(async () => (await prompt(core, "s1")).includes(LEDGER_MARK));
+      expect(compacted).toEqual(["s1"]);
+    } finally {
+      await core.dispose();
+    }
+  });
+
+  it("injects the ledger for a session whose first prompt is a /ledger resume", async () => {
+    const core = await createMicode({ directory: dir, host: fakeHost() });
+    try {
+      await core.onPrompt({ sessionID: "s1", text: "/ledger pick up the auth work" });
+      expect(await prompt(core, "s1")).toContain(LEDGER_MARK);
+      await core.onPrompt({ sessionID: "s2", text: "Update the continuity ledger. resume" });
+      expect(await prompt(core, "s2")).toContain(LEDGER_MARK);
+      await core.onPrompt({ sessionID: "s3", text: "hello" });
+      await core.onPrompt({ sessionID: "s3", text: "/ledger" });
+      expect(await prompt(core, "s3")).not.toContain(LEDGER_MARK);
+    } finally {
+      await core.dispose();
+    }
+  });
+
+  it("skips every injection for the reviewer's internal session", async () => {
+    await mkdir(join(dir, ".mindmodel"), { recursive: true });
+    await writeFile(
+      join(dir, ".mindmodel", "manifest.yaml"),
+      "name: t\nversion: 2\ncategories:\n  - path: test.md\n    description: Test constraints\n",
+    );
+    await writeFile(join(dir, ".mindmodel", "test.md"), "# Test\n");
+    const ref: { core?: Micode } = {};
+    const seen: string[][] = [];
+    const host: SessionHost = {
+      ...fakeHost(),
+      runAgent: async (run) => {
+        run.onCreated?.("ses_review");
+        ref.core?.compactionInstruction("ses_review");
+        seen.push((await ref.core?.systemPrompt({ sessionID: "ses_review", system: ["base"] })) ?? []);
+        return { sessionID: "ses_review", text: '{"status":"PASS","violations":[],"summary":"ok"}' };
+      },
+    };
+    const core = await createMicode({ directory: dir, host });
+    ref.core = core;
+    try {
+      await core.onToolResult({ tool: "Write", sessionID: "s1", args: { file_path: "/x/a.ts" }, output: "ok" });
+      expect(seen).toEqual([["base"]]);
+      // Once removed, the id is an ordinary session again.
+      expect(await prompt(core, "ses_review")).toContain(ARCH_MARK);
+    } finally {
+      await core.dispose();
+    }
+  });
+});
+
+describe("trackInternalSessions", () => {
+  it("marks a run's session internal from creation until it is removed", async () => {
+    const internal = new Set<string>();
+    const created: string[] = [];
+    const removed: string[] = [];
+    const host: SessionHost = {
+      ...fakeHost(),
+      runAgent: async (run) => {
+        run.onCreated?.("ses_probe");
+        expect(internal.has("ses_probe")).toBe(true);
+        return { sessionID: "ses_probe", text: "" };
+      },
+      remove: async (id) => {
+        removed.push(id);
+      },
+    };
+    const tracked = trackInternalSessions(host, internal);
+
+    await tracked.runAgent({ agent: "probe", text: "q", onCreated: (id) => created.push(id) });
+    expect(created).toEqual(["ses_probe"]);
+    expect(internal.has("ses_probe")).toBe(true);
+
+    await tracked.remove("ses_probe");
+    expect(internal.has("ses_probe")).toBe(false);
+    expect(removed).toEqual(["ses_probe"]);
   });
 });

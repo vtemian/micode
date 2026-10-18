@@ -17,6 +17,8 @@ const CONTINUE_PROMPT =
 export interface AutoCompactConfig {
   /** Compaction threshold (0-1), defaults to config.compaction.threshold */
   compactionThreshold?: number;
+  /** Fires after a compaction succeeds, before the session continues. */
+  onCompacted?: (sessionID: string) => void;
 }
 
 export interface AutoCompactHook {
@@ -26,6 +28,7 @@ export interface AutoCompactHook {
 interface AutoCompactState {
   readonly inProgress: Set<string>;
   readonly lastCompactTime: Map<string, number>;
+  readonly onCompacted?: (sessionID: string) => void;
 }
 
 interface CompactionRun {
@@ -71,6 +74,7 @@ async function compactSession(
     });
     const summary = await host.compact(sessionID, model);
     state.lastCompactTime.set(sessionID, Date.now());
+    state.onCompacted?.(sessionID);
     await writeLedger(workspace, sessionID, summary);
     await host.notify({
       title: "Compaction Complete",
@@ -116,7 +120,11 @@ export function createAutoCompactHook(
   hookConfig?: AutoCompactConfig,
 ): AutoCompactHook {
   const threshold = hookConfig?.compactionThreshold ?? config.compaction.threshold;
-  const state: AutoCompactState = { inProgress: new Set(), lastCompactTime: new Map() };
+  const state: AutoCompactState = {
+    inProgress: new Set(),
+    lastCompactTime: new Map(),
+    onCompacted: hookConfig?.onCompacted,
+  };
 
   return {
     onEvent: async (event) => {

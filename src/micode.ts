@@ -162,6 +162,8 @@ const COMMANDS: readonly MicodeCommand[] = [
   },
 ];
 
+const LEDGER_COMMAND = "/ledger";
+const LEDGER_TEMPLATE_PREFIX = "Update the continuity ledger.";
 const REVIEWER_AGENT = "mm-constraint-reviewer";
 const REVIEW_SKIPPED = '{"status": "PASS", "violations": [], "summary": "Review failed"}';
 const LOG_SCOPE = "micode";
@@ -170,6 +172,8 @@ const PROJECT_INSTRUCTION_FILES = ["CLAUDE.md", "AGENTS.md"];
 
 interface SessionState {
   readonly internal: Set<string>;
+  /** Sessions micode compacted or that opened with a ledger resume; only these get the continuity ledger. */
+  readonly resumed: Set<string>;
   thinkMode(sessionID: string): boolean;
   agentOf(sessionID: string): string | undefined;
   userTextOf(sessionID: string): string | undefined;
@@ -202,6 +206,11 @@ interface OcttoAssembly {
 
 function detectThinkKeyword(text: string): boolean {
   return THINK_KEYWORDS.some((pattern) => pattern.test(text));
+}
+
+function isLedgerResume(text: string): boolean {
+  const trimmed = text.trimStart();
+  return trimmed.startsWith(LEDGER_COMMAND) || trimmed.startsWith(LEDGER_TEMPLATE_PREFIX);
 }
 
 function isProjectInstructions(entry: string): boolean {
@@ -291,18 +300,25 @@ function createSessionState(): SessionState {
     if (agent) sessionAgents.set(sessionID, agent);
   }
 
+  const resumed = new Set<string>();
+  const internal = new Set<string>();
+
   return {
-    internal: new Set<string>(),
+    internal,
+    resumed,
     thinkMode: (sessionID) => thinking.get(sessionID) ?? false,
     agentOf: (sessionID) => sessionAgents.get(sessionID),
     userTextOf: (sessionID) => userTexts.get(sessionID),
     remember,
     recordPrompt: (prompt) => {
+      if (!userTexts.has(prompt.sessionID) && isLedgerResume(prompt.text)) resumed.add(prompt.sessionID);
       remember(prompt);
       thinking.set(prompt.sessionID, detectThinkKeyword(prompt.text));
       userTexts.set(prompt.sessionID, prompt.text);
     },
     forget: (sessionID) => {
+      internal.delete(sessionID);
+      resumed.delete(sessionID);
       thinking.delete(sessionID);
       sessionAgents.delete(sessionID);
       userTexts.delete(sessionID);
@@ -311,7 +327,29 @@ function createSessionState(): SessionState {
   };
 }
 
-function createReviewer(host: SessionHost, internalSessions: Set<string>): (prompt: string) => Promise<string> {
+/**
+ * Sessions micode creates for its own runs (reviewer, probe) are internal from creation until removed:
+ * they get no system-prompt injection and do not re-trigger the hooks that spawned them.
+ */
+export function trackInternalSessions(host: SessionHost, internal: Set<string>): SessionHost {
+  return {
+    ...host,
+    runAgent: (run) =>
+      host.runAgent({
+        ...run,
+        onCreated: (id) => {
+          internal.add(id);
+          run.onCreated?.(id);
+        },
+      }),
+    remove: async (sessionID) => {
+      internal.delete(sessionID);
+      await host.remove(sessionID);
+    },
+  };
+}
+
+function createReviewer(host: SessionHost): (prompt: string) => Promise<string> {
   return async (reviewPrompt) => {
     let sessionID: string | undefined;
     try {
@@ -320,10 +358,8 @@ function createReviewer(host: SessionHost, internalSessions: Set<string>): (prom
         text: reviewPrompt,
         title: "constraint-reviewer",
         denyTools: true,
-        // Mark as internal to prevent hook recursion
         onCreated: (id) => {
           sessionID = id;
-          internalSessions.add(id);
         },
       });
       return reply.text || REVIEW_SKIPPED;
@@ -331,10 +367,7 @@ function createReviewer(host: SessionHost, internalSessions: Set<string>): (prom
       log.warn("mindmodel", `Reviewer failed: ${extractErrorMessage(error)}`);
       return REVIEW_SKIPPED;
     } finally {
-      if (sessionID) {
-        internalSessions.delete(sessionID);
-        await host.remove(sessionID);
-      }
+      if (sessionID) await host.remove(sessionID);
     }
   };
 }
@@ -344,8 +377,9 @@ function createHooks(
   host: SessionHost,
   usage: SessionUsageTracker,
   userConfig: MicodeConfig | null,
-  internalSessions: Set<string>,
+  sessions: SessionState,
 ): CoreHooks {
+  const internalHost = trackInternalSessions(host, sessions.internal);
   return {
     fragments: createFragmentInjectorHook(workspace, userConfig),
     ledger: createLedgerLoaderHook(workspace),
@@ -358,11 +392,12 @@ function createHooks(
     fetch: createFetchTrackerHook(workspace),
     autoCompact: createAutoCompactHook(workspace, host, usage, {
       compactionThreshold: userConfig?.compactionThreshold,
+      onCompacted: (sessionID) => sessions.resumed.add(sessionID),
     }),
     recovery: createSessionRecoveryHook(host),
     // Feature-flagged: set features.mindmodelInjection=true in micode.json to enable
     mindmodel: userConfig?.features?.mindmodelInjection ? createMindmodelInjectorHook(workspace) : null,
-    reviewer: createConstraintReviewerHook(workspace, createReviewer(host, internalSessions)),
+    reviewer: createConstraintReviewerHook(workspace, createReviewer(internalHost)),
   };
 }
 
@@ -375,6 +410,7 @@ async function createPty(workspace: Workspace): Promise<PTYManager> {
 }
 
 function createOctto(host: SessionHost, workspace: Workspace): OcttoAssembly {
+  // The octto probe runs through this host, so its sessions are internal like the reviewer's.
   const store = createSessionStore();
   const byParent = new Map<string, Set<string>>();
   const tools = createOcttoTools(store, host, workspace, {
@@ -436,11 +472,16 @@ function assembleTools(
  * The injectors still share the v1-era `{ system }` output object. Fragments
  * first, then ledger, then project context, then the context-window status.
  */
-async function userSystemBlock(hooks: CoreHooks, sessionID: string, agent: string | undefined): Promise<string> {
+async function userSystemBlock(
+  hooks: CoreHooks,
+  sessionID: string,
+  agent: string | undefined,
+  resumed: boolean,
+): Promise<string> {
   const output: { system?: string } = {};
   const input = { sessionID, agent };
   await hooks.fragments["chat.params"](input, output);
-  await hooks.ledger["chat.params"](input, output);
+  if (resumed) await hooks.ledger["chat.params"](input, output);
   await hooks.context["chat.params"](input, output);
   return output.system ?? "";
 }
@@ -461,11 +502,13 @@ async function injectMindmodel(
 function createSystemPrompt(hooks: CoreHooks, sessions: SessionState): Micode["systemPrompt"] {
   return async (request) => {
     const { sessionID } = request;
+    if (sessions.internal.has(sessionID)) return [...request.system];
     const output = { system: request.system.filter((entry) => !isProjectInstructions(entry)) };
-    if (hooks.mindmodel && !sessions.internal.has(sessionID)) {
+    if (hooks.mindmodel) {
       await injectMindmodel(hooks.mindmodel, sessionID, request.userText ?? sessions.userTextOf(sessionID), output);
     }
-    const block = await userSystemBlock(hooks, sessionID, request.agent ?? sessions.agentOf(sessionID));
+    const agent = request.agent ?? sessions.agentOf(sessionID);
+    const block = await userSystemBlock(hooks, sessionID, agent, sessions.resumed.has(sessionID));
     if (block) output.system.unshift(block);
     // The usage status changes every turn; it goes last so the cached system prefix stays stable.
     const status = hooks.monitor.systemSuffix(sessionID);
@@ -530,9 +573,9 @@ export async function createMicode({ directory, host }: MicodeOptions): Promise<
   warnOpencodeSettings();
   const usage = createSessionUsage(loadModelContextLimits());
   const sessions = createSessionState();
-  const hooks = createHooks(workspace, host, usage, userConfig, sessions.internal);
+  const hooks = createHooks(workspace, host, usage, userConfig, sessions);
   const pty = await createPty(workspace);
-  const octto = createOctto(host, workspace);
+  const octto = createOctto(trackInternalSessions(host, sessions.internal), workspace);
 
   return {
     tools: assembleTools(workspace, host, userConfig, pty, octto.tools),
@@ -552,7 +595,11 @@ export async function createMicode({ directory, host }: MicodeOptions): Promise<
     onRequest: (request) => sessions.remember(request),
     systemPrompt: createSystemPrompt(hooks, sessions),
     requestOptions: (sessionID) => (sessions.thinkMode(sessionID) ? thinkingOptions() : {}),
-    compactionInstruction: compactionPrompt,
+    compactionInstruction: (sessionID) => {
+      // The host compacts with this instruction, so the next turn resumes from the summary and ledger.
+      sessions.resumed.add(sessionID);
+      return compactionPrompt(sessionID);
+    },
     onToolResult: createToolResultPipeline(hooks),
     onEvent: createEventRouter(hooks, usage, sessions, pty, octto),
     dispose: async () => {
