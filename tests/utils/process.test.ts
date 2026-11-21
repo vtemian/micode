@@ -1,6 +1,6 @@
 // tests/utils/process.test.ts
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 
@@ -117,5 +117,22 @@ describe("runCommand", () => {
   it("does not apply a timeout when none is given", async () => {
     const result = await runCommand("sh", ["-c", "printf done"]);
     expect(result.stdout).toBe("done");
+  });
+});
+
+describe("runCommand cwd", () => {
+  let dir: string;
+
+  beforeEach(() => {
+    dir = realpathSync(mkdtempSync(join(tmpdir(), "process-cwd-test-")));
+  });
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("runs the command in the given working directory", async () => {
+    const { stdout } = await runCommand("pwd", [], { cwd: dir });
+    expect(stdout.trim()).toBe(dir);
   });
 });

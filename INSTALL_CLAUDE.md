@@ -58,7 +58,28 @@ fi
 
 ### Add micode to plugins
 
-**If config exists:**
+OpenCode 2 reads the `plugins` array (plural) from `opencode.jsonc`; OpenCode 1 reads the `plugin` array from `opencode.json`. Pick the block for the installed major version (`opencode --version`).
+
+**OpenCode 2, config exists:**
+```bash
+if command -v jq &> /dev/null; then
+    # jq rejects comments; a JSONC file with comments falls through to the manual message.
+    jq '.plugins = ((.plugins // []) + ["micode"] | unique)' \
+        ~/.config/opencode/opencode.jsonc > /tmp/oc.jsonc && \
+        mv /tmp/oc.jsonc ~/.config/opencode/opencode.jsonc || \
+        echo "Please add \"micode\" to the plugins array in ~/.config/opencode/opencode.jsonc"
+else
+    echo "Please add \"micode\" to the plugins array in ~/.config/opencode/opencode.jsonc"
+fi
+```
+
+**OpenCode 2, no config:**
+```bash
+mkdir -p ~/.config/opencode
+echo '{"plugins":["micode"]}' > ~/.config/opencode/opencode.jsonc
+```
+
+**OpenCode 1, config exists:**
 ```bash
 if command -v jq &> /dev/null; then
     jq '.plugin = ((.plugin // []) + ["micode"] | unique)' \
@@ -69,7 +90,7 @@ else
 fi
 ```
 
-**If no config exists:**
+**OpenCode 1, no config:**
 ```bash
 mkdir -p ~/.config/opencode
 echo '{"plugin":["micode"]}' > ~/.config/opencode/opencode.json
@@ -78,8 +99,8 @@ echo '{"plugin":["micode"]}' > ~/.config/opencode/opencode.json
 ## Step 3: Verify Setup
 
 ```bash
-opencode --version  # Should be 1.0.132 or higher
-cat ~/.config/opencode/opencode.json  # Should contain "micode" in plugin array
+opencode --version  # OpenCode 2.x, or OpenCode 1.18.29 or higher
+cat ~/.config/opencode/opencode.jsonc 2>/dev/null || cat ~/.config/opencode/opencode.json  # Should list "micode"
 ```
 
 ## Step 4: Configure Authentication

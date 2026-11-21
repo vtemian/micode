@@ -47,9 +47,9 @@ export function buildMcpServers(features?: MicodeFeatures): Record<string, McpLo
  */
 export function mergeMcpServers<T>(
   hostServers: Record<string, T> | undefined,
-  features?: MicodeFeatures,
+  servers: Record<string, McpLocalConfig>,
 ): Record<string, T | McpLocalConfig> {
-  return { ...buildMcpServers(features), ...hostServers };
+  return { ...servers, ...hostServers };
 }
 
 export function mergePluginAgentConfig(existingAgent: AgentConfig | undefined, pluginAgent: AgentConfig): AgentConfig {

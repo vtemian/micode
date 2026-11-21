@@ -1,6 +1,6 @@
 {
   "name": "micode",
-  "version": "0.11.0",
+  "version": "0.12.0",
   "description": "OpenCode plugin with Brainstorm-Research-Plan-Implement workflow",
   "module": "dist/index.js",
   "main": "dist/index.js",
@@ -9,15 +9,17 @@
   "files": [
     "src",
     "dist",
+    "index.js",
     "INSTALL_CLAUDE.md"
   ],
   "scripts": {
     "prepare": "lefthook install",
-    "build": "bun build src/index.ts --outdir dist --target node --external bun-pty --external jsonc-parser --external ws",
+    "build": "bun build src/index.ts --outdir dist --target node --external bun-pty --external jsonc-parser --external ws --external @opencode/plugin",
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "bun run check && bun run build",
     "test": "bun test tests",
     "test:e2e": "docker build -f e2e/Dockerfile -t micode-e2e . && docker run --rm micode-e2e",
+    "test:e2e:v2": "docker build -f e2e/Dockerfile --build-arg OPENCODE_INSTALL_URL=https://opencode.ai/v2/install --build-arg E2E_SPECS=e2e/v2 -t micode-e2e-v2 . && docker run --rm micode-e2e-v2",
     "test:e2e:live": "bun run build && bun test ./tests/e2e/*.e2e.ts --timeout 1560000",
     "test:watch": "bun test --watch",
     "format": "biome format --write .",
@@ -50,11 +52,16 @@
     "jsonc-parser": "^3.3.1",
     "valibot": "^1.2.0",
     "ws": "^8.21.1",
-    "yaml": "^2.8.2"
+    "yaml": "^2.8.2",
+    "zod": "^4.3.5"
+  },
+  "overrides": {
+    "zod": "^4.3.5"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.3.10",
     "@eslint/js": "^10.0.1",
+    "@opencode/plugin": "2.0.31",
     "@types/ws": "^8.18.1",
     "bun-types": "latest",
     "eslint": "^10.8.0",

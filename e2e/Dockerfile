@@ -10,7 +10,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # The installer's layout varies by version, so locate the binary rather than
 # assume a path, and fail loudly if it is missing.
-RUN curl -fsSL https://opencode.ai/install | bash \
+ARG OPENCODE_INSTALL_URL=https://opencode.ai/install
+RUN curl -fsSL "${OPENCODE_INSTALL_URL}" | bash \
     && OPENCODE_BIN="$(find / -type f -name opencode -perm -u+x 2>/dev/null | head -1)" \
     && test -n "${OPENCODE_BIN}" \
     && ln -sf "${OPENCODE_BIN}" /usr/local/bin/opencode \
@@ -27,4 +28,6 @@ RUN bun run build
 
 ENV STUB_PORT=8787
 
-CMD ["bun", "test", "e2e/specs", "--timeout", "300000"]
+ARG E2E_SPECS=e2e/specs
+ENV E2E_SPECS=${E2E_SPECS}
+CMD ["sh", "-c", "bun test ${E2E_SPECS} --timeout 300000"]

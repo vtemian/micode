@@ -57,16 +57,49 @@ categories:
     );
   }
 
+  async function collectPrompts(filePath: string, toolOutput: string, tool = "write"): Promise<string[]> {
+    const { createConstraintReviewerHook } = await import("../../src/hooks/constraint-reviewer");
+    const prompts: string[] = [];
+    const reviewer = async (prompt: string) => {
+      prompts.push(prompt);
+      return '{"status": "PASS", "violations": []}';
+    };
+    const hook = createConstraintReviewerHook(createMockCtx(testDir), reviewer);
+    await hook["tool.execute.after"]({ tool, sessionID: "test", args: { filePath } }, { output: toolOutput });
+    return prompts;
+  }
+
+  it("reviews the written file's content rather than the tool's status text", async () => {
+    setupMindmodel(testDir);
+    const filePath = join(testDir, "bad.ts");
+    writeFileSync(filePath, "const BAD = 1;\n");
+
+    const prompts = await collectPrompts(filePath, "Wrote file successfully.");
+
+    expect(prompts).toHaveLength(1);
+    expect(prompts[0]).toContain("const BAD = 1;");
+    expect(prompts[0]).not.toContain("Wrote file successfully.");
+  });
+
+  it("resolves a relative file path against the workspace directory", async () => {
+    setupMindmodel(testDir);
+    writeFileSync(join(testDir, "rel.ts"), "const REL = 2;\n");
+
+    const prompts = await collectPrompts("rel.ts", "Edit applied successfully.", "edit");
+
+    expect(prompts[0]).toContain("const REL = 2;");
+  });
+
   it("should skip review when no mindmodel exists", async () => {
     const { createConstraintReviewerHook } = await import("../../src/hooks/constraint-reviewer");
 
     const mockCtx = createMockCtx(testDir);
     const mockReviewer = async () => '{"status": "BLOCKED", "violations": []}';
 
-    const hook = createConstraintReviewerHook(mockCtx as any, mockReviewer);
+    const hook = createConstraintReviewerHook(mockCtx, mockReviewer);
 
     const output = { output: "some code" };
-    await hook["tool.execute.after"]({ tool: "Write", sessionID: "test", args: { file_path: "test.ts" } }, output);
+    await hook["tool.execute.after"]({ tool: "write", sessionID: "test", args: { filePath: "test.ts" } }, output);
 
     // Should not modify output when no mindmodel
     expect(output.output).toBe("some code");
@@ -84,10 +117,10 @@ categories:
       return '{"status": "PASS", "violations": [], "summary": "OK"}';
     };
 
-    const hook = createConstraintReviewerHook(mockCtx as any, mockReviewer);
+    const hook = createConstraintReviewerHook(mockCtx, mockReviewer);
 
     const output = { output: "some result" };
-    await hook["tool.execute.after"]({ tool: "Read", sessionID: "test", args: { file_path: "test.ts" } }, output);
+    await hook["tool.execute.after"]({ tool: "Read", sessionID: "test", args: { filePath: "test.ts" } }, output);
 
     expect(reviewCalled).toBe(false);
   });
@@ -104,14 +137,14 @@ categories:
       return '{"status": "PASS", "violations": [], "summary": "OK"}';
     };
 
-    const hook = createConstraintReviewerHook(mockCtx as any, mockReviewer);
+    const hook = createConstraintReviewerHook(mockCtx, mockReviewer);
 
     const output = { output: "some code" };
     await hook["tool.execute.after"](
       {
-        tool: "Write",
+        tool: "write",
         sessionID: "test",
-        args: { file_path: join(testDir, "test.ts") },
+        args: { filePath: join(testDir, "test.ts") },
       },
       output,
     );
@@ -131,19 +164,61 @@ categories:
       return '{"status": "PASS", "violations": [], "summary": "OK"}';
     };
 
-    const hook = createConstraintReviewerHook(mockCtx as any, mockReviewer);
+    const hook = createConstraintReviewerHook(mockCtx, mockReviewer);
 
     const output = { output: "edited code" };
     await hook["tool.execute.after"](
       {
-        tool: "Edit",
+        tool: "edit",
         sessionID: "test",
-        args: { file_path: join(testDir, "test.ts") },
+        args: { filePath: join(testDir, "test.ts") },
       },
       output,
     );
 
     expect(reviewCalled).toBe(true);
+  });
+
+  it("reviews multiedit but ignores a patch call that names no filePath", async () => {
+    setupMindmodel(testDir);
+
+    const { createConstraintReviewerHook } = await import("../../src/hooks/constraint-reviewer");
+
+    const reviewed: string[] = [];
+    const hook = createConstraintReviewerHook(createMockCtx(testDir), async (prompt) => {
+      reviewed.push(prompt);
+      return '{"status": "PASS", "violations": [], "summary": "OK"}';
+    });
+
+    const file = join(testDir, "test.ts");
+    await hook["tool.execute.after"](
+      { tool: "multiedit", sessionID: "test", args: { filePath: file } },
+      { output: "x" },
+    );
+    await hook["tool.execute.after"]({ tool: "patch", sessionID: "test", args: { patchText: "..." } }, { output: "y" });
+
+    expect(reviewed).toHaveLength(1);
+  });
+
+  it("reviews the file a v1 apply_patch call touched", async () => {
+    setupMindmodel(testDir);
+
+    const { createConstraintReviewerHook } = await import("../../src/hooks/constraint-reviewer");
+
+    const reviewed: string[] = [];
+    const hook = createConstraintReviewerHook(createMockCtx(testDir), async (prompt) => {
+      reviewed.push(prompt);
+      return '{"status": "PASS", "violations": [], "summary": "OK"}';
+    });
+
+    const file = join(testDir, "test.ts");
+    await hook["tool.execute.after"](
+      { tool: "apply_patch", sessionID: "test", args: { patchText: "...", filePath: file } },
+      { output: "x" },
+    );
+
+    expect(reviewed).toHaveLength(1);
+    expect(reviewed[0]).toContain(file);
   });
 
   it("should not modify output when review passes", async () => {
@@ -154,14 +229,14 @@ categories:
     const mockCtx = createMockCtx(testDir);
     const mockReviewer = async () => '{"status": "PASS", "violations": [], "summary": "All good"}';
 
-    const hook = createConstraintReviewerHook(mockCtx as any, mockReviewer);
+    const hook = createConstraintReviewerHook(mockCtx, mockReviewer);
 
     const output = { output: "clean code" };
     await hook["tool.execute.after"](
       {
-        tool: "Write",
+        tool: "write",
         sessionID: "test",
-        args: { file_path: join(testDir, "test.ts") },
+        args: { filePath: join(testDir, "test.ts") },
       },
       output,
     );
@@ -191,14 +266,14 @@ categories:
         summary: "Found 1 violation",
       });
 
-    const hook = createConstraintReviewerHook(mockCtx as any, mockReviewer);
+    const hook = createConstraintReviewerHook(mockCtx, mockReviewer);
 
     const output = { output: "bad code" };
     await hook["tool.execute.after"](
       {
-        tool: "Write",
+        tool: "write",
         sessionID: "test-session",
-        args: { file_path: join(testDir, "test.ts") },
+        args: { filePath: join(testDir, "test.ts") },
       },
       output,
     );
@@ -232,15 +307,15 @@ categories:
         summary: "Found 1 violation",
       });
 
-    const hook = createConstraintReviewerHook(mockCtx as any, mockReviewer);
+    const hook = createConstraintReviewerHook(mockCtx, mockReviewer);
 
     // First call - increments retry count
     const output1 = { output: "bad code" };
     await hook["tool.execute.after"](
       {
-        tool: "Write",
+        tool: "write",
         sessionID: "test-session",
-        args: { file_path: join(testDir, "test.ts") },
+        args: { filePath: join(testDir, "test.ts") },
       },
       output1,
     );
@@ -250,9 +325,9 @@ categories:
     try {
       await hook["tool.execute.after"](
         {
-          tool: "Write",
+          tool: "write",
           sessionID: "test-session",
-          args: { file_path: join(testDir, "test.ts") },
+          args: { filePath: join(testDir, "test.ts") },
         },
         output2,
       );
@@ -288,7 +363,7 @@ categories:
       });
     };
 
-    const hook = createConstraintReviewerHook(mockCtx as any, mockReviewer);
+    const hook = createConstraintReviewerHook(mockCtx, mockReviewer);
 
     // First, set override via chat message
     await hook["chat.message"](
@@ -300,9 +375,9 @@ categories:
     const output = { output: "bad code that would normally be blocked" };
     await hook["tool.execute.after"](
       {
-        tool: "Write",
+        tool: "write",
         sessionID: "test-session",
-        args: { file_path: join(testDir, "test.ts") },
+        args: { filePath: join(testDir, "test.ts") },
       },
       output,
     );
@@ -325,7 +400,7 @@ categories:
       return '{"status": "PASS", "violations": [], "summary": "OK"}';
     };
 
-    const hook = createConstraintReviewerHook(mockCtx as any, mockReviewer);
+    const hook = createConstraintReviewerHook(mockCtx, mockReviewer);
 
     // Set override
     await hook["chat.message"](
@@ -336,9 +411,9 @@ categories:
     // First tool call - should skip review
     await hook["tool.execute.after"](
       {
-        tool: "Write",
+        tool: "write",
         sessionID: "test-session",
-        args: { file_path: join(testDir, "test.ts") },
+        args: { filePath: join(testDir, "test.ts") },
       },
       { output: "code 1" },
     );
@@ -348,9 +423,9 @@ categories:
     // Second tool call - should review again
     await hook["tool.execute.after"](
       {
-        tool: "Write",
+        tool: "write",
         sessionID: "test-session",
-        args: { file_path: join(testDir, "test2.ts") },
+        args: { filePath: join(testDir, "test2.ts") },
       },
       { output: "code 2" },
     );
@@ -371,10 +446,10 @@ categories:
       return '{"status": "PASS", "violations": [], "summary": "OK"}';
     };
 
-    const hook = createConstraintReviewerHook(mockCtx as any, mockReviewer);
+    const hook = createConstraintReviewerHook(mockCtx, mockReviewer);
 
     const output = { output: "some code" };
-    await hook["tool.execute.after"]({ tool: "Write", sessionID: "test", args: {} }, output);
+    await hook["tool.execute.after"]({ tool: "write", sessionID: "test", args: {} }, output);
 
     expect(reviewCalled).toBe(false);
   });
@@ -389,15 +464,15 @@ categories:
       throw new Error("Review service unavailable");
     };
 
-    const hook = createConstraintReviewerHook(mockCtx as any, mockReviewer);
+    const hook = createConstraintReviewerHook(mockCtx, mockReviewer);
 
     // Should not throw, should gracefully degrade
     const output = { output: "some code" };
     await hook["tool.execute.after"](
       {
-        tool: "Write",
+        tool: "write",
         sessionID: "test",
-        args: { file_path: join(testDir, "test.ts") },
+        args: { filePath: join(testDir, "test.ts") },
       },
       output,
     );
@@ -421,12 +496,12 @@ categories:
         violations: [{ file: "test", rule: "rule", constraint_file: "c.md", found: "x", expected: "y" }],
       });
 
-    const hook = createConstraintReviewerHook(mockCtx as any, mockReviewer);
+    const hook = createConstraintReviewerHook(mockCtx, mockReviewer);
 
     // First file - first retry
     const output1 = { output: "code" };
     await hook["tool.execute.after"](
-      { tool: "Write", sessionID: "test-session", args: { file_path: join(testDir, "file1.ts") } },
+      { tool: "write", sessionID: "test-session", args: { filePath: join(testDir, "file1.ts") } },
       output1,
     );
     expect(output1.output).toContain("constraint-violations");
@@ -434,7 +509,7 @@ categories:
     // Second file - should also be first retry (not blocked), since retry count is per-file
     const output2 = { output: "code" };
     await hook["tool.execute.after"](
-      { tool: "Write", sessionID: "test-session", args: { file_path: join(testDir, "file2.ts") } },
+      { tool: "write", sessionID: "test-session", args: { filePath: join(testDir, "file2.ts") } },
       output2,
     );
     expect(output2.output).toContain("constraint-violations");
@@ -442,7 +517,7 @@ categories:
     // First file again - should now be blocked (second retry)
     try {
       await hook["tool.execute.after"](
-        { tool: "Write", sessionID: "test-session", args: { file_path: join(testDir, "file1.ts") } },
+        { tool: "write", sessionID: "test-session", args: { filePath: join(testDir, "file1.ts") } },
         { output: "code" },
       );
       expect(true).toBe(false); // Should throw
@@ -463,11 +538,11 @@ categories:
         violations: [{ file: "test", rule: "rule", constraint_file: "c.md", found: "x", expected: "y" }],
       });
 
-    const hook = createConstraintReviewerHook(mockCtx as any, mockReviewer);
+    const hook = createConstraintReviewerHook(mockCtx, mockReviewer);
 
     // Build up some state
     await hook["tool.execute.after"](
-      { tool: "Write", sessionID: "cleanup-test", args: { file_path: join(testDir, "test.ts") } },
+      { tool: "write", sessionID: "cleanup-test", args: { filePath: join(testDir, "test.ts") } },
       { output: "code" },
     );
 
@@ -477,7 +552,7 @@ categories:
     // After cleanup, retry count should be reset - so first edit should be a retry, not a block
     const output = { output: "code" };
     await hook["tool.execute.after"](
-      { tool: "Write", sessionID: "cleanup-test", args: { file_path: join(testDir, "test.ts") } },
+      { tool: "write", sessionID: "cleanup-test", args: { filePath: join(testDir, "test.ts") } },
       output,
     );
     // Should append violations (first retry), not throw

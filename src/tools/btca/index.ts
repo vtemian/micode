@@ -1,4 +1,5 @@
-import { tool } from "@opencode-ai/plugin/tool";
+import { z } from "zod";
+import { defineTool } from "@/tools/define";
 import { config } from "@/utils/config";
 import { extractErrorMessage } from "@/utils/errors";
 import { findExecutable, runCommand } from "@/utils/process";
@@ -44,14 +45,14 @@ async function runBtca(args: string[]): Promise<{ output: string; error?: string
   }
 }
 
-export const btca_ask = tool({
+export const btca_ask = defineTool({
   description:
     "Ask questions about library/framework source code using btca. " +
     "Clones repos locally and searches source code to answer questions. " +
     "Use for understanding library internals, finding implementation details, or debugging.",
   args: {
-    tech: tool.schema.string().describe("Resource name configured in btca (e.g., 'react', 'express')"),
-    question: tool.schema.string().describe("Question to ask about the library source code"),
+    tech: z.string().describe("Resource name configured in btca (e.g., 'react', 'express')"),
+    question: z.string().describe("Question to ask about the library source code"),
   },
   execute: async (args) => {
     const btcaOutput = await runBtca(["ask", "-t", args.tech, "-q", args.question]);

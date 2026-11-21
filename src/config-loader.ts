@@ -1,5 +1,5 @@
 // src/config-loader.ts
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -11,13 +11,15 @@ import {
   extractContextLimits,
   extractProviderIds,
   extractProviderModels,
-  OpencodeConfigSchema,
+  parseModelSelection,
+  parseProviderRecord,
   RawMicodeConfigSchema,
   sanitizeAgentsRecord,
   sanitizeCompactionThreshold,
   sanitizeFeatures,
   sanitizeFragments,
 } from "@/config-schemas";
+import { extractErrorMessage } from "@/utils/errors";
 import { log } from "@/utils/logger";
 
 const LOG_MODULE = "config-loader";
@@ -28,10 +30,23 @@ export interface ProviderInfo {
   readonly models: Record<string, unknown>;
 }
 
-/**
- * OpenCode config structure for reading default model and available models
- */
-type OpencodeConfig = v.InferOutput<typeof OpencodeConfigSchema>;
+/** The fields micode reads from opencode.json/opencode.jsonc, each validated on its own. */
+export interface OpencodeSettings {
+  /** Default model as "provider/model". */
+  readonly model?: string;
+  /** Variant of the default model (the part after "#", or the object form's `variant`). */
+  readonly variant?: string;
+  readonly provider?: Record<string, unknown>;
+  /** Problems found while reading; the affected file or field was skipped. */
+  readonly warnings: readonly string[];
+}
+
+// Later files win per top-level key, matching OpenCode's own load order.
+const OPENCODE_CONFIG_FILES = ["opencode.json", "opencode.jsonc"] as const;
+
+function defaultConfigDir(): string {
+  return join(homedir(), ".config", "opencode");
+}
 
 /**
  * Parse a JSON or JSONC string, supporting comments and trailing commas.
@@ -46,22 +61,55 @@ function parseConfigJson(content: string): unknown {
   return parsed;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function readConfigObject(baseDir: string, file: string, warnings: string[]): Record<string, unknown> {
+  let content: string;
+  try {
+    content = readFileSync(join(baseDir, file), "utf-8");
+  } catch {
+    // A missing file is normal; either name may be absent.
+    return {};
+  }
+  try {
+    const raw = parseConfigJson(content);
+    if (isRecord(raw)) return raw;
+    warnings.push(`${file}: expected a JSON object; ignoring the file`);
+  } catch (error) {
+    warnings.push(`${file}: ${extractErrorMessage(error)}; ignoring the file`);
+  }
+  return {};
+}
+
 /**
- * Resolve a config file path, preferring .jsonc over .json (synchronous).
- * Returns the path to the first file found, or null if neither exists.
+ * Read opencode.json and opencode.jsonc (jsonc wins per key) and validate each field separately,
+ * so one malformed field or file never discards the rest.
  */
-function resolveConfigFileSync(baseDir: string, baseName: string): string | null {
-  const jsoncPath = join(baseDir, `${baseName}.jsonc`);
-  if (existsSync(jsoncPath)) {
-    return jsoncPath;
-  }
+export function loadOpencodeSettings(configDir?: string): OpencodeSettings {
+  const baseDir = configDir ?? defaultConfigDir();
+  const warnings: string[] = [];
+  const merged: Record<string, unknown> = {};
+  for (const file of OPENCODE_CONFIG_FILES) Object.assign(merged, readConfigObject(baseDir, file, warnings));
+  const selection = parseField(merged.model, parseModelSelection, warnings, "model is not a provider/model ref");
+  const legacy = parseField(merged.provider, parseProviderRecord, warnings, "provider must be an object");
+  const native = parseField(merged.providers, parseProviderRecord, warnings, "providers must be an object");
+  // OpenCode 2 reads both keys; its native `providers` wins on conflict.
+  const provider = legacy || native ? { ...legacy, ...native } : undefined;
+  return { model: selection?.ref, variant: selection?.variant, provider, warnings };
+}
 
-  const jsonPath = join(baseDir, `${baseName}.json`);
-  if (existsSync(jsonPath)) {
-    return jsonPath;
-  }
-
-  return null;
+function parseField<T>(
+  raw: unknown,
+  parse: (raw: unknown) => T | undefined,
+  warnings: string[],
+  problem: string,
+): T | undefined {
+  if (raw === undefined) return undefined;
+  const parsed = parse(raw);
+  if (parsed === undefined) warnings.push(`${problem} (${JSON.stringify(raw)}); ignoring it`);
+  return parsed;
 }
 
 /**
@@ -69,7 +117,6 @@ function resolveConfigFileSync(baseDir: string, baseName: string): string | null
  * Returns the file content string, or null if neither file exists.
  */
 async function readConfigFileAsync(baseDir: string, baseName: string): Promise<string | null> {
-  // Try .jsonc first
   try {
     return await readFile(join(baseDir, `${baseName}.jsonc`), "utf-8");
   } catch {
@@ -79,27 +126,7 @@ async function readConfigFileAsync(baseDir: string, baseName: string): Promise<s
   try {
     return await readFile(join(baseDir, `${baseName}.json`), "utf-8");
   } catch {
-    return null;
-  }
-}
-
-/**
- * Load opencode.json/opencode.jsonc config file (synchronous)
- * Returns the parsed config or null if unavailable
- */
-function loadOpencodeConfig(configDir?: string): OpencodeConfig | null {
-  const baseDir = configDir ?? join(homedir(), ".config", "opencode");
-
-  try {
-    const configPath = resolveConfigFileSync(baseDir, "opencode");
-    if (!configPath) return null;
-
-    const content = readFileSync(configPath, "utf-8");
-    const raw = parseConfigJson(content);
-    const parsed = v.safeParse(OpencodeConfigSchema, raw);
-    if (!parsed.success) return null;
-    return parsed.output;
-  } catch {
+    // Neither file exists; the caller treats null as "no config".
     return null;
   }
 }
@@ -109,9 +136,8 @@ function loadOpencodeConfig(configDir?: string): OpencodeConfig | null {
  * Returns a Set of "provider/model" strings
  */
 export function loadAvailableModels(configDir?: string): Set<string> {
-  const config = loadOpencodeConfig(configDir);
-  if (!config?.provider) return new Set<string>();
-  return extractProviderModels(config.provider);
+  const { provider } = loadOpencodeSettings(configDir);
+  return provider ? extractProviderModels(provider) : new Set<string>();
 }
 
 /**
@@ -119,8 +145,7 @@ export function loadAvailableModels(configDir?: string): Set<string> {
  * Returns the model string in "provider/model" format or null if not set
  */
 export function loadDefaultModel(configDir?: string): string | null {
-  const config = loadOpencodeConfig(configDir);
-  return config?.model ?? null;
+  return loadOpencodeSettings(configDir).model ?? null;
 }
 
 /**
@@ -129,9 +154,8 @@ export function loadDefaultModel(configDir?: string): string | null {
  * github-copilot, ...), not just the models the file happens to list.
  */
 export function loadConfiguredProviders(configDir?: string): Set<string> {
-  const config = loadOpencodeConfig(configDir);
-  if (!config?.provider) return new Set<string>();
-  return extractProviderIds(config.provider);
+  const { provider } = loadOpencodeSettings(configDir);
+  return provider ? extractProviderIds(provider) : new Set<string>();
 }
 
 // Built-in OpenCode models that don't require validation (always available)
@@ -139,6 +163,7 @@ const BUILTIN_MODELS = new Set(["opencode/big-pickle"]);
 
 export interface AgentOverride {
   readonly model?: string;
+  readonly variant?: string;
   readonly temperature?: number;
   readonly maxTokens?: number;
   readonly steps?: number;
@@ -168,7 +193,7 @@ export interface MicodeConfig {
  * @param configDir - Optional override for config directory (for testing)
  */
 export async function loadMicodeConfig(configDir?: string): Promise<MicodeConfig | null> {
-  const baseDir = configDir ?? join(homedir(), ".config", "opencode");
+  const baseDir = configDir ?? defaultConfigDir();
 
   try {
     const content = await readConfigFileAsync(baseDir, "micode");
@@ -189,7 +214,9 @@ function buildMicodeConfig(raw: unknown): MicodeConfig {
   const micodeConfig: MicodeConfig = {};
 
   if (config.agents) {
-    micodeConfig.agents = sanitizeAgentsRecord(config.agents);
+    const warnings: string[] = [];
+    micodeConfig.agents = sanitizeAgentsRecord(config.agents, warnings);
+    for (const warning of warnings) log.warn(LOG_MODULE, warning);
   }
 
   if (config.features && typeof config.features === "object") {
@@ -213,9 +240,8 @@ function buildMicodeConfig(raw: unknown): MicodeConfig {
  * Returns a Map of "provider/model" -> context limit (tokens)
  */
 export function loadModelContextLimits(configDir?: string): Map<string, number> {
-  const config = loadOpencodeConfig(configDir);
-  if (!config?.provider) return new Map<string, number>();
-  return extractContextLimits(config.provider);
+  const { provider } = loadOpencodeSettings(configDir);
+  return provider ? extractContextLimits(provider) : new Map<string, number>();
 }
 
 /**
@@ -234,13 +260,16 @@ export function mergeAgentConfigs(
   availableModels?: Set<string>,
   defaultModel?: string | null,
   configuredProviders?: Set<string>,
+  defaultVariant?: string | null,
 ): Record<string, AgentConfig> {
   const models = availableModels ?? loadAvailableModels();
   // Injected models without injected providers means a test pinning the exact
   // model list; production loads both from the same config file.
   const providers = configuredProviders ?? (availableModels ? new Set<string>() : loadConfiguredProviders());
   const shouldValidateModels = models.size > 0 || providers.size > 0;
-  const opencodeDefaultModel = defaultModel !== undefined ? defaultModel : loadDefaultModel();
+  const settings = defaultModel === undefined ? loadOpencodeSettings() : undefined;
+  const opencodeDefaultModel = defaultModel === undefined ? (settings?.model ?? null) : defaultModel;
+  const opencodeDefaultVariant = defaultVariant === undefined ? (settings?.variant ?? null) : defaultVariant;
 
   const isValidModel = (model: string): boolean => {
     if (BUILTIN_MODELS.has(model)) return true;
@@ -255,24 +284,31 @@ export function mergeAgentConfigs(
   const merged: Record<string, AgentConfig> = {};
 
   for (const [name, agentConfig] of Object.entries(pluginAgents)) {
-    merged[name] = mergeOneAgent(agentConfig, userConfig?.agents?.[name], name, opencodeDefaultModel, isValidModel);
+    const defaults = { model: opencodeDefaultModel, variant: opencodeDefaultVariant };
+    merged[name] = mergeOneAgent(agentConfig, userConfig?.agents?.[name], name, defaults, isValidModel);
   }
 
   return merged;
+}
+
+interface DefaultModel {
+  readonly model: string | null;
+  readonly variant: string | null;
 }
 
 function mergeOneAgent(
   agentConfig: AgentConfig,
   userOverride: AgentOverride | undefined,
   name: string,
-  opencodeDefaultModel: string | null,
+  defaults: DefaultModel,
   isValidModel: (model: string) => boolean,
 ): AgentConfig {
   let finalConfig: AgentConfig = { ...agentConfig };
 
   // Apply opencode default model if available and valid (overrides plugin default)
-  if (opencodeDefaultModel && isValidModel(opencodeDefaultModel)) {
-    finalConfig = { ...finalConfig, model: opencodeDefaultModel };
+  if (defaults.model && isValidModel(defaults.model)) {
+    finalConfig = { ...finalConfig, model: defaults.model };
+    if (defaults.variant) finalConfig = { ...finalConfig, variant: defaults.variant };
   }
 
   if (!userOverride) return finalConfig;
@@ -291,7 +327,9 @@ function applyUserOverride(
   }
 
   if (isValidModel(override.model)) {
-    return { ...config, ...override };
+    // The default model's variant belongs to that model, not to the override's.
+    const { variant: _inherited, ...rest } = config;
+    return { ...rest, ...override };
   }
 
   // Model is invalid - log warning and apply other overrides only

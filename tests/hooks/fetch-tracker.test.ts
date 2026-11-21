@@ -94,11 +94,9 @@ describe("fetch-tracker", () => {
       expect(typeof createFetchTrackerHook).toBe("function");
     });
 
-    it("should return hook with after handler, event handler, and cleanupSession", () => {
-      const mockCtx = { directory: "/test" } as any;
-      const hook = createFetchTrackerHook(mockCtx);
+    it("should return hook with after handler and cleanupSession", () => {
+      const hook = createFetchTrackerHook();
       expect(hook["tool.execute.after"]).toBeDefined();
-      expect(hook.event).toBeDefined();
       expect(hook.cleanupSession).toBeDefined();
     });
   });
@@ -109,8 +107,7 @@ describe("fetch-tracker", () => {
     });
 
     it("should increment count via after hook", async () => {
-      const mockCtx = { directory: "/test" } as any;
-      const hook = createFetchTrackerHook(mockCtx);
+      const hook = createFetchTrackerHook();
 
       const output = { output: "some content" };
       await hook["tool.execute.after"](
@@ -122,8 +119,7 @@ describe("fetch-tracker", () => {
     });
 
     it("should not count non-fetch tools", async () => {
-      const mockCtx = { directory: "/test" } as any;
-      const hook = createFetchTrackerHook(mockCtx);
+      const hook = createFetchTrackerHook();
 
       const output = { output: "file content" };
       await hook["tool.execute.after"](
@@ -138,8 +134,7 @@ describe("fetch-tracker", () => {
 
   describe("caching and output replacement", () => {
     it("should cache results after first fetch", async () => {
-      const mockCtx = { directory: "/test" } as any;
-      const hook = createFetchTrackerHook(mockCtx);
+      const hook = createFetchTrackerHook();
 
       const args = { url: "https://example.com/cached" };
 
@@ -154,8 +149,7 @@ describe("fetch-tracker", () => {
     });
 
     it("should replace output with cached content on second call", async () => {
-      const mockCtx = { directory: "/test" } as any;
-      const hook = createFetchTrackerHook(mockCtx);
+      const hook = createFetchTrackerHook();
 
       const args = { url: "https://example.com/hit" };
 
@@ -175,8 +169,7 @@ describe("fetch-tracker", () => {
     });
 
     it("should not cache results for non-fetch tools", async () => {
-      const mockCtx = { directory: "/test" } as any;
-      const hook = createFetchTrackerHook(mockCtx);
+      const hook = createFetchTrackerHook();
 
       await hook["tool.execute.after"](
         { tool: "read", sessionID: testSessionID, args: { filePath: "/file" } },
@@ -190,8 +183,7 @@ describe("fetch-tracker", () => {
 
   describe("warning injection", () => {
     it("should inject warning after warnThreshold calls", async () => {
-      const mockCtx = { directory: "/test" } as any;
-      const hook = createFetchTrackerHook(mockCtx);
+      const hook = createFetchTrackerHook();
 
       const args = { url: "https://example.com/page" };
 
@@ -216,8 +208,7 @@ describe("fetch-tracker", () => {
 
   describe("blocking", () => {
     it("should block after maxCallsPerResource calls", async () => {
-      const mockCtx = { directory: "/test" } as any;
-      const hook = createFetchTrackerHook(mockCtx);
+      const hook = createFetchTrackerHook();
 
       const args = { url: "https://example.com/blocked" };
 
@@ -241,8 +232,7 @@ describe("fetch-tracker", () => {
 
   describe("session isolation", () => {
     it("should track calls independently per session", async () => {
-      const mockCtx = { directory: "/test" } as any;
-      const hook = createFetchTrackerHook(mockCtx);
+      const hook = createFetchTrackerHook();
 
       const args = { url: "https://example.com" };
       const session1 = "session-1";
@@ -262,8 +252,7 @@ describe("fetch-tracker", () => {
 
   describe("session cleanup", () => {
     it("should clear call counts and cache on cleanup", async () => {
-      const mockCtx = { directory: "/test" } as any;
-      const hook = createFetchTrackerHook(mockCtx);
+      const hook = createFetchTrackerHook();
 
       const args = { url: "https://example.com/cleanup" };
 
@@ -278,9 +267,8 @@ describe("fetch-tracker", () => {
       expect(getCacheEntry(testSessionID, "webfetch|https://example.com/cleanup")).toBeUndefined();
     });
 
-    it("should clean up via event handler on session.deleted", async () => {
-      const mockCtx = { directory: "/test" } as any;
-      const hook = createFetchTrackerHook(mockCtx);
+    it("should clean up when the core clears the deleted session", async () => {
+      const hook = createFetchTrackerHook();
 
       const args = { url: "https://example.com/event-cleanup" };
 
@@ -288,13 +276,8 @@ describe("fetch-tracker", () => {
 
       expect(getCallCount(testSessionID, "webfetch|https://example.com/event-cleanup")).toBe(1);
 
-      // Simulate session.deleted event
-      await hook.event({
-        event: {
-          type: "session.deleted",
-          properties: { info: { id: testSessionID } },
-        },
-      });
+      // The core calls clearSession on session.deleted
+      clearSession(testSessionID);
 
       expect(getCallCount(testSessionID, "webfetch|https://example.com/event-cleanup")).toBe(0);
     });
@@ -302,16 +285,14 @@ describe("fetch-tracker", () => {
 
   describe("error resilience", () => {
     it("should not break on missing tool args", async () => {
-      const mockCtx = { directory: "/test" } as any;
-      const hook = createFetchTrackerHook(mockCtx);
+      const hook = createFetchTrackerHook();
 
       // Should not throw
       await hook["tool.execute.after"]({ tool: "webfetch", sessionID: testSessionID, args: {} }, { output: "content" });
     });
 
     it("should not break on undefined args", async () => {
-      const mockCtx = { directory: "/test" } as any;
-      const hook = createFetchTrackerHook(mockCtx);
+      const hook = createFetchTrackerHook();
 
       await hook["tool.execute.after"](
         { tool: "webfetch", sessionID: testSessionID, args: undefined },

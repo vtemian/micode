@@ -29,6 +29,18 @@ describe("errors utility", () => {
       expect(extractErrorMessage(undefined)).toBe("undefined");
     });
 
+    it("should read a plain message object", async () => {
+      const { extractErrorMessage } = await import("../../src/utils/errors");
+      expect(extractErrorMessage({ message: "plain" })).toBe("plain");
+    });
+
+    it("should read the OpenCode SDK's nested error payload", async () => {
+      const { extractErrorMessage } = await import("../../src/utils/errors");
+      expect(extractErrorMessage({ name: "NotFoundError", data: { message: "no such session" } })).toBe(
+        "no such session",
+      );
+    });
+
     it("should handle object with toString", async () => {
       const { extractErrorMessage } = await import("../../src/utils/errors");
       const obj = { toString: () => "custom object" };

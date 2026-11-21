@@ -25,6 +25,21 @@ jobs:
       - name: Run scripted tier
         run: docker run --rm micode-e2e
 
+  scripted-v2:
+    # OpenCode 2 loads the same package through its v2 entrypoint; this tier
+    # boots the v2 server and checks that micode's agents are registered.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build harness
+        run: docker build -f e2e/Dockerfile --build-arg OPENCODE_INSTALL_URL=https://opencode.ai/v2/install --build-arg E2E_SPECS=e2e/v2 -t micode-e2e-v2 .
+
+      - name: Run OpenCode 2 smoke tier
+        run: docker run --rm micode-e2e-v2
+
   live:
     # A real model costs money (or at least a rate limit), so it is manual
     # only and skips without credentials rather than failing.

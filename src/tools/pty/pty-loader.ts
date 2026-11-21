@@ -38,7 +38,7 @@ function resolveNativeLibNames(platform: string, arch: string): string[] {
  * Probe additional paths where the bun-pty native library might live,
  * beyond what bun-pty checks itself. Sets BUN_PTY_LIB if found.
  */
-function probeBunPtyLib(): void {
+function probeBunPtyLib(directory: string): void {
   // If already set by user, respect it
   if (process.env.BUN_PTY_LIB) return;
 
@@ -47,15 +47,13 @@ function probeBunPtyLib(): void {
 
   const filenames = resolveNativeLibNames(platform, arch);
 
-  const cwd = process.cwd();
-
   // Paths that bun-pty does NOT check but where the lib may exist
   // when installed as an OpenCode plugin dependency
   const additionalBasePaths = [
     // .opencode/node_modules/bun-pty/... (plugin installed via .opencode/package.json)
-    join(cwd, ".opencode", "node_modules", "bun-pty", "rust-pty", "target", "release"),
+    join(directory, ".opencode", "node_modules", "bun-pty", "rust-pty", "target", "release"),
     // .micode/node_modules/bun-pty/... (if micode has its own node_modules)
-    join(cwd, ".micode", "node_modules", "bun-pty", "rust-pty", "target", "release"),
+    join(directory, ".micode", "node_modules", "bun-pty", "rust-pty", "target", "release"),
   ];
 
   // Also try resolving from require.resolve if available
@@ -86,12 +84,12 @@ function probeBunPtyLib(): void {
  *
  * Returns null if bun-pty cannot be loaded (native library missing, etc.)
  */
-export async function loadBunPty(): Promise<BunPtyModule | null> {
+export async function loadBunPty(directory: string = process.cwd()): Promise<BunPtyModule | null> {
   if (loadAttempted) return ptyModule;
   loadAttempted = true;
 
   // Probe and set BUN_PTY_LIB before importing
-  probeBunPtyLib();
+  probeBunPtyLib(directory);
 
   try {
     ptyModule = await import("bun-pty");

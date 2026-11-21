@@ -1,11 +1,9 @@
 // src/hooks/fragment-injector.ts
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-
-import type { PluginInput } from "@opencode-ai/plugin";
 import * as v from "valibot";
-
 import type { MicodeConfig } from "@/config-loader";
+import type { Workspace } from "@/host/port";
 
 /**
  * Schema for a project fragments file: Record<string, string[]>
@@ -171,12 +169,12 @@ export function warnUnknownAgents(fragmentAgents: string[], knownAgents: Set<str
  */
 interface FragmentInjectorHooks {
   "chat.params": (
-    _input: { sessionID: string },
+    input: { sessionID: string; agent?: string },
     output: { options?: Record<string, unknown>; system?: string },
   ) => Promise<void>;
 }
 
-export function createFragmentInjectorHook(ctx: PluginInput, globalConfig: MicodeConfig | null): FragmentInjectorHooks {
+export function createFragmentInjectorHook(ctx: Workspace, globalConfig: MicodeConfig | null): FragmentInjectorHooks {
   // Cache for project fragments (loaded once per session)
   let projectFragmentsCache: Record<string, string[]> | null = null;
 
@@ -188,11 +186,8 @@ export function createFragmentInjectorHook(ctx: PluginInput, globalConfig: Micod
   }
 
   return {
-    "chat.params": async (
-      _input: { sessionID: string },
-      output: { options?: Record<string, unknown>; system?: string },
-    ) => {
-      const agent = output.options?.agent as string | undefined;
+    "chat.params": async (input, output) => {
+      const agent = input.agent;
       if (!agent) return;
 
       const globalFragments = globalConfig?.fragments ?? {};

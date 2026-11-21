@@ -9,6 +9,7 @@ import {
   loadDefaultModel,
   loadMicodeConfig,
   loadModelContextLimits,
+  loadOpencodeSettings,
   mergeAgentConfigs,
   type ProviderInfo,
   validateAgentModels,
@@ -894,6 +895,16 @@ describe("mergeAgentConfigs model validation against configured providers (#48)"
   const pluginAgents = {
     brainstormer: { description: "Design agent", model: "plugin/default" },
   };
+  let logs: LogCapture;
+
+  beforeEach(() => {
+    logs = captureLogs();
+  });
+
+  afterEach(() => {
+    logs.restore();
+    expect(logs.unread()).toEqual([]);
+  });
 
   it("accepts an undeclared model when its provider is configured", () => {
     const merged = mergeAgentConfigs(
@@ -917,6 +928,7 @@ describe("mergeAgentConfigs model validation against configured providers (#48)"
     );
 
     expect(merged.brainstormer.model).toBe("plugin/default");
+    expect(logs.warn).toEqual([expect.stringContaining('"anthropic/claude-x" for agent "brainstormer"')]);
   });
 
   it("keeps exact-list validation when no providers are injected", () => {
@@ -928,6 +940,7 @@ describe("mergeAgentConfigs model validation against configured providers (#48)"
     );
 
     expect(merged.brainstormer.model).toBe("plugin/default");
+    expect(logs.warn).toEqual([expect.stringContaining('"openai/gpt-5.1" for agent "brainstormer"')]);
   });
 });
 
@@ -1160,5 +1173,162 @@ describe("validateAgentModels", () => {
 
     expect(result).toEqual({ agents: {} });
     expect(logs.warn).toEqual([notFound("invalid/model", "commander")]);
+  });
+});
+
+describe("opencode config sources and model shapes", () => {
+  let dir: string;
+
+  beforeEach(() => {
+    dir = join(tmpdir(), `micode-config-sources-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    mkdirSync(dir, { recursive: true });
+  });
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("normalizes the v2 object model form to provider/model", () => {
+    writeFileSync(join(dir, "opencode.json"), JSON.stringify({ model: { providerID: "openai", model: "gpt-5" } }));
+    expect(loadDefaultModel(dir)).toBe("openai/gpt-5");
+  });
+
+  it("drops the variant from both model forms", () => {
+    writeFileSync(
+      join(dir, "opencode.json"),
+      JSON.stringify({ model: { providerID: "openai", model: "gpt-5", variant: "high" } }),
+    );
+    expect(loadDefaultModel(dir)).toBe("openai/gpt-5");
+    writeFileSync(join(dir, "opencode.json"), JSON.stringify({ model: "openrouter/anthropic/claude#max" }));
+    expect(loadDefaultModel(dir)).toBe("openrouter/anthropic/claude");
+  });
+
+  it("reports the default model's variant separately from its ref", () => {
+    writeFileSync(join(dir, "opencode.json"), JSON.stringify({ model: "openai/gpt-5#high" }));
+    const settings = loadOpencodeSettings(dir);
+    expect(settings.model).toBe("openai/gpt-5");
+    expect(settings.variant).toBe("high");
+  });
+
+  it("sets the variant on agent configs from the default model", () => {
+    const plugin = { commander: { description: "Main", model: "a/b" } };
+    const merged = mergeAgentConfigs(plugin, null, new Set(["a/b", "p/m"]), "p/m", undefined, "high");
+    expect(merged.commander.model).toBe("p/m");
+    expect(merged.commander.variant).toBe("high");
+  });
+
+  it("lets a per-agent model override replace the default variant", () => {
+    const userConfig = { agents: { commander: { model: "a/b", variant: "low" }, planner: { model: "a/b" } } };
+    const plugin = { commander: { description: "Main" }, planner: { description: "Plan" } };
+    const merged = mergeAgentConfigs(plugin, userConfig, new Set(["a/b", "p/m"]), "p/m", undefined, "high");
+    expect(merged.commander.variant).toBe("low");
+    expect(merged.planner.variant).toBeUndefined();
+  });
+
+  it("reads the model from opencode.json when opencode.jsonc exists without one", () => {
+    writeFileSync(join(dir, "opencode.json"), JSON.stringify({ model: "anthropic/claude-opus" }));
+    writeFileSync(
+      join(dir, "opencode.jsonc"),
+      `{ // providers only\n "provider": { "openai": { "models": { "gpt-4o": {} } } } }`,
+    );
+    expect(loadDefaultModel(dir)).toBe("anthropic/claude-opus");
+    expect(loadAvailableModels(dir).has("openai/gpt-4o")).toBe(true);
+  });
+
+  it("lets opencode.jsonc win per key when both files define it", () => {
+    writeFileSync(join(dir, "opencode.json"), JSON.stringify({ model: "anthropic/claude-opus" }));
+    writeFileSync(join(dir, "opencode.jsonc"), `{ "model": "openai/gpt-5" }`);
+    expect(loadDefaultModel(dir)).toBe("openai/gpt-5");
+  });
+
+  it("keeps valid fields when another field is malformed, with a warning", () => {
+    writeFileSync(
+      join(dir, "opencode.json"),
+      JSON.stringify({ model: 42, provider: { openai: { models: { "gpt-4o": { limit: { context: 1000 } } } } } }),
+    );
+    const settings = loadOpencodeSettings(dir);
+    expect(settings.model).toBeUndefined();
+    expect(settings.warnings).toEqual([expect.stringContaining("model")]);
+    expect(loadModelContextLimits(dir).get("openai/gpt-4o")).toBe(1000);
+  });
+
+  it("reads context limits from the OpenCode 2 `providers` key", () => {
+    writeFileSync(
+      join(dir, "opencode.jsonc"),
+      JSON.stringify({ providers: { ollama: { models: { "qwen3:8b": { limit: { context: 32768 } } } } } }),
+    );
+    expect(loadModelContextLimits(dir).get("ollama/qwen3:8b")).toBe(32768);
+  });
+
+  it("prefers `providers` over `provider` for the same provider id", () => {
+    writeFileSync(
+      join(dir, "opencode.json"),
+      JSON.stringify({
+        provider: { p: { models: { m: { limit: { context: 1000 } } } } },
+        providers: { p: { models: { m: { limit: { context: 2000 } } } } },
+      }),
+    );
+    expect(loadModelContextLimits(dir).get("p/m")).toBe(2000);
+  });
+
+  it("rejects a default model without a provider prefix", () => {
+    writeFileSync(join(dir, "opencode.json"), JSON.stringify({ model: "gpt-5" }));
+    const settings = loadOpencodeSettings(dir);
+    expect(settings.model).toBeUndefined();
+    expect(settings.warnings).toEqual([expect.stringContaining("gpt-5")]);
+  });
+
+  it("still uses opencode.json when opencode.jsonc does not parse", () => {
+    writeFileSync(join(dir, "opencode.json"), JSON.stringify({ model: "anthropic/claude-opus" }));
+    writeFileSync(join(dir, "opencode.jsonc"), "{ not valid ][");
+    const settings = loadOpencodeSettings(dir);
+    expect(settings.model).toBe("anthropic/claude-opus");
+    expect(settings.warnings).toEqual([expect.stringContaining("opencode.jsonc")]);
+  });
+});
+
+describe("micode.json agent model overrides", () => {
+  let dir: string;
+  let logs: LogCapture;
+
+  beforeEach(() => {
+    dir = join(tmpdir(), `micode-overrides-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    mkdirSync(dir, { recursive: true });
+    logs = captureLogs();
+  });
+
+  afterEach(() => {
+    logs.restore();
+    expect(logs.unread()).toEqual([]);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("keeps the variant of a per-agent model override as a separate field", async () => {
+    writeFileSync(join(dir, "micode.json"), JSON.stringify({ agents: { executor: { model: "openai/gpt-4o#low" } } }));
+    const config = await loadMicodeConfig(dir);
+    expect(config?.agents?.executor).toEqual({ model: "openai/gpt-4o", variant: "low" });
+  });
+
+  it("drops a model without a provider prefix or an empty model, keeping the other fields", async () => {
+    writeFileSync(
+      join(dir, "micode.json"),
+      JSON.stringify({
+        agents: {
+          commander: { model: "gpt-4o", temperature: 0.4 },
+          planner: { model: "  " },
+          executor: { model: "openai/gpt-4o" },
+        },
+      }),
+    );
+
+    const config = await loadMicodeConfig(dir);
+
+    expect(config?.agents?.commander).toEqual({ temperature: 0.4 });
+    expect(config?.agents?.planner).toEqual({});
+    expect(config?.agents?.executor).toEqual({ model: "openai/gpt-4o" });
+    expect(logs.warn).toEqual([
+      expect.stringContaining('"gpt-4o" for agent "commander"'),
+      expect.stringContaining('agent "planner"'),
+    ]);
   });
 });

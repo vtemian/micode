@@ -1,5 +1,8 @@
 // src/hooks/constraint-reviewer.ts
-import type { PluginInput } from "@opencode-ai/plugin";
+import { readFile } from "node:fs/promises";
+import { isAbsolute, join } from "node:path";
+
+import type { Workspace } from "@/host/port";
 
 import {
   formatViolationsForRetry,
@@ -34,7 +37,10 @@ interface ConstraintReviewerHooks {
   cleanupSession: (sessionID: string) => void;
 }
 
-export function createConstraintReviewerHook(ctx: PluginInput, review: Reviewer): ConstraintReviewerHooks {
+// OpenCode's file-writing tools, named as both hosts register them.
+const REVIEWED_TOOLS: readonly string[] = ["write", "edit", "multiedit", "patch", "apply_patch"];
+
+export function createConstraintReviewerHook(ctx: Workspace, review: Reviewer): ConstraintReviewerHooks {
   let mindmodel: LoadedMindmodel | null | undefined;
   const sessionState = new Map<string, ReviewState>();
 
@@ -66,7 +72,7 @@ export function createConstraintReviewerHook(ctx: PluginInput, review: Reviewer)
       output: { output?: string },
     ) => {
       const mindmodel = await getMindmodel();
-      await reviewToolOutput(input, output, mindmodel, getSessionState, review);
+      await reviewToolOutput(ctx, input, output, mindmodel, getSessionState, review);
     },
 
     "chat.message": async (input: { sessionID: string }, output: { parts: Array<{ type: string; text?: string }> }) => {
@@ -86,13 +92,14 @@ function handleReviewError(error: unknown): void {
 }
 
 async function reviewToolOutput(
+  ctx: Workspace,
   input: { tool: string; sessionID: string; args?: Record<string, unknown> },
   output: { output?: string },
   mindmodel: LoadedMindmodel | null,
   getSessionState: (sessionID: string) => ReviewState,
   review: Reviewer,
 ): Promise<void> {
-  if (!["Write", "Edit"].includes(input.tool)) return;
+  if (!REVIEWED_TOOLS.includes(input.tool)) return;
   if (!config.mindmodel.reviewEnabled) return;
   if (!mindmodel) return;
 
@@ -103,11 +110,14 @@ async function reviewToolOutput(
     return;
   }
 
-  const filePath = input.args?.file_path as string | undefined;
-  if (!filePath) return;
+  // Write/edit pass `filePath` (the v2 adapter adds it alongside `path`); the core sets it per patched file.
+  const filePath = input.args?.filePath;
+  if (typeof filePath !== "string" || !filePath) return;
 
   try {
-    const reviewPrompt = buildReviewPrompt(output.output || "", filePath, mindmodel);
+    const absolute = isAbsolute(filePath) ? filePath : join(ctx.directory, filePath);
+    const code = await readFile(absolute, "utf-8").catch(() => output.output || "");
+    const reviewPrompt = buildReviewPrompt(code, filePath, mindmodel);
     const reviewResponse = await review(reviewPrompt);
     const result = parseReviewResponse(reviewResponse);
 
@@ -143,7 +153,7 @@ function handleViolations(
 }
 
 async function handleChatMessage(
-  ctx: PluginInput,
+  ctx: Workspace,
   input: { sessionID: string },
   output: { parts: Array<{ type: string; text?: string }> },
   getSessionState: (sessionID: string) => ReviewState,

@@ -1,6 +1,10 @@
 // src/tools/pty/tools/spawn.ts
-import type { ToolDefinition } from "@opencode-ai/plugin";
-import { tool } from "@opencode-ai/plugin/tool";
+
+import { resolve } from "node:path";
+
+import { z } from "zod";
+import type { Workspace } from "@/host/port";
+import { defineTool, type MicodeTool } from "@/tools/define";
 import type { PTYManager } from "@/tools/pty/manager";
 
 const DESCRIPTION = `Spawns a new interactive PTY (pseudo-terminal) session that runs in the background.
@@ -35,19 +39,16 @@ Examples:
 - Start a Python REPL: command="python3", title="Python REPL"
 - Run tests in watch mode: command="npm", args=["test", "--", "--watch"]`;
 
-export function createPtySpawnTool(manager: PTYManager): ToolDefinition {
-  return tool({
+export function createPtySpawnTool(manager: PTYManager, workspace: Workspace): MicodeTool {
+  return defineTool({
     description: DESCRIPTION,
     args: {
-      command: tool.schema.string().describe("The command/executable to run"),
-      args: tool.schema.array(tool.schema.string()).optional().describe("Arguments to pass to the command"),
-      workdir: tool.schema.string().optional().describe("Working directory for the PTY session"),
-      env: tool.schema
-        .record(tool.schema.string(), tool.schema.string())
-        .optional()
-        .describe("Additional environment variables"),
-      title: tool.schema.string().optional().describe("Human-readable title for the session"),
-      description: tool.schema
+      command: z.string().describe("The command/executable to run"),
+      args: z.array(z.string()).optional().describe("Arguments to pass to the command"),
+      workdir: z.string().optional().describe("Working directory for the PTY session"),
+      env: z.record(z.string(), z.string()).optional().describe("Additional environment variables"),
+      title: z.string().optional().describe("Human-readable title for the session"),
+      description: z
         .string()
         .optional()
         .describe("Clear, concise description of what this PTY session is for in 5-10 words"),
@@ -56,7 +57,8 @@ export function createPtySpawnTool(manager: PTYManager): ToolDefinition {
       const info = manager.spawn({
         command: args.command,
         args: args.args,
-        workdir: args.workdir,
+        // A relative or missing workdir means the project micode was loaded for, never the host's cwd.
+        workdir: resolve(workspace.directory, args.workdir ?? "."),
         env: args.env,
         title: args.title,
         parentSessionId: ctx.sessionID,

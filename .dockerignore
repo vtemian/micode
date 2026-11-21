@@ -4,3 +4,4 @@ dist
 docs
 thoughts
 .worktrees
+.claude/worktrees

@@ -11,7 +11,14 @@ deterministic, free and takes seconds instead of minutes.
 | Tier | Command | Model | Runs |
 | --- | --- | --- | --- |
 | Scripted | `bun run test:e2e` | stub provider | every PR (Docker) |
+| OpenCode 2 smoke | `bun run test:e2e:v2` | none (boots `opencode serve`) | every PR (Docker) |
 | Live | `bun run test:e2e:live` | real free-tier model | manual (`workflow_dispatch`) |
+
+The OpenCode 2 smoke tier installs the v2 CLI (`OPENCODE_INSTALL_URL` build
+arg), registers the repo directory under `plugins` in `opencode.jsonc`, starts
+`opencode serve` and checks through the HTTP API that micode's agents are
+registered and that the log holds no plugin load error. Full v2 scripted specs
+with the stub provider are a follow-up.
 
 The scripted tier cannot catch prompt-adherence bugs (a script always
 "adheres"), which is what the live tier in `tests/e2e/` is for. Keep both.

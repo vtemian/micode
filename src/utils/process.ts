@@ -19,6 +19,8 @@ const UNKNOWN_SIGNAL_EXIT = 1;
 
 export interface CommandOptions {
   readonly timeoutMs?: number;
+  /** Working directory for the child; defaults to the process cwd. */
+  readonly cwd?: string;
 }
 
 export interface CommandResult {
@@ -91,10 +93,10 @@ export function runCommand(
   args: readonly string[],
   options: CommandOptions = {},
 ): Promise<CommandResult> {
-  const { timeoutMs } = options;
+  const { timeoutMs, cwd } = options;
 
   return new Promise((resolve, reject) => {
-    const child = spawn(command, [...args], { stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn(command, [...args], { stdio: ["ignore", "pipe", "pipe"], cwd });
 
     let stdout = "";
     let stderr = "";

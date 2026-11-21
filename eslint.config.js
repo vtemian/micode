@@ -11,10 +11,12 @@ export default [
       "node_modules/**",
       "examples/**",
       ".worktrees/**",
+      ".claude/worktrees/**",
       ".mindmodel/**",
       ".opencode/**",
       "*.config.ts",
       "*.config.js",
+      "index.js",
       "thoughts/**",
       "docs/**",
       // A self-contained sample project, not repo source: it has its own

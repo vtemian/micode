@@ -73,7 +73,7 @@ categories:
     const { createMindmodelInjectorHook } = await import("../../src/hooks/mindmodel-injector");
 
     const ctx = createMockCtx(testDir);
-    const hook = createMindmodelInjectorHook(ctx as any);
+    const hook = createMindmodelInjectorHook(ctx);
 
     const system = await runInjectionFlow(hook, "test", [
       { info: { role: "user" }, parts: [{ type: "text", text: "Hello" }] },
@@ -88,7 +88,7 @@ categories:
     const { createMindmodelInjectorHook } = await import("../../src/hooks/mindmodel-injector");
 
     const ctx = createMockCtx(testDir);
-    const hook = createMindmodelInjectorHook(ctx as any);
+    const hook = createMindmodelInjectorHook(ctx);
 
     // "form" keyword should match components/form.md
     const system = await runInjectionFlow(hook, "test", [
@@ -107,7 +107,7 @@ categories:
     const { createMindmodelInjectorHook } = await import("../../src/hooks/mindmodel-injector");
 
     const ctx = createMockCtx(testDir);
-    const hook = createMindmodelInjectorHook(ctx as any);
+    const hook = createMindmodelInjectorHook(ctx);
 
     // No keywords match
     const system = await runInjectionFlow(hook, "test", [
@@ -123,7 +123,7 @@ categories:
     const { createMindmodelInjectorHook } = await import("../../src/hooks/mindmodel-injector");
 
     const ctx = createMockCtx(testDir);
-    const hook = createMindmodelInjectorHook(ctx as any);
+    const hook = createMindmodelInjectorHook(ctx);
 
     // "button" keyword should match components/button.md
     const system = await runInjectionFlow(hook, "test", [
@@ -147,7 +147,7 @@ categories:
     const { createMindmodelInjectorHook } = await import("../../src/hooks/mindmodel-injector");
 
     const ctx = createMockCtx(testDir);
-    const hook = createMindmodelInjectorHook(ctx as any);
+    const hook = createMindmodelInjectorHook(ctx);
 
     // First call with "button" keyword
     const system1 = await runInjectionFlow(hook, "test1", [

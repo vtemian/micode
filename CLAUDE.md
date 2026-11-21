@@ -24,8 +24,10 @@
 
 ### Module Layout
 - `src/agents/` - Agent configuration objects (pure data, no logic). Each exports an `AgentConfig`
-- `src/hooks/` - Lifecycle hook factories: `createXHook(ctx: PluginInput) => { handlers }`. All receive `ctx: PluginInput` for dependency injection
-- `src/tools/` - Bun tool definitions via the plugin's `tool()` function from `@opencode-ai/plugin/tool`
+- `src/hooks/` - Lifecycle hook factories: `createXHook(workspace | host | usage, ...) => { handlers }`. Host-agnostic: they receive a `Workspace`, a `SessionHost` port or the usage tracker, never a host SDK context
+- `src/host/` - Host adapters: `port.ts` (host-agnostic `SessionHost`, `HostEvent`, `Workspace` contracts), `v1.ts` (OpenCode 1 hooks object, `server`), `v2.ts` (OpenCode 2 `setup(ctx)`)
+- `src/micode.ts` - Assembles the host-agnostic core (`createMicode`): tools, agents, commands, MCP servers and the prompt/tool/event pipelines both adapters drive
+- `src/tools/` - Host-agnostic tool definitions via `defineTool()` from `src/tools/define.ts` (zod args, string output); the adapters wrap them for each host
 - `src/utils/` - Shared utilities: `config.ts` (centralized tunables), `errors.ts` (error extraction), `logger.ts` (structured logging), `model-limits.ts` (context window limits)
 - `src/config-loader.ts` - Loads and validates micode.json/opencode.json configuration, merges agent overrides
 - `src/mindmodel/` - Project-specific coding pattern constraints (.mindmodel/ directory): loader, classifier, formatter, review
@@ -34,10 +36,10 @@
 - `thoughts/` - Persistent artifact storage: `ledgers/` (session continuity), `shared/plans/` and `shared/designs/` (outputs)
 
 ### Conventions
-- Use named exports only; no default exports in `src` (config files excepted)
+- Use named exports only; no default exports in `src` (config files and `src/index.ts`, the dual-host entrypoint, excepted)
 - Re-export public APIs through barrel files (`index.ts`)
 - Log via `log.info/warn/error/debug` from `@/utils/logger`, not direct `console.*`
-- Plugin commands: `/init`, `/mindmodel`, `/ledger`, `/search` (defined in `src/index.ts`)
+- Plugin commands: `/init`, `/mindmodel`, `/ledger`, `/search` (defined in `src/micode.ts`)
 
 ## TypeScript
 

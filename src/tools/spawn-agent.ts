@@ -1,33 +1,13 @@
-import type { PluginInput, ToolDefinition } from "@opencode-ai/plugin";
-import { type ToolContext, tool } from "@opencode-ai/plugin/tool";
+import { z } from "zod";
+
+import type { SessionHost } from "@/host/port";
 import { deleteSessionModel, resolveSpawnModel, type SessionModel, setSessionModel } from "@/session-model";
 import { extractErrorMessage } from "@/utils/errors";
 
-// Extended context with metadata (available but not typed in plugin API)
-// Using intersection to add optional metadata without type conflict
-type ExtendedContext = ToolContext & {
-  metadata?: (input: { title?: string; metadata?: Record<string, unknown> }) => void;
-};
+import { defineTool, type MicodeTool, type ToolCall } from "./define";
 
 const MS_PER_SECOND = 1000;
-
-interface SessionCreateResponse {
-  readonly data?: { readonly id?: string };
-}
-
-interface MessagePart {
-  readonly type: string;
-  readonly text?: string;
-}
-
-interface SessionMessage {
-  readonly info?: { readonly role?: "user" | "assistant" };
-  readonly parts?: MessagePart[];
-}
-
-interface SessionMessagesResponse {
-  readonly data?: SessionMessage[];
-}
+const NO_RESPONSE = "(No response from agent)";
 
 interface AgentTask {
   readonly agent: string;
@@ -35,132 +15,92 @@ interface AgentTask {
   readonly description: string;
 }
 
-function updateProgress(
-  toolCtx: ExtendedContext,
-  progressState: { completed: number; total: number; startTime: number } | undefined,
-  status: string,
-): void {
-  if (toolCtx.metadata && progressState) {
-    const elapsed = ((Date.now() - progressState.startTime) / MS_PER_SECOND).toFixed(0);
-    toolCtx.metadata({
-      title: `[${progressState.completed}/${progressState.total}] ${status} (${elapsed}s)`,
-    });
-  }
+interface Progress {
+  completed: number;
+  readonly total: number;
+  readonly startTime: number;
 }
 
-function lastAssistantText(messages: readonly SessionMessage[]): string {
-  const lastAssistant = messages.filter((m) => m.info?.role === "assistant").pop();
-  return (
-    lastAssistant?.parts
-      ?.filter((p) => p.type === "text" && p.text)
-      .map((p) => p.text)
-      .join("\n") || "(No response from agent)"
-  );
+function elapsedSeconds(since: number, digits = 0): string {
+  return ((Date.now() - since) / MS_PER_SECOND).toFixed(digits);
+}
+
+function report(call: ToolCall, progress: Progress | undefined, status: string): void {
+  if (!progress) return;
+  call.progress?.(`[${progress.completed}/${progress.total}] ${status} (${elapsedSeconds(progress.startTime)}s)`);
 }
 
 async function executeAgentSession(
-  ctx: PluginInput,
+  host: SessionHost,
   task: AgentTask,
-  model?: SessionModel,
-  parentID?: string,
+  model: SessionModel | undefined,
+  parentID: string | undefined,
 ): Promise<string> {
-  // parentID links the session under its spawner in opencode's session tree;
-  // without it subagent work is invisible in the UI (#59).
-  const sessionResp = (await ctx.client.session.create({
-    body: parentID ? { parentID } : {},
-    query: { directory: ctx.directory },
-  })) as SessionCreateResponse;
-
-  const sessionID = sessionResp.data?.id;
-  if (!sessionID) {
-    return `## ${task.description}\n\n**Agent**: ${task.agent}\n**Error**: Failed to create session`;
-  }
-
-  // Follow the parent session's model (set via /models) instead of the startup-baked model.
-  await ctx.client.session.prompt({
-    path: { id: sessionID },
-    body: {
-      parts: [{ type: "text", text: task.prompt }],
-      agent: task.agent,
-      ...(model ? { model } : {}),
-    },
-    query: { directory: ctx.directory },
-  });
-
-  // Propagate the model so nested spawns (e.g. executor -> implementer) keep following it.
-  if (model) setSessionModel(sessionID, model);
-
+  let childID: string | undefined;
   try {
-    const messagesResp = (await ctx.client.session.messages({
-      path: { id: sessionID },
-      query: { directory: ctx.directory },
-    })) as SessionMessagesResponse;
-
-    return lastAssistantText(messagesResp.data || []);
+    const reply = await host.runAgent({
+      agent: task.agent,
+      text: task.prompt,
+      title: task.description,
+      parentID,
+      model,
+      // Propagate the model so nested spawns (e.g. executor -> implementer) keep following it.
+      onCreated: (sessionID) => {
+        childID = sessionID;
+        if (model) setSessionModel(sessionID, model);
+      },
+    });
+    return reply.text || NO_RESPONSE;
   } finally {
-    // The session itself must stay in the store: deleting it is what made
-    // subagent work impossible to inspect after the fact (#59). Only the
-    // follow-model entry is transient.
-    deleteSessionModel(sessionID);
+    // The session itself stays in the store so subagent work can be inspected (#59);
+    // only the follow-model entry is transient.
+    if (childID) deleteSessionModel(childID);
   }
 }
 
 async function runAgent(
-  ctx: PluginInput,
+  host: SessionHost,
   task: AgentTask,
-  toolCtx: ExtendedContext,
-  progressState?: { completed: number; total: number; startTime: number },
-  agentModelOverrides?: ReadonlySet<string>,
+  call: ToolCall,
+  progress: Progress | undefined,
+  overrides: ReadonlySet<string> | undefined,
 ): Promise<string> {
-  const agentStartTime = Date.now();
-  updateProgress(toolCtx, progressState, `Running ${task.agent}...`);
-
+  const started = Date.now();
+  report(call, progress, `Running ${task.agent}...`);
   try {
-    const agentOutput = await executeAgentSession(
-      ctx,
-      task,
-      resolveSpawnModel(toolCtx.sessionID, task.agent, agentModelOverrides),
-      toolCtx.sessionID,
-    );
-    const agentTime = ((Date.now() - agentStartTime) / MS_PER_SECOND).toFixed(1);
-    return `## ${task.description} (${agentTime}s)\n\n**Agent**: ${task.agent}\n\n### Result\n\n${agentOutput}`;
+    const model = call.sessionID ? resolveSpawnModel(call.sessionID, task.agent, overrides) : undefined;
+    const output = await executeAgentSession(host, task, model, call.sessionID);
+    return `## ${task.description} (${elapsedSeconds(started, 1)}s)\n\n**Agent**: ${task.agent}\n\n### Result\n\n${output}`;
   } catch (error) {
-    const errorMsg = extractErrorMessage(error);
-    return `## ${task.description}\n\n**Agent**: ${task.agent}\n**Error**: ${errorMsg}`;
+    return `## ${task.description}\n\n**Agent**: ${task.agent}\n**Error**: ${extractErrorMessage(error)}`;
   }
 }
 
 async function runParallelAgents(
-  ctx: PluginInput,
-  agents: AgentTask[],
-  extCtx: ExtendedContext,
-  agentModelOverrides?: ReadonlySet<string>,
+  host: SessionHost,
+  agents: readonly AgentTask[],
+  call: ToolCall,
+  overrides: ReadonlySet<string> | undefined,
 ): Promise<string> {
   const startTime = Date.now();
-  const progressState = { completed: 0, total: agents.length, startTime };
-
-  extCtx.metadata?.({ title: `Running ${agents.length} agents in parallel...` });
+  const progress: Progress = { completed: 0, total: agents.length, startTime };
+  call.progress?.(`Running ${agents.length} agents in parallel...`);
 
   const runWithProgress = async (task: AgentTask): Promise<string> => {
-    const agentOutput = await runAgent(ctx, task, extCtx, progressState, agentModelOverrides);
-    progressState.completed++;
-    const elapsed = ((Date.now() - startTime) / MS_PER_SECOND).toFixed(0);
-    extCtx.metadata?.({
-      title: `[${progressState.completed}/${agents.length}] ${task.agent} done (${elapsed}s)`,
-    });
-    return agentOutput;
+    const output = await runAgent(host, task, call, progress, overrides);
+    progress.completed++;
+    call.progress?.(`[${progress.completed}/${agents.length}] ${task.agent} done (${elapsedSeconds(startTime)}s)`);
+    return output;
   };
 
   const results = await Promise.all(agents.map(runWithProgress));
-  const totalTime = ((Date.now() - startTime) / MS_PER_SECOND).toFixed(1);
-
-  extCtx.metadata?.({ title: `${agents.length} agents completed in ${totalTime}s` });
-
-  return `# ${agents.length} agents completed in ${totalTime}s (parallel)\n\n${results.join("\n\n---\n\n")}`;
+  const total = elapsedSeconds(startTime, 1);
+  call.progress?.(`${agents.length} agents completed in ${total}s`);
+  return `# ${agents.length} agents completed in ${total}s (parallel)\n\n${results.join("\n\n---\n\n")}`;
 }
 
-export function createSpawnAgentTool(ctx: PluginInput, agentModelOverrides?: ReadonlySet<string>): ToolDefinition {
-  return tool({
+export function createSpawnAgentTool(host: SessionHost, agentModelOverrides?: ReadonlySet<string>): MicodeTool {
+  return defineTool({
     description: `Spawn subagents to execute tasks in PARALLEL.
 All agents in the array run concurrently via Promise.all.
 
@@ -172,28 +112,23 @@ spawn_agent({
   ]
 })`,
     args: {
-      agents: tool.schema
+      agents: z
         .array(
-          tool.schema.object({
-            agent: tool.schema.string().describe("Agent to spawn"),
-            prompt: tool.schema.string().describe("Full prompt/instructions"),
-            description: tool.schema.string().describe("Short description"),
+          z.object({
+            agent: z.string().describe("Agent to spawn"),
+            prompt: z.string().describe("Full prompt/instructions"),
+            description: z.string().describe("Short description"),
           }),
         )
         .describe("Agents to spawn in parallel"),
     },
-    execute: async (args, toolCtx) => {
-      const { agents } = args;
-      const extCtx = toolCtx as ExtendedContext;
-
-      if (!agents || agents.length === 0) return "## spawn_agent Failed\n\nNo agents specified.";
-
+    execute: async ({ agents }, call) => {
+      if (agents.length === 0) return "## spawn_agent Failed\n\nNo agents specified.";
       if (agents.length === 1) {
-        extCtx.metadata?.({ title: `Running ${agents[0].agent}...` });
-        return runAgent(ctx, agents[0], extCtx, undefined, agentModelOverrides);
+        call.progress?.(`Running ${agents[0].agent}...`);
+        return runAgent(host, agents[0], call, undefined, agentModelOverrides);
       }
-
-      return runParallelAgents(ctx, agents, extCtx, agentModelOverrides);
+      return runParallelAgents(host, agents, call, agentModelOverrides);
     },
   });
 }

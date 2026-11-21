@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-// Mock PluginInput
+// Mock Workspace
 function createMockCtx(directory: string) {
   return {
     directory,
@@ -40,7 +40,7 @@ describe("context-injector", () => {
       // Import the hook dynamically to get fresh module
       const { createContextInjectorHook } = await import("../../src/hooks/context-injector");
       const ctx = createMockCtx(testDir);
-      const hooks = createContextInjectorHook(ctx as any);
+      const hooks = createContextInjectorHook(ctx);
 
       // Simulate tool execution with camelCase filePath (as OpenCode sends it)
       const input = {
@@ -56,10 +56,24 @@ describe("context-injector", () => {
       expect(output.output).toContain("Components");
     });
 
+    it("resolves a relative filePath against the workspace, not the process cwd", async () => {
+      const subDir = join(testDir, "pkg");
+      mkdirSync(subDir, { recursive: true });
+      writeFileSync(join(subDir, "README.md"), "# Workspace package docs");
+      writeFileSync(join(subDir, "index.ts"), "export {};");
+
+      const { createContextInjectorHook } = await import("../../src/hooks/context-injector");
+      const hooks = createContextInjectorHook(createMockCtx(testDir));
+      const output = { output: "file contents here" };
+      await hooks["tool.execute.after"]({ tool: "read", args: { filePath: "pkg/index.ts" } }, output);
+
+      expect(output.output).toContain("Workspace package docs");
+    });
+
     it("should not inject context for non-file-access tools", async () => {
       const { createContextInjectorHook } = await import("../../src/hooks/context-injector");
       const ctx = createMockCtx(testDir);
-      const hooks = createContextInjectorHook(ctx as any);
+      const hooks = createContextInjectorHook(ctx);
 
       const input = {
         tool: "bash",

@@ -16,7 +16,7 @@ describe("pty_write tool", () => {
     manager = createPTYManager();
     manager.init(spawn);
     pty_write = createPtyWriteTool(manager);
-    pty_spawn = createPtySpawnTool(manager);
+    pty_spawn = createPtySpawnTool(manager, { directory: process.cwd() });
   });
 
   afterEach(() => {

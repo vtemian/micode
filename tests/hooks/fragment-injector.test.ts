@@ -180,12 +180,11 @@ describe("fragment-injector", () => {
         },
       };
 
-      const hooks = createFragmentInjectorHook(ctx as any, globalConfig);
+      const hooks = createFragmentInjectorHook(ctx, globalConfig);
 
-      const input = { sessionID: "test-session" };
+      const input = { sessionID: "test-session", agent: "brainstormer" };
       const output = {
         system: "Original system prompt",
-        options: { agent: "brainstormer" },
       };
 
       await hooks["chat.params"](input, output);
@@ -208,12 +207,11 @@ describe("fragment-injector", () => {
         },
       };
 
-      const hooks = createFragmentInjectorHook(ctx as any, globalConfig);
+      const hooks = createFragmentInjectorHook(ctx, globalConfig);
 
-      const input = { sessionID: "test-session" };
+      const input = { sessionID: "test-session", agent: "brainstormer" };
       const output = {
         system: "Original system prompt",
-        options: { agent: "brainstormer" },
       };
 
       await hooks["chat.params"](input, output);
@@ -235,12 +233,11 @@ describe("fragment-injector", () => {
       const { createFragmentInjectorHook } = await import("../../src/hooks/fragment-injector");
       const ctx = createMockCtx(testDir);
 
-      const hooks = createFragmentInjectorHook(ctx as any, null);
+      const hooks = createFragmentInjectorHook(ctx, null);
 
-      const input = { sessionID: "test-session" };
+      const input = { sessionID: "test-session", agent: "brainstormer" };
       const output = {
         system: "Original prompt",
-        options: { agent: "brainstormer" },
       };
 
       await hooks["chat.params"](input, output);
@@ -248,7 +245,7 @@ describe("fragment-injector", () => {
       expect(output.system).toContain("Project only instruction");
     });
 
-    it("should handle missing agent in options", async () => {
+    it("should handle missing agent", async () => {
       const { createFragmentInjectorHook } = await import("../../src/hooks/fragment-injector");
       const ctx = createMockCtx(testDir);
       const globalConfig = {
@@ -257,12 +254,11 @@ describe("fragment-injector", () => {
         },
       };
 
-      const hooks = createFragmentInjectorHook(ctx as any, globalConfig);
+      const hooks = createFragmentInjectorHook(ctx, globalConfig);
 
       const input = { sessionID: "test-session" };
       const output = {
         system: "Original prompt",
-        options: {},
       };
 
       await hooks["chat.params"](input, output);

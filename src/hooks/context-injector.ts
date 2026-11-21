@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 
-import type { PluginInput } from "@opencode-ai/plugin";
+import type { Workspace } from "@/host/port";
 
 import { config } from "@/utils/config";
 
@@ -26,7 +26,7 @@ interface ContextInjectorHooks {
   ) => Promise<void>;
 }
 
-export function createContextInjectorHook(ctx: PluginInput): ContextInjectorHooks {
+export function createContextInjectorHook(ctx: Workspace): ContextInjectorHooks {
   const cache: ContextCache = {
     rootContent: new Map(),
     directoryContent: new Map(),
@@ -65,7 +65,7 @@ export function createContextInjectorHook(ctx: PluginInput): ContextInjectorHook
 
 // --- Private helpers ---
 
-async function loadRootFiles(ctx: PluginInput, cache: ContextCache): Promise<Map<string, string>> {
+async function loadRootFiles(ctx: Workspace, cache: ContextCache): Promise<Map<string, string>> {
   const now = Date.now();
   if (now - cache.lastRootCheck < config.limits.contextCacheTtlMs && cache.rootContent.size > 0) {
     return cache.rootContent;
@@ -92,8 +92,8 @@ async function tryLoadFile(filepath: string, key: string, target: Map<string, st
   }
 }
 
-async function walkUpForContext(ctx: PluginInput, cache: ContextCache, filePath: string): Promise<Map<string, string>> {
-  const absPath = resolve(filePath);
+async function walkUpForContext(ctx: Workspace, cache: ContextCache, filePath: string): Promise<Map<string, string>> {
+  const absPath = resolve(ctx.directory, filePath);
   const projectRoot = resolve(ctx.directory);
 
   const cacheKey = dirname(absPath);

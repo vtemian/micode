@@ -1,23 +1,20 @@
 // src/tools/octto/responses.ts
-import { tool } from "@opencode-ai/plugin/tool";
-
+import { z } from "zod";
 import { type SessionStore, STATUSES } from "@/octto/session";
+import { defineTool } from "@/tools/define";
 
 import type { OcttoTool, OcttoTools } from "./types";
 
 function buildGetAnswerTool(sessions: SessionStore): OcttoTool {
-  return tool({
+  return defineTool({
     description: `Get the answer to a SPECIFIC question.
 By default returns immediately with current status.
 Set block=true to wait for user response (with optional timeout).
 NOTE: Prefer get_next_answer for better flow - it returns whichever question user answers first.`,
     args: {
-      question_id: tool.schema.string().describe("Question ID from a question tool"),
-      block: tool.schema.boolean().optional().describe("Wait for response (default: false)"),
-      timeout: tool.schema
-        .number()
-        .optional()
-        .describe("Max milliseconds to wait if blocking (default: 300000 = 5 min)"),
+      question_id: z.string().describe("Question ID from a question tool"),
+      block: z.boolean().optional().describe("Wait for response (default: false)"),
+      timeout: z.number().optional().describe("Max milliseconds to wait if blocking (default: 300000 = 5 min)"),
     },
     execute: async (args) => {
       const answer = await sessions.getAnswer({
@@ -38,17 +35,14 @@ NOTE: Prefer get_next_answer for better flow - it returns whichever question use
 }
 
 function buildGetNextAnswerTool(sessions: SessionStore): OcttoTool {
-  return tool({
+  return defineTool({
     description: `Wait for ANY question to be answered. Returns whichever question the user answers first.
 This is the PREFERRED way to get answers - lets user answer in any order.
 Push multiple questions, then call this repeatedly to get answers as they come.`,
     args: {
-      session_id: tool.schema.string().describe("Session ID from start_session"),
-      block: tool.schema.boolean().optional().describe("Wait for response (default: false)"),
-      timeout: tool.schema
-        .number()
-        .optional()
-        .describe("Max milliseconds to wait if blocking (default: 300000 = 5 min)"),
+      session_id: z.string().describe("Session ID from start_session"),
+      block: z.boolean().optional().describe("Wait for response (default: false)"),
+      timeout: z.number().optional().describe("Max milliseconds to wait if blocking (default: 300000 = 5 min)"),
     },
     execute: async (args) => {
       const answer = await sessions.getNextAnswer({
@@ -72,10 +66,10 @@ Push multiple questions, then call this repeatedly to get answers as they come.`
 }
 
 function buildListQuestionsTool(sessions: SessionStore): OcttoTool {
-  return tool({
+  return defineTool({
     description: `List all questions and their status for a session.`,
     args: {
-      session_id: tool.schema.string().optional().describe("Session ID (omit for all sessions)"),
+      session_id: z.string().optional().describe("Session ID (omit for all sessions)"),
     },
     execute: async (args) => {
       const listing = sessions.listQuestions(args.session_id);
@@ -92,11 +86,11 @@ function buildListQuestionsTool(sessions: SessionStore): OcttoTool {
 }
 
 function buildCancelQuestionTool(sessions: SessionStore): OcttoTool {
-  return tool({
+  return defineTool({
     description: `Cancel a pending question.
 The question will be removed from the user's queue.`,
     args: {
-      question_id: tool.schema.string().describe("Question ID to cancel"),
+      question_id: z.string().describe("Question ID to cancel"),
     },
     execute: async (args) => {
       const cancellation = sessions.cancelQuestion(args.question_id);

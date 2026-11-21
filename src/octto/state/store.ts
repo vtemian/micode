@@ -23,7 +23,7 @@ export interface StateStore {
   deleteSession: (sessionId: string) => Promise<void>;
 }
 
-export function createStateStore(baseDir = STATE_DIR): StateStore {
+export function createStateStore(baseDir: string = STATE_DIR): StateStore {
   const p = createStatePersistence(baseDir);
   const queues = new Map<string, Promise<void>>();
   const lock = <T>(id: string, op: () => Promise<T>): Promise<T> => withSessionLock(queues, id, op);

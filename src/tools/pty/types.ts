@@ -14,7 +14,7 @@ export interface PTYSession {
   exitCode?: number;
   readonly pid: number;
   readonly createdAt: Date;
-  readonly parentSessionId: string;
+  readonly parentSessionId?: string;
   readonly buffer: RingBuffer;
   readonly process: import("bun-pty").IPty;
 }
@@ -38,7 +38,7 @@ export interface SpawnOptions {
   readonly workdir?: string;
   readonly env?: Record<string, string>;
   readonly title?: string;
-  readonly parentSessionId: string;
+  readonly parentSessionId?: string;
 }
 
 export interface ReadResult {

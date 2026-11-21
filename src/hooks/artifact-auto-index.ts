@@ -2,12 +2,13 @@
 // Auto-indexes artifacts when written to thoughts/ directories
 
 import { readFileSync } from "node:fs";
-import type { PluginInput } from "@opencode-ai/plugin";
 import { getArtifactIndex } from "@/tools/artifact-index";
 import { log } from "@/utils/logger";
 
 const LEDGER_PATH_PATTERN = /thoughts\/ledgers\/CONTINUITY_(.+)\.md$/;
 const PLAN_PATH_PATTERN = /thoughts\/shared\/plans\/(.+)\.md$/;
+/** gpt models write through the patch tool (`apply_patch` on v1, `patch` on v2) instead of write. */
+const INDEXED_TOOLS: readonly string[] = ["write", "patch", "apply_patch"];
 
 export function parseLedger(
   content: string,
@@ -99,14 +100,13 @@ interface ArtifactAutoIndexHooks {
   ) => Promise<void>;
 }
 
-export function createArtifactAutoIndexHook(_ctx: PluginInput): ArtifactAutoIndexHooks {
+export function createArtifactAutoIndexHook(): ArtifactAutoIndexHooks {
   return {
     "tool.execute.after": async (
       input: { tool: string; args?: Record<string, unknown> },
       _output: { output?: string },
     ) => {
-      // Only process Write tool
-      if (input.tool !== "write") return;
+      if (!INDEXED_TOOLS.includes(input.tool)) return;
 
       const filePath = input.args?.filePath as string | undefined;
       if (!filePath) return;
