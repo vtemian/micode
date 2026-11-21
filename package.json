@@ -47,7 +47,7 @@
     "url": "https://github.com/vtemian/micode/issues"
   },
   "dependencies": {
-    "@opencode-ai/plugin": "1.18.30",
+    "@opencode-ai/plugin": "1.18.31",
     "bun-pty": "^0.4.5",
     "jsonc-parser": "^3.3.1",
     "valibot": "^1.2.0",
@@ -66,7 +66,7 @@
     "bun-types": "latest",
     "eslint": "^10.8.0",
     "eslint-plugin-sonarjs": "^4.0.2",
-    "eslint-plugin-unicorn": "^74.0.0",
+    "eslint-plugin-unicorn": "^75.0.0",
     "lefthook": "^2.0.13",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.57.0"
