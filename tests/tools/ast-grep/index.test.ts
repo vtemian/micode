@@ -4,10 +4,10 @@ import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { createAstGrepTools, replaceCall, searchCall } from "../../../src/tools/ast-grep";
-import { findExecutable } from "../../../src/utils/process";
+import { checkAstGrepAvailable, createAstGrepTools, replaceCall, searchCall } from "../../../src/tools/ast-grep";
 
 const CTX = { sessionID: "s1", progress: () => {} };
+const { available } = await checkAstGrepAvailable();
 
 describe("ast-grep tools", () => {
   let directory: string;
@@ -43,7 +43,22 @@ describe("ast-grep tools", () => {
     expect(applied.args.at(-1)).toBe(directory);
   });
 
-  it.skipIf(!findExecutable("sg"))("finds a match in a file that exists only in the workspace", async () => {
+  it.skipIf(process.platform === "win32")("does not mistake the system sg for ast-grep", async () => {
+    const originalPath = process.env.PATH;
+    writeFileSync(join(directory, "sg"), "#!/bin/sh\nprintf 'sg from util-linux\\n'\n", { mode: 0o755 });
+    try {
+      process.env.PATH = directory;
+      expect(await checkAstGrepAvailable()).toMatchObject({ available: false });
+      const tools = createAstGrepTools({ directory });
+      const output = await tools.ast_grep_search.execute({ pattern: "foo($A)", lang: "typescript" }, CTX);
+      expect(output).toContain("ast-grep CLI not found");
+    } finally {
+      if (originalPath === undefined) delete process.env.PATH;
+      else process.env.PATH = originalPath;
+    }
+  });
+
+  it.skipIf(!available)("finds a match in a file that exists only in the workspace", async () => {
     writeFileSync(join(directory, "only-here.ts"), "foo(1);\n");
     const tools = createAstGrepTools({ directory });
     const output = await tools.ast_grep_search.execute({ pattern: "foo($A)", lang: "typescript" }, CTX);

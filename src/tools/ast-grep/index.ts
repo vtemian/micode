@@ -2,6 +2,7 @@ import * as v from "valibot";
 import { z } from "zod";
 import type { Workspace } from "@/host/port";
 import { defineTool, type MicodeTool } from "@/tools/define";
+import { extractErrorMessage } from "@/utils/errors";
 import { findExecutable, runCommand } from "@/utils/process";
 
 /**
@@ -9,19 +10,8 @@ import { findExecutable, runCommand } from "@/utils/process";
  * Returns installation instructions if not found.
  */
 export async function checkAstGrepAvailable(): Promise<{ available: boolean; message?: string }> {
-  const sgPath = findExecutable("sg");
-  if (sgPath) {
-    return { available: true };
-  }
-  return {
-    available: false,
-    message:
-      "ast-grep CLI (sg) not found. AST-aware search/replace will not work.\n" +
-      "Install with one of:\n" +
-      "  npm install -g @ast-grep/cli\n" +
-      "  cargo install ast-grep --locked\n" +
-      "  brew install ast-grep",
-  };
+  if (await findAstGrep()) return { available: true };
+  return { available: false, message: INSTALL_MESSAGE };
 }
 
 const LANGUAGES = [
@@ -96,10 +86,30 @@ export interface ReplaceArgs extends SearchArgs {
 const JSON_FLAG = "--json=compact";
 const UPDATE_ALL_FLAG = "--update-all";
 const PATHS_DESCRIPTION = "Paths to search, relative to the project directory (default: the project directory)";
+const VERSION_TIMEOUT_MS = 1_000;
+const INSTALL_MESSAGE =
+  "ast-grep CLI not found. Install with:\n" +
+  "  npm install -g @ast-grep/cli\n" +
+  "  cargo install ast-grep --locked\n" +
+  "  brew install ast-grep";
 
 interface SgResult {
   matches: Match[];
   error?: string;
+}
+
+async function findAstGrep(): Promise<string | null> {
+  const binary = findExecutable("ast-grep");
+  if (binary) return binary;
+  // On Linux, sg commonly belongs to util-linux rather than ast-grep.
+  const alias = findExecutable("sg");
+  if (!alias) return null;
+  try {
+    const { stdout, exitCode } = await runCommand(alias, ["--version"], { timeoutMs: VERSION_TIMEOUT_MS });
+    return exitCode === 0 && stdout.startsWith("ast-grep ") ? alias : null;
+  } catch {
+    return null;
+  }
 }
 
 function parseMatchOutput(stdout: string): SgResult {
@@ -117,8 +127,10 @@ function parseMatchOutput(stdout: string): SgResult {
 }
 
 async function runSg(call: SgCall): Promise<SgResult> {
+  const binary = await findAstGrep();
+  if (!binary) return { matches: [], error: INSTALL_MESSAGE };
   try {
-    const { stdout, stderr, exitCode } = await runCommand("sg", call.args, { cwd: call.cwd });
+    const { stdout, stderr, exitCode } = await runCommand(binary, call.args, { cwd: call.cwd });
 
     const isNoFilesFound = exitCode !== 0 && !stdout.trim() && stderr.includes("No files found");
     if (isNoFilesFound) {
@@ -131,19 +143,8 @@ async function runSg(call: SgCall): Promise<SgResult> {
     if (!stdout.trim()) return { matches: [] };
 
     return parseMatchOutput(stdout);
-  } catch (e) {
-    const err = e as Error;
-    if (err.message?.includes("ENOENT")) {
-      return {
-        matches: [],
-        error:
-          "ast-grep CLI not found. Install with:\n" +
-          "  npm install -g @ast-grep/cli\n" +
-          "  cargo install ast-grep --locked\n" +
-          "  brew install ast-grep",
-      };
-    }
-    return { matches: [], error: err.message };
+  } catch (error) {
+    return { matches: [], error: extractErrorMessage(error) };
   }
 }
 
