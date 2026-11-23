@@ -54,7 +54,7 @@ function defaultConfigDir(): string {
  */
 function parseConfigJson(content: string): unknown {
   const errors: ParseError[] = [];
-  const parsed: unknown = parseJsonc(content, errors, { allowTrailingComma: true });
+  const parsed: unknown = parseJsonc(content.replace(/^\uFEFF/u, ""), errors, { allowTrailingComma: true });
   if (errors.length > 0) {
     throw new Error(`Invalid JSON/JSONC: ${errors.length} parse error(s)`);
   }

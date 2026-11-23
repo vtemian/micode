@@ -19,15 +19,14 @@ const SSE_HEADERS = {
   Connection: "keep-alive",
 } as const;
 
-export interface ToolTurn {
+export interface ToolTurn extends Partial<TextTurn> {
   readonly tool: string;
   readonly args: Record<string, unknown>;
-  /** Optional content alongside the tool call, like a real assistant message. */
-  readonly text?: string;
 }
 
 export interface TextTurn {
   readonly text: string;
+  readonly inputTokens?: number;
 }
 
 export type ScriptTurn = ToolTurn | TextTurn;
@@ -152,11 +151,30 @@ function chunk(model: string, delta: Record<string, unknown>, finish: string | n
   return `data: ${JSON.stringify(payload)}\n\n`;
 }
 
+function turnUsage(turn: ScriptTurn) {
+  const tokens = turn.inputTokens ?? 0;
+  return { prompt_tokens: tokens, completion_tokens: 0, total_tokens: tokens };
+}
+
+function streamEnd(model: string, turn: ScriptTurn, finish: string): string {
+  const end = chunk(model, {}, finish);
+  if (turn.inputTokens === undefined) return `${end}data: [DONE]\n\n`;
+  const usage = {
+    id: "chatcmpl-stub",
+    object: "chat.completion.chunk",
+    created: 0,
+    model,
+    choices: [],
+    usage: turnUsage(turn),
+  };
+  return `${end}data: ${JSON.stringify(usage)}\n\ndata: [DONE]\n\n`;
+}
+
 function streamTurn(model: string, turn: ScriptTurn, args: Record<string, unknown>): string {
   const head = chunk(model, { role: "assistant" }, null);
 
   if (!isToolTurn(turn)) {
-    return `${head + chunk(model, { content: turn.text }, null) + chunk(model, {}, "stop")}data: [DONE]\n\n`;
+    return head + chunk(model, { content: turn.text }, null) + streamEnd(model, turn, "stop");
   }
 
   const text = turn.text ? chunk(model, { content: turn.text }, null) : "";
@@ -174,7 +192,7 @@ function streamTurn(model: string, turn: ScriptTurn, args: Record<string, unknow
     },
     null,
   );
-  return `${head + text + call + chunk(model, {}, "tool_calls")}data: [DONE]\n\n`;
+  return head + text + call + streamEnd(model, turn, "tool_calls");
 }
 
 function completionBody(model: string, turn: ScriptTurn, args: Record<string, unknown>): Record<string, unknown> {
@@ -198,7 +216,7 @@ function completionBody(model: string, turn: ScriptTurn, args: Record<string, un
     created: 0,
     model,
     choices: [{ index: 0, message, finish_reason: isToolTurn(turn) ? "tool_calls" : "stop" }],
-    usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
+    usage: turnUsage(turn),
   };
 }
 

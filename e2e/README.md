@@ -11,14 +11,14 @@ deterministic, free and takes seconds instead of minutes.
 | Tier | Command | Model | Runs |
 | --- | --- | --- | --- |
 | Scripted | `bun run test:e2e` | stub provider | every PR (Docker) |
-| OpenCode 2 smoke | `bun run test:e2e:v2` | none (boots `opencode serve`) | every PR (Docker) |
+| OpenCode 2 | `bun run test:e2e:v2` | none for smoke checks; stub for regressions | every PR (Docker) |
 | Live | `bun run test:e2e:live` | real free-tier model | manual (`workflow_dispatch`) |
 
 The OpenCode 2 smoke tier installs the v2 CLI (`OPENCODE_INSTALL_URL` build
 arg), registers the repo directory under `plugins` in `opencode.jsonc`, starts
 `opencode serve` and checks through the HTTP API that micode's agents are
-registered and that the log holds no plugin load error. Full v2 scripted specs
-with the stub provider are a follow-up.
+registered and that the log holds no plugin load error. The V2 regression
+specs also drive real sessions against the scripted stub.
 
 The scripted tier cannot catch prompt-adherence bugs (a script always
 "adheres"), which is what the live tier in `tests/e2e/` is for. Keep both.
@@ -51,6 +51,9 @@ session needs: a text-only turn ends it). A single conversation may omit
 `match` and becomes the default for unmatched requests (title generation, the
 primary session's wrap-up turn); past the end of a conversation the stub
 answers "Script exhausted." so opencode stops instead of looping.
+
+A turn can also set `inputTokens` to simulate the provider's reported prompt
+usage without sending a large prompt.
 
 Markers for the mindmodel agents are the role lines in their system prompts,
 e.g. "detecting project tech stack" (mm-stack-detector). Args support
