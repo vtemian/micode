@@ -47,7 +47,7 @@
     "url": "https://github.com/vtemian/micode/issues"
   },
   "dependencies": {
-    "@opencode-ai/plugin": "1.19.4",
+    "@opencode-ai/plugin": "1.19.6",
     "bun-pty": "^0.5.1",
     "jsonc-parser": "^3.3.1",
     "valibot": "^1.2.0",
