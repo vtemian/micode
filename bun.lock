@@ -6,7 +6,7 @@
       "name": "@vtemian/opencode-config",
       "dependencies": {
         "@opencode-ai/plugin": "1.19.4",
-        "bun-pty": "^0.5.1",
+        "bun-pty": "^0.6.1",
         "jsonc-parser": "^3.3.1",
         "valibot": "^1.2.0",
         "ws": "^8.21.1",
@@ -364,7 +364,7 @@
 
     "builtin-modules": ["builtin-modules@3.3.0", "", {}, "sha512-zhaCDicdLuWN5UbN5IMnFqNMhNfo919sH85y2/ea+5Yg9TsTkeZxpL+JLbp6cgYFS4sRLp3YV4S6yDuqVWHYOw=="],
 
-    "bun-pty": ["bun-pty@0.5.1", "", {}, "sha512-YkC0pnw15fTpvDaPu8wEhzoBqUPDh6X83Oft6GJv4JVl9fFEOqQiGyGqXP80n/tDX93ufe+OBEq3NRgjRNyinA=="],
+    "bun-pty": ["bun-pty@0.6.1", "", {}, "sha512-Dw5pjbbY7gKFety9mlCxq8HfDe15MaVjbFL0BbVgw4mQXHAIE7ZEq7rhtt1BcmnTDs5yHIhNM+wlf6aSrkrHww=="],
 
     "bun-types": ["bun-types@1.4.4", "", { "dependencies": { "@types/node": "*", "undici-types": "*" } }, "sha512-yjrJh5oGX7mMPKGd19YXyIjmEuj4G4zNC30bs7PM9Az7NQ3ndF3j6hbeRdvJTRQEhJ/FYQwW0a2moweEi2hMxQ=="],
 
