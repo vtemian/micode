@@ -61,7 +61,7 @@
   "devDependencies": {
     "@biomejs/biome": "^2.3.10",
     "@eslint/js": "^10.0.1",
-    "@opencode/plugin": "2.0.31",
+    "@opencode/plugin": "2.3.2",
     "@types/ws": "^8.18.1",
     "bun-types": "latest",
     "eslint": "^10.8.0",
